@@ -3,6 +3,9 @@
 > ?? **���ĵ��ѹ�ʱ**��WinForms UI �ѷ�����ȫ��ת�� WebView2 + React ǰ�ˣ����� cline-chinese-main webview-ui ���䣩��
 > �˱��汣�����Ϊ��ʷ�ο����� UI ��Ƽ� [UI���.md](../design/UI���.md) �� [UIʵʩ�ƻ�.md](../plan/UIʵʩ�ƻ�.md)��
 # Phase 2 �?UI 完善 开发报�?
+
+> ⚠️ **状态修正（2026-06-17）**：本报告描述的 WinForms UI 文件（E3DCopilot.UI 项目）**从未实际创建**。报告内容为设计意图，非实现事实。实际 UI 层已迁移到 WebView2 + React 方案（E3DCopilot.WebHost 项目）。详见 [项目现状梳理报告](../superpowers/specs/2026-06-17-project-status-review-design.md)。
+
 > **日期**: 2026-06-17
 > **计划工时**: �?2 周（2a/2b/2c/2d�?> **实际进度**: 2a + 2b + 2c 完成�?d 基础完成
 
