@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>E3DCopilot.WebHost</RootNamespace>
+    <AssemblyName>E3DCopilot.WebHost</AssemblyName>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\E3DCopilot.Core\E3DCopilot.Core.csproj" />
+    <ProjectReference Include="..\E3DCopilot.Tools\E3DCopilot.Tools.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WebView2 Runtime -->
+    <Reference Include="Microsoft.Web.WebView2.WinForms">
+      <HintPath>..\..\lib\webview2\Microsoft.Web.WebView2.WinForms.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>..\..\lib\webview2\Microsoft.Web.WebView2.Core.dll</HintPath>
+    </Reference>
+    <!-- E3D SDK -->
+    <Reference Include="Aveva.ApplicationFramework">
+      <HintPath>..\..\lib\e3d\Aveva.ApplicationFramework.dll</HintPath>
+    </Reference>
+    <Reference Include="Aveva.ApplicationFramework.Presentation">
+      <HintPath>..\..\lib\e3d\Aveva.ApplicationFramework.Presentation.dll</HintPath>
+    </Reference>
+    <!-- System -->
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+
+  <!-- Copy wwwroot to output -->
+  <ItemGroup>
+    <Content Include="wwwroot\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

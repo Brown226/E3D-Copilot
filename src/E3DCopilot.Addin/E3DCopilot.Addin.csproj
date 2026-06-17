@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\E3DCopilot.Core\E3DCopilot.Core.csproj" />
-    <ProjectReference Include="..\E3DCopilot.UI\E3DCopilot.UI.csproj" />
+    <ProjectReference Include="..\E3DCopilot.WebHost\E3DCopilot.WebHost.csproj" />
   </ItemGroup>
 
   <ItemGroup>

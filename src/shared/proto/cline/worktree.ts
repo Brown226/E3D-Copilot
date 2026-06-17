@@ -1,0 +1,1 @@
+﻿export class TrackWorktreeViewOpenedRequest { static create(_data?: any): any { return {} } }; export class CreateWorktreeRequest { static create(_data?: any): any { return {} } }; export class SwitchWorktreeRequest { static create(_data?: any): any { return {} } };

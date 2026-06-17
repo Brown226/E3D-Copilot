@@ -1,0 +1,492 @@
+﻿/* Editor theme mapping */
+@theme {
+	--color-cline: #9663f1;
+	--color-background: #0c0c14;
+	--color-border: #3b82f6;
+	--color-border-panel: #2a2a3a;
+	--color-foreground: #e8e8f0;
+	--color-shadow: #00000040;
+	--color-code: #111118;
+	--color-code-foreground: #e8e8f0;
+	--color-code-border: #2a2a3a;
+	--color-code-block-background: rgb(30 30 30);
+	--color-quote: #1c1c2a;
+	--color-quote-foreground: #9898b0;
+	--color-text-block-background: #1a1a24;
+	--color-editor-group-border: #2a2a3a;
+	--color-editor-widget-border: #2a2a3a;
+	--color-editor-warning-foreground: #f59e0b;
+	--color-sidebar-background: #0c0c14;
+	--color-sidebar-foreground: #e8e8f0;
+	--color-input-foreground: #e8e8f0;
+	--color-input-background: #1a1a24;
+	--color-input-border: #2a2a3a;
+	--color-input-placeholder: #686880;
+	--color-input-error-background: #5c1010;
+	--color-input-error-foreground: #ef4444;
+	--color-input-warning-background: #4a3000;
+	--color-input-warning-foreground: #f59e0b;
+	--color-selection: #1e3a5f;
+	--color-selection-foreground: #e8e8f0;
+	--color-selection-inactive: #2a2a3a;
+	--color-button-background: #3b82f6;
+	--color-button-hover: #2563eb;
+	--color-button-foreground: #ffffff;
+	--color-button-separator: #1d4ed8;
+	--color-text-separator: #424242;
+	--color-button-secondary-background: #2a2a3a;
+	--color-button-secondary-background-hover: #3a3a4a;
+	--color-button-secondary-foreground: #e8e8f0;
+	--color-muted: color-mix(in srgb, #2a2a3a 65%, transparent);
+	--color-muted-foreground: #686880;
+	--color-menu: #141420;
+	--color-menu-foreground: #e8e8f0;
+	--color-menu-border: #2a2a3a;
+	--color-menu-shadow: #00000060;
+	--color-preformat: #f78383;
+	--color-link: #3b82f6;
+	--color-link-hover: #60a5fa;
+	--color-error-icon: #c42b2b;
+	--color-description: #9898b0;
+	--color-success: #56D364;
+	--color-warning: #f59e0b;
+	--color-error: #ef4444;
+	--color-info: #3b82f6;
+	--color-list-hover: #2a2a3a;
+	--color-badge-background: #2a2a3a;
+	--color-badge-foreground: #e8e8f0;
+	--color-banner-background: #1a1a24;
+	--color-banner-foreground: #e8e8f0;
+	--color-banner-border: #2a2a3a;
+	--color-icon-foreground: #e8e8f0;
+	--color-toolbar-background: transparent;
+	--color-toolbar-hover: #2a2a3a;
+	--color-diff-added: rgba(46, 160, 67, 0.15);
+	--color-diff-added-line: rgba(46, 160, 67, 0.1);
+	--color-diff-removed: rgba(248, 81, 73, 0.15);
+	--color-diff-removed-line: rgba(248, 81, 73, 0.1);
+	--color-failed-icon: #f85149;
+	--color-dropdown-background: #1a1a24;
+	--color-dropdown-foreground: #e8e8f0;
+	--color-dropdown-border: #2a2a3a;
+	--color-selection-active: #1e3a5f;
+	--color-widget-background: #141420;
+	--color-widget-border: #2a2a3a;
+	--color-highlight: rgba(234, 179, 8, 0.15);
+	--color-folder-icon: #d29922;
+	--font-mono:
+		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+		monospace;
+	--font-azeret-mono: Azeret Mono, monospace;
+	--font-editor: 14px;
+	--text-base: 14px;
+	--text-sm: calc(0.95 * 14px);
+	--text-xs: calc(0.85 * 14px);
+	--text-xxs: calc(0.5 * 14px);
+	--text-lg: calc(1.15 * 14px);
+	--text-md: calc(1.05 * 14px);
+	--text-xl: calc(1.3 * 14px);
+	--text-editor-size: 14px;
+	--size-1: calc(0.25 * 14px);
+	--size-2: calc(0.5 * 14px);
+	--size-3: calc(0.75 * 14px);
+	--size-4: calc(1 * 14px);
+	--size-5: calc(1.25 * 14px);
+	--breakpoint-xs: 400px;
+	--radius-half: 50%;
+	--radius-xs: 2px;
+	--breakpoint-xxs: 180px;
+
+	--animate-fade-in: fadeIn 0.4s ease-out forwards;
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+			transform: scale(0.98);
+		}
+		to {
+			opacity: 1;
+			transform: scale(1);
+		}
+	}
+
+	--animate-cursor-blink: cursorBlink 1s ease-in-out infinite;
+	@keyframes cursorBlink {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0;
+		}
+	}
+
+	--animate-icon-pulse: iconPulse 1s ease-in-out infinite;
+	@keyframes iconPulse {
+		0%,
+		100% {
+			opacity: 0.5;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	--animate-shimmer: shimmer 5s infinite linear;
+	@keyframes shimmer {
+		0% {
+			background-position: 200% 0;
+		}
+		100% {
+			background-position: -200% 0;
+		}
+	}
+
+	--animate-fade-slide-in: fadeSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+	@keyframes fadeSlideIn {
+		from {
+			opacity: 0;
+			transform: translateY(-12px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+}
+
+@theme inline {
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: color-mix(in srgb, #2a2a3a 65%, transparent);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-ring: var(--sidebar-ring);
+}
+
+
+
+:root {
+	--radius: 0.625rem;
+	--background: oklch(1 0 0);
+	--foreground: oklch(0.145 0 0);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.145 0 0);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.145 0 0);
+	--primary: oklch(0.205 0 0);
+	--primary-foreground: oklch(0.985 0 0);
+	--secondary: oklch(0.97 0 0);
+	--secondary-foreground: oklch(0.205 0 0);
+	--muted: oklch(0.97 0 0);
+	--muted-foreground: oklch(0.556 0 0);
+	--accent: oklch(0.97 0 0);
+	--accent-foreground: oklch(0.205 0 0);
+	--destructive: oklch(0.577 0.245 27.325);
+	--border: oklch(0.922 0 0);
+	--input: oklch(0.922 0 0);
+	--ring: oklch(0.708 0 0);
+	--chart-1: oklch(0.646 0.222 41.116);
+	--chart-2: oklch(0.6 0.118 184.704);
+	--chart-3: oklch(0.398 0.07 227.392);
+	--chart-4: oklch(0.828 0.189 84.429);
+	--chart-5: oklch(0.769 0.188 70.08);
+	--sidebar: oklch(0.985 0 0);
+	--sidebar-foreground: oklch(0.145 0 0);
+	--sidebar-primary: oklch(0.205 0 0);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.97 0 0);
+	--sidebar-accent-foreground: oklch(0.205 0 0);
+	--sidebar-border: oklch(0.922 0 0);
+	--sidebar-ring: oklch(0.708 0 0);
+
+	/* VS Code 变量兼容层 - 浅色主题 */
+	--vscode-foreground: #1e1e1e;
+	--vscode-descriptionForeground: #686880;
+	--vscode-editor-background: #ffffff;
+	--vscode-editor-foreground: #1e1e1e;
+	--vscode-panel-border: #e0e0e0;
+	--vscode-editorGroup-border: #e0e0e0;
+	--vscode-errorForeground: #ef4444;
+	--vscode-charts-green: #56D364;
+	--vscode-charts-blue: #3b82f6;
+	--vscode-focusBorder: #3b82f6;
+	--vscode-input-border: #e0e0e0;
+	--vscode-input-foreground: #1e1e1e;
+	--vscode-input-background: #f5f5f5;
+	--vscode-input-placeholderForeground: #999999;
+	--vscode-inputValidation-errorBackground: #fee;
+	--vscode-inputValidation-errorBorder: #ef4444;
+	--vscode-inputValidation-warningBackground: #fff8e1;
+	--vscode-inputValidation-warningForeground: #f59e0b;
+	--vscode-button-background: #3b82f6;
+	--vscode-button-foreground: #ffffff;
+	--vscode-button-hoverBackground: #2563eb;
+	--vscode-button-secondaryBackground: #e0e0e0;
+	--vscode-button-secondaryForeground: #1e1e1e;
+	--vscode-button-secondaryHoverBackground: #d0d0d0;
+	--vscode-badge-background: #e0e0e0;
+	--vscode-badge-foreground: #1e1e1e;
+	--vscode-textLink-foreground: #3b82f6;
+	--vscode-textLink-activeForeground: #2563eb;
+	--vscode-textBlockQuote-background: #f5f5f5;
+	--vscode-textBlockQuote-border: #e0e0e0;
+	--vscode-textCodeBlock-background: #f5f5f5;
+	--vscode-textPreformat-foreground: #d63384;
+	--vscode-sideBar-background: #f3f3f3;
+	--vscode-dropdown-background: #ffffff;
+	--vscode-list-hoverBackground: #e8e8e8;
+	--vscode-list-activeSelectionBackground: #d6ebff;
+	--vscode-quickInputList-focusBackground: #d6ebff;
+	--vscode-quickInputList-focusForeground: #1e1e1e;
+	--vscode-toolbar-hoverBackground: #e8e8e8;
+	--vscode-editorWidget-background: #f3f3f3;
+	--vscode-editorWidget-border: #e0e0e0;
+	--vscode-editorWarning-foreground: #f59e0b;
+	--vscode-editorError-foreground: #ef4444;
+	--vscode-editor-font-size: 14px;
+	--vscode-editor-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	--vscode-editor-line-height: 1.5;
+	--vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	--vscode-font-size: 14px;
+	--vscode-widget-border: #e0e0e0;
+	--vscode-activityWarningBadge-background: #f59e0b;
+	--vscode-icon-foreground: #1e1e1e;
+	--vscode-symbolIcon-folderForeground: #d29922;
+	--vscode-terminal-ansiBlue: #3b82f6;
+	--vscode-editor-findMatchHighlightBackground: rgba(234, 179, 8, 0.2);
+	--vscode-diffEditor-removedTextBackground: rgba(248, 81, 73, 0.2);
+	--vscode-diffEditor-removedLineBackground: rgba(248, 81, 73, 0.15);
+	--vscode-diffEditor-insertedTextBackground: rgba(46, 160, 67, 0.2);
+	--vscode-diffEditor-insertedLineBackground: rgba(46, 160, 67, 0.15);
+	--vscode-scrollbarSlider-background: #c0c0c0;
+	--vscode-scrollbarSlider-hoverBackground: #a0a0a0;
+	--vscode-scrollbarSlider-activeBackground: #808080;
+}
+
+.dark {
+	--background: oklch(0.145 0 0);
+	--foreground: oklch(0.985 0 0);
+	--card: oklch(0.205 0 0);
+	--card-foreground: oklch(0.985 0 0);
+	--popover: oklch(0.205 0 0);
+	--popover-foreground: oklch(0.985 0 0);
+	--primary: oklch(0.922 0 0);
+	--primary-foreground: oklch(0.205 0 0);
+	--secondary: oklch(0.269 0 0);
+	--secondary-foreground: oklch(0.985 0 0);
+	--muted: oklch(0.269 0 0);
+	--muted-foreground: oklch(0.708 0 0);
+	--accent: oklch(0.269 0 0);
+	--accent-foreground: oklch(0.985 0 0);
+	--destructive: oklch(0.704 0.191 22.216);
+	--border: oklch(1 0 0 / 10%);
+	--input: oklch(1 0 0 / 15%);
+	--ring: oklch(0.556 0 0);
+	--chart-1: oklch(0.488 0.243 264.376);
+	--chart-2: oklch(0.696 0.17 162.48);
+	--chart-3: oklch(0.769 0.188 70.08);
+	--chart-4: oklch(0.627 0.265 303.9);
+	--chart-5: oklch(0.645 0.246 16.439);
+	--sidebar: oklch(0.205 0 0);
+	--sidebar-foreground: oklch(0.985 0 0);
+	--sidebar-primary: oklch(0.488 0.243 264.376);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.269 0 0);
+	--sidebar-accent-foreground: oklch(0.985 0 0);
+	--sidebar-border: oklch(1 0 0 / 10%);
+	--sidebar-ring: oklch(0.556 0 0);
+
+	/* VS Code 变量兼容层 - 深色主题 */
+	--vscode-foreground: #e8e8f0;
+	--vscode-descriptionForeground: #9898b0;
+	--vscode-editor-background: #111118;
+	--vscode-editor-foreground: #e8e8f0;
+	--vscode-panel-border: #2a2a3a;
+	--vscode-editorGroup-border: #2a2a3a;
+	--vscode-errorForeground: #ef4444;
+	--vscode-charts-green: #56D364;
+	--vscode-charts-blue: #3b82f6;
+	--vscode-focusBorder: #3b82f6;
+	--vscode-input-border: #2a2a3a;
+	--vscode-input-foreground: #e8e8f0;
+	--vscode-input-background: #1a1a24;
+	--vscode-input-placeholderForeground: #686880;
+	--vscode-inputValidation-errorBackground: #5c1010;
+	--vscode-inputValidation-errorBorder: #ef4444;
+	--vscode-inputValidation-warningBackground: #4a3000;
+	--vscode-inputValidation-warningForeground: #f59e0b;
+	--vscode-button-background: #3b82f6;
+	--vscode-button-foreground: #ffffff;
+	--vscode-button-hoverBackground: #2563eb;
+	--vscode-button-secondaryBackground: #2a2a3a;
+	--vscode-button-secondaryForeground: #e8e8f0;
+	--vscode-button-secondaryHoverBackground: #3a3a4a;
+	--vscode-badge-background: #2a2a3a;
+	--vscode-badge-foreground: #e8e8f0;
+	--vscode-textLink-foreground: #3b82f6;
+	--vscode-textLink-activeForeground: #60a5fa;
+	--vscode-textBlockQuote-background: #1a1a24;
+	--vscode-textBlockQuote-border: #2a2a3a;
+	--vscode-textCodeBlock-background: #1a1a24;
+	--vscode-textPreformat-foreground: #f78383;
+	--vscode-sideBar-background: #0c0c14;
+	--vscode-dropdown-background: #1a1a24;
+	--vscode-list-hoverBackground: #2a2a3a;
+	--vscode-list-activeSelectionBackground: #1e3a5f;
+	--vscode-quickInputList-focusBackground: #1e3a5f;
+	--vscode-quickInputList-focusForeground: #e8e8f0;
+	--vscode-toolbar-hoverBackground: #2a2a3a;
+	--vscode-editorWidget-background: #141420;
+	--vscode-editorWidget-border: #2a2a3a;
+	--vscode-editorWarning-foreground: #f59e0b;
+	--vscode-editorError-foreground: #ef4444;
+	--vscode-editor-font-size: 14px;
+	--vscode-editor-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	--vscode-editor-line-height: 1.5;
+	--vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	--vscode-font-size: 14px;
+	--vscode-widget-border: #2a2a3a;
+	--vscode-activityWarningBadge-background: #f59e0b;
+	--vscode-icon-foreground: #e8e8f0;
+	--vscode-symbolIcon-folderForeground: #d29922;
+	--vscode-terminal-ansiBlue: #3b82f6;
+	--vscode-editor-findMatchHighlightBackground: rgba(234, 179, 8, 0.15);
+	--vscode-diffEditor-removedTextBackground: rgba(248, 81, 73, 0.15);
+	--vscode-diffEditor-removedLineBackground: rgba(248, 81, 73, 0.1);
+	--vscode-diffEditor-insertedTextBackground: rgba(46, 160, 67, 0.15);
+	--vscode-diffEditor-insertedLineBackground: rgba(46, 160, 67, 0.1);
+	--vscode-scrollbarSlider-background: #2a2a3a;
+	--vscode-scrollbarSlider-hoverBackground: #3a3a4a;
+	--vscode-scrollbarSlider-activeBackground: #4a4a5a;
+}
+
+@layer utilities {
+	/**
+	 * Variant that becomes visible when focused
+	 * Useful for skip links and other keyboard navigation aids
+	 */
+	.sr-only-focusable:focus {
+		position: static;
+		width: auto;
+		height: auto;
+		padding: inherit;
+		margin: inherit;
+		overflow: visible;
+		clip: auto;
+		white-space: normal;
+	}
+
+	@keyframes flash {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.5;
+		}
+	}
+
+	.animate-flash {
+		animation: flash 1.5s ease-in-out infinite;
+	}
+
+	.inline-markdown-block {
+		@apply text-base text-foreground font-normal;
+
+		pre {
+			background-color: #111118; border-radius: 2px; overflow-x: auto; overflow-y: hidden;
+			margin: 13px 0;
+			padding: 10px 10px;
+			max-width: calc(100vw - 20px);
+			padding-right: 70px;
+		}
+
+		pre > code .hljs-deletion {
+			@apply inline-block w-full;
+			background-color: #3a1a1a;
+		}
+
+		pre > code .hljs-addition {
+			@apply inline-block w-full;
+			background-color: #1a3a1a;
+		}
+
+		code span.line:empty {
+			@apply hidden;
+		}
+		code {
+			@apply break-words rounded-xs;
+		}
+		p,
+		li,
+		ol,
+		ul {
+			@apply leading-tight;
+		}
+		hr,
+		ul,
+		ol {
+			@apply my-3 ml-5;
+		}
+		li > ul,
+		li > ol {
+			@apply my-1 ml-2;
+		}
+		table {
+			@apply border-collapse w-full my-3;
+		}
+		th,
+		td {
+			@apply p-2 border border-border-panel text-left;
+		}
+		th {
+			font-weight: 600; background-color: rgba(17,17,24,0.2);
+		}
+		tr:nth-child(even) {
+			background-color: #1c1c2a;
+		}
+		del {
+			@apply line-through opacity-70;
+		}
+
+		code:not(pre > code) {
+			font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color: #e8e8f0; background-color: rgb(30 30 30); border: 1px solid #424242; border-radius: 2px; padding-top: 0.125rem; padding-bottom: 0.125rem; white-space: pre-line; word-wrap: break-word; font-size: 14px;
+		}
+
+		/* Inline cursor container - adds blinking cursor after last child */
+		.inline-cursor-container > :last-child::after {
+			content: "";
+			@apply inline-block w-0.5 h-[1em] ml-0.5 bg-foreground align-text-bottom animate-cursor-blink;
+		}
+	}
+}
+
+
+

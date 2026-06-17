@@ -1,56 +1,68 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Config;
 using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Providers;
 using E3DCopilot.Core.Security;
+using E3DCopilot.Core.Tools;
 
 namespace E3DCopilot.Core
 {
     /// <summary>
-    /// 会话管理 + 事件分发 + 审批流 + Plan Mode
-    /// transport-agnostic，可被 WinForms / 测试共享
+    /// 主控制器 — 中央调度器
+    /// 聚合所有服务：会话管理 / AI 引擎 / 工具执行 / 权限控制 / 状态管理
+    /// 对应 cline-chinese-main 的 Controller 类
     /// </summary>
     public class CopilotController : IDisposable
     {
+        // ── 核心引擎 ──
         private AgentLoop _agent;
         private CopilotSession _session;
-        private readonly IEventSink _sink;
-        private readonly ToolPolicy _policy;
-        private readonly PermissionGate _gate;
-        private readonly CopilotConfig _config;
-        private readonly ICopilotProvider _provider;
 
+        // ── 聚合服务 ──
+        public ICopilotProvider Provider { get; }
+        public ToolExecutor Executor { get; }
+        public CommandPermissionController Permission { get; }
+        public CopilotConfig Config { get; }
+
+        // ── 基础设施 ──
+        private readonly IEventSink _sink;
         private CancellationTokenSource _cts;
         private bool _isRunning;
 
-        /// <summary>UI 订阅此事件接收 CopilotEvent</summary>
-        public event Action<CopilotEvent> OnEvent;
+        // ── 审批管理 ──
+        private readonly Dictionary<string, PendingApproval> _pendingApprovals
+            = new Dictionary<string, PendingApproval>();
 
-        /// <summary>事件接收器（AgentLoop 传入）</summary>
+        // ── 事件 ──
+        public event Action<CopilotEvent> OnEvent;
         public IEventSink EventSink => _sink;
 
-        /// <summary>是否正在运行</summary>
+        // ── 状态 ──
         public bool IsRunning => _isRunning;
-
-        /// <summary>当前会话</summary>
         public CopilotSession Session => _session;
-
-        /// <summary>是否 Plan Mode</summary>
         public bool IsPlanMode => _session?.IsPlanMode ?? false;
 
-        public CopilotController(ICopilotProvider provider, IEventSink sink,
-            ToolPolicy policy, PermissionGate gate, CopilotConfig config)
+        /// <summary>
+        /// 完整构造函数
+        /// </summary>
+        public CopilotController(
+            ICopilotProvider provider,
+            ToolExecutor executor,
+            CommandPermissionController permission,
+            CopilotConfig config,
+            IEventSink sink = null)
         {
-            _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-            _policy = policy ?? new ToolPolicy();
-            _gate = gate ?? new PermissionGate(_policy);
-            _config = config ?? CopilotConfig.Load();
+            Provider = provider ?? throw new ArgumentNullException(nameof(provider));
+            Executor = executor ?? throw new ArgumentNullException(nameof(executor));
+            Permission = permission ?? CommandPermissionController.CreateDefault();
+            Config = config ?? CopilotConfig.Load();
 
             _session = new CopilotSession();
 
-            // 创建桥接 sink：外部 sink + 内部 event 转发
+            // 桥接事件接收器
             var externalSink = sink;
             _sink = new BridgeEventSink(evt =>
             {
@@ -60,37 +72,22 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// 创建默认 Controller（方便快速启动，不传 sink 时用事件订阅）
+        /// 创建默认 Controller（快捷方式）
         /// </summary>
-        public static CopilotController CreateDefault(IEventSink sink = null)
+        public static CopilotController CreateDefault(
+            IToolDispatcher dispatcher = null,
+            IEventSink sink = null)
         {
             var config = CopilotConfig.Load();
             var provider = new VllmProvider(config.Llm.BaseUrl, config.Llm.Model);
-            var policy = new ToolPolicy();
-            policy.ApplyPreset(ToolPreset.Confirm);
-            var gate = new PermissionGate(policy);
+            var executor = ToolExecutor.CreateDefault(dispatcher, sink);
+            var permission = CommandPermissionController.CreateDefault();
 
-            return new CopilotController(provider, sink, policy, gate, config);
+            return new CopilotController(provider, executor, permission, config, sink);
         }
 
         /// <summary>
-        /// 桥接事件接收器：将 Emit 转发到回调
-        /// </summary>
-        private class BridgeEventSink : IEventSink
-        {
-            private readonly Action<CopilotEvent> _onEmit;
-            public BridgeEventSink(Action<CopilotEvent> onEmit)
-            {
-                _onEmit = onEmit;
-            }
-            public void Emit(CopilotEvent evt)
-            {
-                _onEmit(evt);
-            }
-        }
-
-        /// <summary>
-        /// 发送用户输入到 AgentLoop
+        /// 发送用户输入 → AgentLoop 处理
         /// </summary>
         public async Task SendAsync(string input)
         {
@@ -102,7 +99,7 @@ namespace E3DCopilot.Core
 
             try
             {
-                _agent = new AgentLoop(_provider, _sink, _policy, _gate, _config);
+                _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this);
                 await _agent.RunAsync(_session, input, _cts.Token);
             }
             finally
@@ -121,7 +118,7 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// 切换 Plan Mode
+        /// 切换 Plan Mode（只读规划模式）
         /// </summary>
         public void SetPlanMode(bool enabled)
         {
@@ -136,16 +133,44 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
+        /// 注册待审批请求（AgentLoop 调用）
+        /// </summary>
+        public void RegisterApproval(PendingApproval approval)
+        {
+            if (approval == null) return;
+            _pendingApprovals[approval.Id] = approval;
+
+            _sink.Emit(new CopilotEvent
+            {
+                Kind = EventKind.ApprovalRequest,
+                ToolId = approval.Id,
+                Text = approval.ToolName,
+                Data = new { approval.ToolName, approval.Args, approval.Description }
+            });
+        }
+
+        /// <summary>
         /// 处理审批结果（UI 线程调用）
         /// </summary>
         public void Approve(string approvalId, bool allow, bool persist = false)
         {
-            // Phase 1c: 从 pending 表中查找并 complete
-            _sink.Emit(new CopilotEvent
+            if (string.IsNullOrEmpty(approvalId)) return;
+
+            if (_pendingApprovals.TryGetValue(approvalId, out var req))
             {
-                Kind = EventKind.Notice,
-                Text = allow ? "已批准" : "已拒绝"
-            });
+                req.Complete(allow, persist);  // 唤醒 TaskCompletionSource
+                _pendingApprovals.Remove(approvalId);
+
+                _sink.Emit(new CopilotEvent
+                {
+                    Kind = EventKind.Notice,
+                    Text = allow ? "已批准" : "已拒绝"
+                });
+            }
+            else
+            {
+                _sink.Emit(CopilotEvent.Error($"未找到审批请求: {approvalId}"));
+            }
         }
 
         /// <summary>
@@ -154,13 +179,34 @@ namespace E3DCopilot.Core
         public void NewSession()
         {
             _session = new CopilotSession();
+            _pendingApprovals.Clear();
             _sink.Emit(CopilotEvent.Notice("已创建新会话"));
+        }
+
+        /// <summary>
+        /// 获取当前会话摘要（用于状态栏显示）
+        /// </summary>
+        public string GetSessionSummary()
+        {
+            if (_session == null) return "无会话";
+            return $"消息: {_session.Messages.Count} | 模式: {(_session.IsPlanMode ? "Plan" : "Act")}";
         }
 
         public void Dispose()
         {
             _cts?.Dispose();
             _cts = null;
+            _pendingApprovals.Clear();
+        }
+
+        /// <summary>
+        /// 桥接事件接收器
+        /// </summary>
+        private class BridgeEventSink : IEventSink
+        {
+            private readonly Action<CopilotEvent> _onEmit;
+            public BridgeEventSink(Action<CopilotEvent> onEmit) => _onEmit = onEmit;
+            public void Emit(CopilotEvent evt) => _onEmit?.Invoke(evt);
         }
     }
 }

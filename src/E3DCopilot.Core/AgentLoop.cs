@@ -8,31 +8,36 @@ using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Providers;
 using E3DCopilot.Core.Security;
+using E3DCopilot.Core.Tools;
 
 namespace E3DCopilot.Core
 {
     /// <summary>
-    /// 核心 Agent 循环：LLM 调用 → 工具执行 → 结果注入 → 循环
+    /// 核心 Agent 循环：LLM 调用 → ToolExecutor 调度 → 结果注入 → 循环
     /// net48 兼容：回调模式流式处理，无 IAsyncEnumerable
+    /// 对应 cline-chinese-main 的 Task 引擎 + ToolExecutor
     /// </summary>
     public class AgentLoop
     {
         private readonly ICopilotProvider _provider;
         private readonly IEventSink _sink;
-        private readonly ToolPolicy _policy;
-        private readonly PermissionGate _gate;
+        private readonly ToolExecutor _executor;
+        private readonly CommandPermissionController _permission;
         private readonly CopilotConfig _config;
+        private readonly CopilotController _controller;
 
         private const int MaxSteps = 20;
 
         public AgentLoop(ICopilotProvider provider, IEventSink sink,
-            ToolPolicy policy, PermissionGate gate, CopilotConfig config)
+            ToolExecutor executor, CommandPermissionController permission,
+            CopilotConfig config, CopilotController controller = null)
         {
-            _provider = provider;
+            _provider = provider ?? throw new ArgumentNullException(nameof(provider));
             _sink = sink;
-            _policy = policy;
-            _gate = gate;
-            _config = config;
+            _executor = executor ?? throw new ArgumentNullException(nameof(executor));
+            _permission = permission ?? CommandPermissionController.CreateDefault();
+            _config = config ?? CopilotConfig.Load();
+            _controller = controller;
         }
 
         /// <summary>
@@ -41,7 +46,6 @@ namespace E3DCopilot.Core
         public async Task RunAsync(CopilotSession session, string input,
             CancellationToken ct = default)
         {
-            session.IsPlanMode = false;
             session.AddUserMessage(input);
 
             _sink.Emit(new CopilotEvent
@@ -56,7 +60,7 @@ namespace E3DCopilot.Core
 
                 try
                 {
-                    // 1. 组装请求
+                    // 1. 组装请求（含可用工具定义）
                     var request = BuildRequest(session);
 
                     // 2. 调用 LLM（流式）
@@ -72,45 +76,52 @@ namespace E3DCopilot.Core
                         return;
                     }
 
-                    // 5. 执行工具
+                    // 5. 通过 ToolExecutor 执行工具
                     foreach (var call in result.ToolCalls)
                     {
                         ct.ThrowIfCancellationRequested();
 
-                        _sink.Emit(new CopilotEvent
+                        // 5a. 权限检查（CommandPermissionController）
+                        var access = _permission.CheckTool(call.Name, call.Arguments);
+                        if (access == CommandPermissionController.AccessMode.Block)
                         {
-                            Kind = EventKind.ToolDispatch,
-                            Text = $"{call.Name}({call.Arguments})",
-                            Data = call
-                        });
-
-                        // 权限检查
-                        if (!_policy.IsAllowed(call.Name, session.IsPlanMode))
-                        {
-                            string msg = $"工具 {call.Name} 在当前模式下不可用";
+                            string msg = $"工具 {call.Name} 被策略阻止";
                             session.AddToolResult(call.Id, msg);
                             _sink.Emit(CopilotEvent.Error(msg));
                             continue;
                         }
 
-                        // 需要审批？
-                        if (_gate.NeedsApproval(call.Name))
+                        // 5b. 批量操作检测（>5个元素需额外确认）
+                        bool isBatch = _permission.IsBatchOperation(call.Arguments);
+
+                        // 5c. 需要审批？
+                        if (access == CommandPermissionController.AccessMode.Ask || isBatch)
                         {
                             var approval = new PendingApproval
                             {
                                 ToolName = call.Name,
                                 Args = call.Arguments,
                                 Description = $"{call.Name}({call.Arguments})"
+                                    + (isBatch ? " [批量操作]" : "")
                             };
 
-                            _sink.Emit(new CopilotEvent
+                            // 通过 Controller 注册审批请求（如果有 Controller）
+                            if (_controller != null)
                             {
-                                Kind = EventKind.ApprovalRequest,
-                                Data = approval
-                            });
+                                _controller.RegisterApproval(approval);
+                            }
+                            else
+                            {
+                                // 降级：直接 emit 事件（兼容旧代码）
+                                _sink.Emit(new CopilotEvent
+                                {
+                                    Kind = EventKind.ApprovalRequest,
+                                    Data = approval
+                                });
+                            }
 
-                            var result2 = await approval.WaitAsync();
-                            if (!result2.Allow)
+                            var approvalResult = await approval.WaitAsync();
+                            if (!approvalResult.Allow)
                             {
                                 string msg = $"用户拒绝了 {call.Name}";
                                 session.AddToolResult(call.Id, msg);
@@ -119,16 +130,11 @@ namespace E3DCopilot.Core
                             }
                         }
 
-                        // 执行（Phase 1b 将接入真实 ToolRegistry）
-                        string toolResult = ExecuteTool(call.Name, call.Arguments);
-                        session.AddToolResult(call.Id, toolResult);
-
-                        _sink.Emit(new CopilotEvent
-                        {
-                            Kind = EventKind.ToolResult,
-                            Text = toolResult,
-                            Data = call
-                        });
+                        // 5d. 通过 ToolExecutor 执行
+                        var toolResult = await _executor.ExecuteAsync(
+                            call.Name, call.Arguments, ct);
+                        session.AddToolResult(call.Id,
+                            toolResult.Success ? toolResult.Text : toolResult.Error);
                     }
 
                     // 6. 上下文压缩（可选）
@@ -143,7 +149,6 @@ namespace E3DCopilot.Core
                 {
                     CopilotLogger.Error(ex, "AgentLoop 步骤 {0} 失败", step);
                     _sink.Emit(CopilotEvent.Error($"遇到错误: {ex.Message}"));
-                    // 让 LLM 重试
                 }
             }
 
@@ -158,7 +163,6 @@ namespace E3DCopilot.Core
             CopilotRequest request, CancellationToken ct)
         {
             string text = "";
-            string reasoning = "";
             var toolCalls = new List<ToolCall>();
 
             await _provider.StreamAsync(request, chunk =>
@@ -166,7 +170,7 @@ namespace E3DCopilot.Core
                 switch (chunk.Type)
                 {
                     case ChunkType.Reasoning:
-                        reasoning += chunk.Content;
+                        text += chunk.Content;
                         _sink.Emit(CopilotEvent.Reasoning(chunk.Content));
                         break;
                     case ChunkType.Text:
@@ -174,14 +178,7 @@ namespace E3DCopilot.Core
                         _sink.Emit(CopilotEvent.TextEvent(chunk.Content));
                         break;
                     case ChunkType.ToolCall:
-                        // 合并同名的工具调用（vLLM 可能分多个 chunk 返回）
                         MergeToolCall(toolCalls, chunk.ToolCall);
-                        _sink.Emit(new CopilotEvent
-                        {
-                            Kind = EventKind.ToolDispatch,
-                            Text = $"{chunk.ToolCall.Name}(...)",
-                            Data = chunk.ToolCall
-                        });
                         break;
                     case ChunkType.Usage:
                         _sink.Emit(new CopilotEvent
@@ -216,7 +213,7 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// 构建 LLM 请求
+        /// 构建 LLM 请求（含工具定义）
         /// </summary>
         private CopilotRequest BuildRequest(CopilotSession session)
         {
@@ -232,19 +229,23 @@ namespace E3DCopilot.Core
             request.Messages.Add(new ChatMessage(MessageRole.System,
                 SystemPrompt.Build()));
 
+            // 工具定义（从 ToolExecutor 获取）
+            var toolSchemas = new List<ToolSchema>();
+            foreach (var handler in _executor.GetAllHandlers())
+            {
+                toolSchemas.Add(new ToolSchema
+                {
+                    Name = handler.Name,
+                    Description = handler.Description,
+                    ParametersJson = handler.ParameterSchema
+                });
+            }
+            request.Tools = toolSchemas;
+
             // 历史消息（最近 20 条）
             request.Messages.AddRange(session.GetRecentMessages(20));
 
             return request;
-        }
-
-        /// <summary>
-        /// 临时工具执行（Phase 1b 替换为 ToolRegistry）
-        /// </summary>
-        private string ExecuteTool(string name, string args)
-        {
-            // Phase 1b: 通过 ToolRegistry 执行
-            return $"工具 {name} 已执行，参数: {args}";
         }
 
         private void MaybeCompact(CopilotSession session)

@@ -1,12 +1,17 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using E3DCopilot.Core.Tools;
 
 namespace E3DCopilot.Tools.Registry
 {
     /// <summary>
-    /// 工具注册表（借鉴 Reasonix Registry 设计）
+    /// 工具注册表 — 管理所有 IE3DTool 的注册、发现、执行
+    /// C# 侧工具注册中心，与 Core 层的 ToolExecutor 配合使用
+    /// 实现 IToolDispatcher 接口，供 Core 层调用
     /// </summary>
-    public class ToolRegistry
+    public class ToolRegistry : IToolDispatcher
     {
         private readonly Dictionary<string, IE3DTool> _tools
             = new Dictionary<string, IE3DTool>();
@@ -14,6 +19,8 @@ namespace E3DCopilot.Tools.Registry
         /// <summary>注册工具</summary>
         public void Register(IE3DTool tool)
         {
+            if (tool == null)
+                throw new ArgumentNullException(nameof(tool));
             _tools[tool.Name] = tool;
         }
 
@@ -38,6 +45,25 @@ namespace E3DCopilot.Tools.Registry
             }).ToList();
         }
 
+        /// <summary>
+        /// 执行工具（Handler 层调用）
+        /// </summary>
+        public async Task<string> ExecuteAsync(string name, string args)
+        {
+            if (!_tools.TryGetValue(name, out var tool))
+                return $"错误: 未找到工具 {name}";
+
+            try
+            {
+                var result = await tool.ExecuteAsync(args);
+                return result ?? "(空结果)";
+            }
+            catch (Exception ex)
+            {
+                return $"错误: {ex.Message}";
+            }
+        }
+
         /// <summary>核心工具列表（6 个）</summary>
         public static readonly string[] CoreToolNames =
         {
@@ -48,7 +74,7 @@ namespace E3DCopilot.Tools.Registry
         /// <summary>是否为核心工具</summary>
         public static bool IsCoreTool(string name)
         {
-            return System.Array.IndexOf(CoreToolNames, name) >= 0;
+            return Array.IndexOf(CoreToolNames, name) >= 0;
         }
     }
 

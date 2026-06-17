@@ -1,495 +1,233 @@
-# E小智 v1.0 — UI 实施计划
+# E小智 — UI 实施计划
 
-> 基于 `docs/design/UI设计.md` 完整版（17 组件），对齐 `docs/plan/文档索引.md` 总计划（Phase 0-3）。
-> **目标**：确保每个 UI 组件的实施有明确的 Phase 归属、文件清单、依赖关系、验收标准和参考源码。
-
----
-
-## 一、UI 组件清单与 Phase 归属
-
-| # | 组件 | 文件（位于 `src/E3DCopilot.UI/`） | Phase | 优先级 |
-|:--:|------|------|:----:|:------:|
-| 1 | CopilotForm | `Forms/CopilotForm.cs` | 1a | 🔴 P0 |
-| 2 | ChatListBox | `Controls/ChatListBox.cs` | 1a | 🔴 P0 |
-| 3 | InputPanel (基础版) | `Controls/InputPanel.cs` | 1a | 🔴 P0 |
-| 4 | StatusBarControl | `Controls/StatusBarControl.cs` | 1a | 🔴 P0 |
-| 5 | MarkdownPanel | `Controls/MarkdownPanel.cs` | 1a | 🔴 P0 |
-| 6 | UserMessageControl | `Controls/UserMessageControl.cs` | 1a | 🔴 P0 |
-| 7 | ToolCardControl (基础版) | `Controls/ToolCardControl.cs` | 1b | 🔴 P0 |
-| 8 | ThinkingPanel | `Controls/ThinkingPanel.cs` | 1b | 🔴 P0 |
-| 9 | ErrorPanel | `Controls/ErrorPanel.cs` | 1b | 🔴 P0 |
-| 10 | PromptShelfControl | `Controls/PromptShelfControl.cs` | 1c | 🔴 P0 |
-| 11 | ReadOnlyBatchPanel | `Controls/ReadOnlyBatchPanel.cs` | 1b | 🟡 P1 |
-| 12 | DiffViewControl | `Controls/DiffViewControl.cs` | 1b | 🟡 P1 |
-| 13 | SearchResultsPanel | `Controls/SearchResultsPanel.cs` | 1b | 🟡 P1 |
-| 14 | TaskTrackingPanel | `Controls/TaskTrackingPanel.cs` | 1b | 🟡 P1 |
-| 15 | CodeBlock | `Controls/CodeBlock.cs` | 1b | 🟡 P1 |
-| 16 | CompletionCard | `Controls/CompletionCard.cs` | 1b | 🟡 P1 |
-| 17 | TurnActionsBar | `Controls/TurnActionsBar.cs` | 1c | 🟡 P1 |
-| 18 | NavToolbar | `Controls/NavToolbar.cs` | 1d | 🟡 P1 |
-| 19 | WarmTurnCard | `Controls/WarmTurnCard.cs` | 1d | 🟡 P1 |
-| 20 | SettingsPanel | `Forms/SettingsPanel.cs` | 2 | 🟢 P2 |
-| 21 | HistoryPanel | `Forms/HistoryPanel.cs` | 2 | 🟢 P2 |
-| 22 | VirtualScrollPanel | `Controls/VirtualScrollPanel.cs` | 2 | 🟢 P2 |
-| 23 | AttachmentThumbControl | `Controls/AttachmentThumbControl.cs` | 2 | 🟢 P2 |
-| 24 | TaskItemControl | `Controls/TaskItemControl.cs` | 2 | 🟢 P2 |
-| 25 | DiffLineControl | `Controls/DiffLineControl.cs` | 2 | 🟢 P2 |
-| 26 | SearchResultItemControl | `Controls/SearchResultItemControl.cs` | 2 | 🟢 P2 |
-| 27 | SyntaxHighlightTextBox | `Controls/SyntaxHighlightTextBox.cs` | 2 | 🟢 P2 |
-
-### 基础设施文件
-
-| # | 文件 | Phase | 说明 |
-|:--:|------|:----:|------|
-| 28 | `Theme/AppTheme.cs` | 1a (基础色) → 2 (完善) | 颜色/字体常量 |
-| 29 | `Theme/AppFonts.cs` | 1a (基础) → 2 (完善) | 字体规格 |
-| 30 | `Animation/AnimationHelper.cs` | 1b | 缓动函数 + Timer 动画 |
-| 31 | `Models/CopilotEvent.cs` | 1a | 事件类型枚举 (22 种) |
-| 32 | `Models/CopilotEventKind.cs` | 1a | EventKind 枚举 |
-| 33 | `Models/ChatMessage.cs` | 1a | 消息/Turn/ToolItem/TaskItem 数据模型 |
-| 34 | `Services/EventDispatcher.cs` | 1a | 线程安全事件分发 |
-| 35 | `Services/MarkdownParser.cs` | 1a | MD 文本→控件树 |
-| 36 | `Services/LcsDiff.cs` | 1b | LCS Diff 算法 |
-| 37 | `Services/SyntaxHighlighter.cs` | 2 | PML/JSON/C# 语法着色 |
-| 38 | `Controls/PasteTagControl.cs` | 2 | 大文本粘贴折叠标签 |
+> 版本：v2.0 — 基于 cline-chinese-main webview-ui 适配
+> 状态：旧 WinForms UI 实施计划已废弃，全面替换为 WebView2 + React SPA 适配计划
+> 参考：`参考开源项目/cline-chinese-main/webview-ui/`
 
 ---
 
-## 二、Phase 1a — 最小闭环 UI（2 天）
+## 概述
 
-> **目标**：输入文字 → AI 回复 → 显示。E3D Addin 可加载空面板。
+**核心策略**：fork cline-chinese-main 的 webview-ui 并适配为 E小智 前端，而非从零构建 React UI。
 
-### D1 上午：UI 骨架搭建
+**优势**：
+- 节省 ~80% UI 开发工作量
+- 获得成熟的消息系统、流式渲染、虚拟滚动、主题系统
+- 前端架构与 C# 后端的 Handler 模式自然对应
+- 可跟随上游更新获取 bug 修复和新功能
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 1 | `CopilotForm.cs` | 主 UserControl，`TableLayoutPanel` 三行布局 (消息/输入/状态) | `[C] ChatView.tsx` `[C] ChatLayout.tsx` |
-| 2 | `Models/CopilotEvent.cs` | 定义 22 种 `EventKind` 枚举 | `[R] lib/types.ts` (Item 类型) |
-| 3 | `Models/ChatMessage.cs` | `Turn`/`ChatMessage`/`ToolItem` 数据类 | `[R] lib/types.ts` |
-| 4 | `Services/EventDispatcher.cs` | `IEventSink` + `BeginInvoke` 线程安全分发 | `[R] lib/useController.ts` |
-| 5 | `Theme/AppTheme.cs` | 仅基础色 (Background/Foreground/Border) | `[C] theme.css` |
+**三个阶段**：
 
-**验收标准**：
-- [ ] CopilotForm 在 E3D DockedWindow 中可显示（空界面）
-- [ ] 事件分发链路通（发 EventKind.Text → BeginInvoke → 无异常）
-- [ ] 编译通过，无警告
-
-### D1 下午：消息显示骨架
-
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 6 | `ChatListBox.cs` | 基础版消息列表（Panel 滚动，无虚拟化，无 Hot/Warm/Cold） | `[R] Transcript.tsx` |
-| 7 | `UserMessageControl.cs` | 用户消息气泡（头像+文本+时间戳，固定宽度右侧） | `[R] Message.tsx` (UserMessage) |
-| 8 | `StatusBarControl.cs` | 状态栏（模式+Token+模型，基础版） | `[R] StatusBar.tsx` |
-
-**验收标准**：
-- [ ] 用户消息可添加并正确显示
-- [ ] 多条消息可正确堆叠
-- [ ] 状态栏正确显示模式（Plan/Act）
-
-### D2 上午：AI 回复 + 流式 + Markdown
-
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 9 | `MarkdownPanel.cs` | Markdown → FlowLayoutPanel 转换器 | `[R] Markdown.tsx` `[C] MarkdownRow.tsx` |
-| 10 | `Services/MarkdownParser.cs` | 正则解析 Markdown 块（标题/粗斜体/代码/列表/表格/引用） | `[C] MarkdownBlock.tsx` |
-| 11 | `Controls/ChatListBox.cs` (追加) | `AppendStreamText()` 流式追加 | `[R] Transcript.tsx` 流式滚动 |
-| 12 | `Models/ChatMessage.cs` (追加) | `AppendText()` 增量文本方法 | — |
-
-**验收标准**：
-- [ ] AI 回复 Markdown 正确渲染（标题/粗体/列表/代码块/表格）
-- [ ] 流式文本逐 chunk 追加，界面不卡顿
-- [ ] 流式等待时状态栏显示"AI 回复中..."
-
-### D2 下午：InputPanel 基础版 + 端到端
-
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 13 | `InputPanel.cs` (基础版) | 多行 TextBox + 发送按钮 + Ctrl+Enter 快捷键 | `[C] ChatTextArea.tsx` `[R] Composer.tsx` |
-| 14 | `CopilotForm.cs` (集成) | 串联输入→Controller→事件→显示 全链路 | `[C] ChatView.tsx` |
-
-**验收标准**：
-- [ ] 输入文字 + 回车 → AI 回复显示
-- [ ] 流式效果正常（逐字/逐 chunk）
-- [ ] 基础 Markdown 渲染正确
-
-### Phase 1a 产出一览
-
-```
-新增文件数: 14 个
-E3DCopilot.UI/
-├── Forms/
-│   └── CopilotForm.cs          ← 主窗口
-├── Controls/
-│   ├── ChatListBox.cs          ← 消息列表
-│   ├── UserMessageControl.cs   ← 用户消息
-│   ├── MarkdownPanel.cs        ← Markdown 渲染
-│   ├── StatusBarControl.cs     ← 状态栏
-│   └── InputPanel.cs           ← 输入区域 (基础版)
-├── Models/
-│   ├── CopilotEvent.cs         ← 事件枚举
-│   └── ChatMessage.cs          ← 消息数据模型
-├── Services/
-│   ├── EventDispatcher.cs      ← 线程安全分发
-│   └── MarkdownParser.cs       ← MD 解析器
-└── Theme/
-    ├── AppTheme.cs             ← 基础色
-    └── AppFonts.cs             ← 基础字体
-```
+| 阶段 | 周期 | 目标 | 交付 |
+|------|------|------|------|
+| **Phase A** | 2-3天 | WebView2 环境 + 基础通信 + 最小聊天闭环 | web-ui/ 可运行，浏览器→E3D 双向通信 |
+| **Phase B** | 2-3天 | E3D 工具渲染 + 审批流 + 设置面板 | 完整工具展示 + 用户审批 + 配置持久化 |
+| **Phase C** | 1-2天 | 主题适配 + 品牌化 + 性能优化 | 正式版前端 |
 
 ---
 
-## 三、Phase 1b — UI MVP 工具可视化（2 天）
+## Phase A — 基础适配（2-3 天）
 
-> **目标**：ToolCard / Thinking / Error / Diff / Batch / SearchResults / Task 组件全部到位。
+### 目标
+将 cline-chinese-main 的 webview-ui fork 为 E小智 前端，实现 WebView2 中的基础聊天闭环。
 
-### D3 上午：核心渲染组件
+### 步骤
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 1 | `ToolCardControl.cs` | 工具卡片（状态图标+工具名+时长+摘要+可折叠参数/结果） | `[R] ToolCard.tsx` `[R] ProcessCard.tsx` |
-| 2 | `ThinkingPanel.cs` | 推理面板（流式展开+完成自动折叠+耗时显示） | `[R] Message.tsx` (.reasoning) `[R] reasoningDisplay.ts` |
-| 3 | `ErrorPanel.cs` | 错误面板（描述+详情折叠+重试/取消按钮） | `[C] ErrorRow.tsx` |
-| 4 | `Animation/AnimationHelper.cs` | 缓动函数 + Timer 帧动画辅助类 | `[R] gsapAnimations.ts` `[R] useGSAPCollapse.ts` |
+#### ✅ A1. Fork 并初始化项目（已完成）
 
-**验收标准**：
-- [ ] ToolCard 正确显示 running/done/error 三种状态
-- [ ] ToolCard 折叠/展开动画流畅 (60fps)
-- [ ] ThinkingPanel 流式展开，完成自动折叠
-- [ ] ErrorPanel 显示错误 + 重试按钮响应
+- [x] 复制 `参考开源项目/cline-chinese-main/webview-ui/` → `web-ui/`
+- [x] 清理 VSCode 特有依赖
+- [x] 修改 `package.json`（名称 `e3d-copilot-webui`）
+- [x] 安装依赖（`npm install`，含 devDependencies）
+- [x] 补充缺失的 `src/shared/` 类型导出
+- [x] 验证：`npm run dev` 启动成功，`http://localhost:25463/` 可访问
 
-### D3 下午：Diff + 批量 + 搜索 + 任务
+#### A2. 替换通信层（0.5 天）
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 5 | `DiffViewControl.cs` | 行级差异对比（+N -N 统计+复制+展开全部） | `[R] InlineDiff.tsx` `[R] HljsDiff.tsx` |
-| 6 | `Services/LcsDiff.cs` | LCS 行级差异算法 | `[R] lib/diff.ts` |
-| 7 | `ReadOnlyBatchPanel.cs` | 只读工具批聚合（折叠摘要+展开+分类计数） | `[R] ReadOnlyBatch.tsx` |
-| 8 | `SearchResultsPanel.cs` | 知识库搜索结果（来源+置信度+代码片段） | `[C] SearchResultsDisplay.tsx` |
-| 9 | `TaskTrackingPanel.cs` | 任务追踪面板（折叠+完成计数+evidence） | `[R] TodoPanel.tsx` `[C] TaskHeader.tsx` |
+cline-chinese-main 使用 VSCode `acquireVsCodeApi().postMessage()` 通信。E3D 中使用 `window.chrome.webview.postMessage()`。
 
-**验收标准**：
-- [ ] Diff 正确显示行级差异，+N/-N 统计正确
-- [ ] 连续 3+ 个只读工具聚合为一个 ReadOnlyBatch
-- [ ] SearchResults 正确渲染各来源（api/pml/pattern/domain）
-- [ ] TaskTracking 折叠/展开 + 状态图标正确
+- [x] 创建 `src/bridge.ts`：WebView2 postMessage/onMessage 封装
+- [ ] 创建 `src/services/bridgeClient.ts`：上层 API（`sendMessage()`, `sendApproval()`, `onStateUpdate()` 等）
+- [ ] 替换 `PLATFORM_CONFIG` 中 `postMessage` 和 `decodeMessage` 的实现
+- [ ] 移除 protobuf/gRPC 相关代码（保持简单 JSON）
+- [ ] 验证：`bridge.send('ping', {})` → C# 端收到并回复
 
-### D4 上午：消息整合 + 辅助组件
+#### ✅ A3. 替换主题变量（已完成）
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 10 | `CodeBlock.cs` | 代码块（PML/JSON/C# 标签+复制按钮） | `[C] CodeBlock.tsx` `[C] CodeAccordian.tsx` |
-| 11 | `CompletionCard.cs` | 完成卡片（摘要+Token+操作按钮） | `[C] CompletionOutputRow.tsx` |
-| 12 | `ChatListBox.cs` (升级) | 消息合并管线（combineToolBatches + groupLowRiskTools） | `[C] ChatView.tsx` 合并管线 |
+- [x] 修改 `src/theme.css`：83 个 `var(--vscode-*)` → E3D 暗色固定值
+- [x] 保留 Tailwind 配置，调整主题色调
+- [x] 创建 `src/index.css`：E3D 全局样式入口
+- [ ] 验证：暗色主题正常显示，文字/卡片/输入框可读
 
-**验收标准**：
-- [ ] CodeBlock 正确显示 PML/JSON 代码
-- [ ] CompletionCard 在任务完成时显示
-- [ ] 消息合并管线正确聚合只读工具
+#### A4. 移除不适用的组件（0.5 天）
 
-### D4 下午：集成测试
+- [ ] 移除 `BrowserSessionRow` 及相关 browser 组件
+- [ ] 移除 `checkpoint` / `checkpoint_diff` 消息类型处理
+- [ ] 移除 VSCode 特有功能（diff editor 适配、terminal 适配等）
+- [ ] 简化设置页：只保留 LLM 配置 + 工具权限 + 常用设置
 
-| 序号 | 测试场景 | 验收标准 |
-|:--:|---------|---------|
-| 1 | 用户查询管道 → ToolCard 显示 | running→done 状态切换正确 |
-| 2 | 连续 5 个只读查询 → Batch | 聚合为一个 ReadOnlyBatchPanel |
-| 3 | 工具执行失败 → ErrorPanel | 红色错误 + 重试按钮 |
-| 4 | 推理过程显示 → ThinkingPanel | 流式展开→完成折叠 |
-| 5 | 修改属性完成 → DiffView | 新旧值差异对比显示 |
+#### A5. E3D 端对接（0.5 天）
 
-### Phase 1b 产出一览
+- [ ] 确认 `WebViewForm.cs` 正确加载 React 构建产物
+- [ ] 确认 `Bridge.cs` 正确解析 JSON 消息并路由到 `CopilotController`
+- [ ] 实现 `state:update` 消息：后端推送完整 ExtensionState → 前端渲染
+- [ ] 验证 `llm:stream:*` 消息：输入 → LLM 响应 → 流式显示
+- [ ] 验证 `tool:*` 消息：工具调用触发、结果显示
 
-```
-新增文件数: 12 个
-E3DCopilot.UI/
-├── Controls/
-│   ├── ToolCardControl.cs      ← 工具调用卡片
-│   ├── ThinkingPanel.cs        ← 推理面板
-│   ├── ErrorPanel.cs           ← 错误面板
-│   ├── DiffViewControl.cs      ← 差异对比
-│   ├── ReadOnlyBatchPanel.cs   ← 只读工具聚合
-│   ├── SearchResultsPanel.cs   ← 搜索结果
-│   ├── TaskTrackingPanel.cs    ← 任务追踪
-│   ├── CodeBlock.cs            ← 代码块
-│   └── CompletionCard.cs       ← 完成卡片
-├── Animation/
-│   └── AnimationHelper.cs      ← 动画辅助
-└── Services/
-    └── LcsDiff.cs              ← Diff 算法
-```
+### 验收标准
+
+- [ ] `npm run dev` + `npm run build` 正常
+- [ ] WebView2 加载 React SPA，暗色主题显示
+- [ ] 输入消息 → 后端处理 → LLM 流式回复 → 前端逐 token 显示
+- [ ] 工具调用在消息列表中以卡片形式展示
 
 ---
 
-## 四、Phase 1c — 安全 + 审批 UI（1 天）
+## Phase B — E3D 工具渲染（2-3 天）
 
-> **目标**：PromptShelf 审批条 + TurnActionsBar 到位，审批流 UI 完整。
+### 目标
+适配前端展示 E3D 特有工具调用和结果，实现完整的审批流和设置面板。
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 1 | `PromptShelfControl.cs` | 统一审批/问答容器（6 种 PromptType 模式 + 键盘驱动 1-4） | `[R] PromptShelf.tsx` `[R] ApprovalModal.tsx` |
-| 2 | `TurnActionsBar.cs` | 轮次操作栏（复制/摘要/回滚+两步确认） | `[R] Message.tsx` (TurnActions) |
-| 3 | `InputPanel.cs` (升级) | @ElementSearchMenu + /SlashCommandMenu | `[C] ChatTextArea.tsx` `[C] SlashCommandMenu.tsx` |
-| 4 | `CopilotForm.cs` (升级) | `CancellationToken` 停止机制 | `[C] ChatView.tsx` 停止按钮 |
-| 5 | `PromptShelfControl.cs` (追加) | approval/confirm/clarify/notify/destructive 5 种模式全部实现 | `[R] PromptShelf.tsx` |
+### 步骤
 
-**验收标准**：
-- [ ] PromptShelf 6 种 PromptType 均正确渲染
-- [ ] 键盘快捷键 1/2/3/4/Escape 触发正确回调
-- [ ] 危险操作 (destructive) 显示红色警告
-- [ ] TurnActionsBar 回滚两步确认 + 3 秒自动恢复
-- [ ] @元素搜索菜单弹出正确结果
-- [ ] /命令菜单弹出并可用
+#### B1. PML 命令输出适配（1 天）
 
-### Phase 1c 产出一览
+cline-chinese-main 的 `CommandOutputRow` 设计用于 shell 命令输出，需适配 PML 格式。
 
-```
-新增/修改文件数: 5 个
-E3DCopilot.UI/
-├── Controls/
-│   ├── PromptShelfControl.cs   ← 新增
-│   ├── TurnActionsBar.cs       ← 新增
-│   ├── InputPanel.cs           ← 升级 (@搜索 + /命令)
-│   └── CopilotForm.cs          ← 升级 (停止机制)
-```
+- [ ] 修改 `CommandOutputRow.tsx`：支持 PML 行号前缀、错误高亮
+- [ ] PML 输出格式化：`$p` 消息行灰色，`handle/code` 错误红色，表格对齐
+- [ ] 执行状态指示（success/fail + 图标 + 颜色）
 
----
+#### B2. E3D 工具卡片扩展（1 天）
 
-## 五、Phase 1d — 集成 + 部署 UI（1 天）
+在 `ToolCard` 基础上扩展 E3D 工具的渲染：
 
-> **目标**：NavToolbar + WarmTurnCard + 三级渲染基础 + 整体验收。
+- [ ] `query_elements` / `get_attributes` → 表格 + 键值对渲染
+- [ ] `execute_pml` → PML 代码预览 + 执行状态
+- [ ] `modify` / `batch_set_attribute` → 修改摘要 + 回滚按钮（后续）
+- [ ] `check_*` → 通过/失败状态 + 错误列表
+- [ ] `calculate_*` → 数值结果 + 单位
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 1 | `NavToolbar.cs` | 顶部工具栏（Plan/Act 切换+设置+历史+停止） | `[C] Navbar.tsx` `[R] AppChrome.tsx` |
-| 2 | `WarmTurnCard.cs` | Warm Zone 折叠卡片（摘要+工具统计+点击展开） | `[R] Transcript.tsx` (warm-collapse) |
-| 3 | `ChatListBox.cs` (三级渲染基础) | Hot/Warm 分区（Cold 暂用"加载更多"按钮） | `[R] Transcript.tsx` (cold/warm/hot) |
-| 4 | `CopilotForm.cs` (最终集成) | 所有组件串联 + 全部 EventKind 路由 | `[C] ChatView.tsx` |
+#### B3. PML Diff 组件（0.5 天）
 
-**验收标准**：
-- [ ] NavToolbar Plan/Act 切换颜色变化正确
-- [ ] WarmTurnCard 折叠/展开流畅
-- [ ] Hot Zone 超过 30 轮后正确转移至 Warm Zone
-- [ ] 全部 22 种 EventKind 路由正确
-- [ ] E3D 内加载正常，无 DPI 缩放问题
+- [ ] 新增 `PmlDiffRow.tsx`：PML 脚本的插入/删除/修改 diff
+- [ ] 支持单行 diff 和完整文件 diff
+- [ ] 与审批流集成：用户查看 diff 后批准/拒绝
 
-### Phase 1d 产出一览
+#### B4. 设置面板适配（0.5 天）
 
-```
-新增/修改文件数: 4 个
-E3DCopilot.UI/
-├── Controls/
-│   ├── NavToolbar.cs           ← 新增
-│   └── WarmTurnCard.cs         ← 新增
-├── Controls/
-│   └── ChatListBox.cs          ← 升级 (三级渲染)
-└── Forms/
-    └── CopilotForm.cs          ← 升级 (最终集成)
-```
+- [ ] 替换模型提供商配置为 vLLM（`http://localhost:8000/v1`）
+- [ ] 工具权限配置（auto/ask/planOnly per-tool）
+- [ ] 主题/语言设置
+- [ ] 保存设置 → `user:settings` → C# 端持久化
+
+#### B5. 审批流完整对接（0.5 天）
+
+- [ ] `tool:approval` 消息 → 前端的审批对话框 → 用户交互
+- [ ] 用户批准/拒绝 → `user:approve` → `Controller.Approve()`
+- [ ] 会话级持久化（"本次会话中记住此选择"）
+
+### 验收标准
+
+- [ ] PML 命令输出正确格式化（行号/错误/状态）
+- [ ] 5 类 E3D 工具渲染正常（查询/修改/PML/检查/计算）
+- [ ] PML diff 展示 + 用户审批流程完整
+- [ ] 设置面板可以配置模型和权限
+- [ ] 审批对话框正确显示工具参数
 
 ---
 
-## 六、Phase 2 — UI 完善（第 2 周）
+## Phase C — 完善（1-2 天）
 
-> **目标**：设置/历史/虚拟滚动/高级渲染/附件系统 全面完善。
+### 目标
+品牌化、性能优化、边缘情况处理。
 
-### 2a: SettingsPanel + HistoryPanel（2 天）
+### 步骤
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 1 | `SettingsPanel.cs` | 6 标签页设置（API/审批/界面/记忆/快捷键/关于） | `[R] SettingsPanel.tsx` `[C] SettingsView.tsx` |
-| 2 | `HistoryPanel.cs` | 历史会话列表+搜索+恢复+右键操作 | `[C] HistoryView.tsx` `[R] HistoryPanel.tsx` |
+#### C1. 品牌化（0.5 天）
 
-### 2b: 虚拟滚动 + 附件系统（2 天）
+- [ ] Logo 替换（E小智 品牌图标）
+- [ ] 标题/描述/欢迎页文案 E3D 定制
+- [ ] 欢迎页引导功能（示例 prompt 按钮）
+- [ ] favicon 替换
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 3 | `VirtualScrollPanel.cs` | 虚拟滚动面板（仅渲染可视区行） | `[C] MessagesArea.tsx` (react-virtuoso) |
-| 4 | `ChatListBox.cs` (升级) | 切换到 VirtualScrollPanel 驱动 | — |
-| 5 | `AttachmentThumbControl.cs` | 附件缩略图（图片/Excel/CSV/PDF/TXT） | `[C] ChatTextArea.tsx` |
-| 6 | `InputPanel.cs` (升级) | 附件拖拽上传+AttachmentBar 预览+删除 | `[C] ChatTextArea.tsx` |
+#### C2. 主题微调（0.5 天）
 
-### 2c: 高级渲染 + 主题完善（2 天）
+- [ ] 颜色微调以匹配 E3D 设计规范
+- [ ] 字体调整（E3D 环境常用字体）
+- [ ] 高对比度模式支持（可选）
 
-| 序号 | 文件 | 任务 | 参考源码 |
-|:--:|------|------|---------|
-| 7 | `SyntaxHighlightTextBox.cs` | 自定义 RichTextBox（PML/JSON/C# 语法着色） | `[R] HljsCode.tsx` |
-| 8 | `Services/SyntaxHighlighter.cs` | PML/JSON/C# 语法规则+着色器 | `[R] HljsCode.tsx` |
-| 9 | `Theme/AppTheme.cs` (完善) | 完整 17 色 + 语义色 + Diff 色 + ToolCard 色 | `[R] styles.css` |
-| 10 | `Theme/AppFonts.cs` (完善) | 7 种字体规格完善 | — |
-| 11 | `DiffLineControl.cs` | 独立差异行控件 | `[R] InlineDiff.tsx` |
-| 12 | `SearchResultItemControl.cs` | 独立搜索结果项控件 | — |
-| 13 | `TaskItemControl.cs` | 独立任务项控件 | — |
-| 14 | `PasteTagControl.cs` | 大文本粘贴折叠标签 | `[R] Composer.tsx` |
+#### C3. 性能优化（0.5 天）
 
-### 2d: Markdown 完整语法（1 天）
+- [ ] 大量 PML 输出时的虚拟滚动性能（react-virtuoso）
+- [ ] 流式渲染性能（50+ token/s 无卡顿）
+- [ ] 首屏加载优化（代码分割）
+- [ ] 内存占用监控
 
-| 序号 | 任务 | 参考源码 |
-|:--:|------|---------|
-| 15 | MarkdownPanel 完整语法支持（所有元素+嵌套+表格对齐） | `[R] Markdown.tsx` `[C] MarkdownRow.tsx` |
-| 16 | MarkdownParser 完整解析（含 backtick 转义、link、image、footnote） | `[C] MarkdownBlock.tsx` |
+#### C4. 错误边界 + 国际化（0.5 天）
 
----
+- [ ] React ErrorBoundary 适配 E3D 场景
+- [ ] 网络断开 / LLM 超时 / E3D 异常的前端展示
+- [ ] 补充 E3D 专业术语国际化（中英文）
 
-## 七、Phase 3 — UI 增强（第 3 周）
+### 验收标准
 
-> **目标**：IME 优化/Session 导出/ErrorBoundary/UndoRewind。这些是锦上添花，不影响 MVP 功能。
-
-| 序号 | 任务 | 参考源码 |
-|:--:|------|---------|
-| 1 | InputPanel IME 优化 (WM_IME_COMPOSITION) | — |
-| 2 | Session 导出 (PML/MD/Excel) | `[R] sessionExport.tsx` |
-| 3 | ErrorBoundary（全局异常捕获+crash恢复） | `[R] ErrorBoundary.tsx` |
-| 4 | UndoRewindBanner（撤销横幅确认） | `[R] UndoRewindBanner.tsx` |
-| 5 | ChatListBox Cold Zone 分页加载完善 | `[R] Transcript.tsx` |
+- [ ] 全暗色主题，E3D 品牌元素就位
+- [ ] 流式渲染 60fps
+- [ ] 首屏加载 < 1s
+- [ ] PML 输出 1000+ 行无卡顿
+- [ ] 中英文界面完整
 
 ---
 
-## 八、UI 组件依赖图
+## 与旧 WinForms UI 计划的对比
 
-```
-                    CopilotForm (1a)
-                    /    |    \
-            NavToolbar ChatListBox  InputPanel
-              (1d)      (1a)        (1a→1c)
-               /          |           |     \
-    SettingsPanel         |     AttachmentBar  btnStop
-      HistoryPanel        |        (2)         (1c)
-         (2)              |
-              ┌───────────┼───────────┬───────────┬──────────┐
-              ↓           ↓           ↓           ↓          ↓
-        UserMessage    Markdown     ToolCard    Thinking   ErrorPanel
-        Control        Panel        Control     Panel       (1b)
-         (1a)          (1a)         (1b)        (1b)
-                                     /  \
-                                    /    \
-                       ReadOnlyBatch    DiffViewControl
-                       Panel (1b)       (1b)
-                                     /      \
-                          SearchResults    TurnActionsBar
-                          Panel (1b)       (1c)
+| 旧计划（WinForms） | 新计划（WebView2 + React） | 工作量对比 |
+|-------------------|--------------------------|-----------|
+| Phase 1a-1d: 17 个自定义控件 | Phase A: fork → 适配通信层 | 新计划 ~20% |
+| Phase 2: 设置/历史/虚拟滚动 | Phase B: 继承 cline 已有实现 | 新计划 ~10% |
+| Phase 3: 导出/错误边界/撤销 | Phase C: 品牌化 + 微调 | 新计划 ~30% |
+| 总计: 29 个文件 100% 自建 | 总计: ~60% 保留 + ~30% 修改 + ~10% 新增 | **新计划约 1/5 工作量** |
 
-              PromptShelfControl    TaskTrackingPanel    CompletionCard
-                    (1c)                 (1b)                  (1b)
+---
 
-              CodeBlock              WarmTurnCard
-                (1b)                    (1d)
+## 开发环境
+
+```bash
+# 终端 1: 启动 Vite HMR
+cd web-ui
+npm install
+npm run dev
+# → http://localhost:5173
+
+# 终端 2: 启动 E3D（或用 TestHost）
+# WebViewForm 在 E3D_COPILOT_DEV_URL 环境变量存在时指向 dev server
+
+# 构建
+npm run build
+# → 输出到 src/E3DCopilot.WebHost/wwwroot/
 ```
 
-**关键依赖规则**：
-- **CopilotForm** 必须在所有组件之前完成（主容器）
-- **ChatListBox** 依赖 MarkdownPanel + UserMessageControl
-- **ToolCardControl** 依赖 DiffViewControl + CodeBlock + AnimationHelper
-- **ReadOnlyBatchPanel** 依赖 ToolCardControl
-- **SearchResultsPanel** 依赖 ToolCardControl + CodeBlock
-- **InputPanel 完整版** (1c) 依赖 CopilotController.QueryElements（后端支持）
-- **PromptShelfControl** 依赖 ToolPolicy（后端支持）
-- **SettingsPanel / HistoryPanel** (2) 可在 1d 之后独立开发，不阻塞主链
-
----
-
-## 九、验收检查清单
-
-### Phase 1a 验收（M1: 最小闭环）
-
-- [ ] CopilotForm 在 E3D DockedWindow 正确显示，DPI 缩放正常
-- [ ] 输入文字 + 发送 → AI 流式回复显示
-- [ ] Markdown 基础语法正确渲染（标题/粗体/列表）
-- [ ] 用户消息气泡和 AI 回复正确区分
-- [ ] 状态栏显示当前模式（Plan/Act）
-- [ ] 编译通过无警告，4 个 DLL 生成
-
-### Phase 1b 验收（M2: MVP 可用）
-
-- [ ] ToolCard running/done/error 三种状态动画完整
-- [ ] ToolCard 折叠/展开动画流畅（60fps 无掉帧）
-- [ ] ThinkingPanel 流式展开→完成自动折叠
-- [ ] DiffViewControl 正确显示行级差异
-- [ ] ReadOnlyBatchPanel 正确聚合 3+ 连续只读工具
-- [ ] SearchResultsPanel 正确渲染 api/pml/pattern/domain 四源结果
-- [ ] TaskTrackingPanel 状态图标+计数正确
-- [ ] CodeBlock 显示完整代码 + 复制功能
-
-### Phase 1c 验收（M3: 安全就绪）
-
-- [ ] PromptShelf 6 种模式 (approve_plan/approve_tool/confirm/clarify/notify/destructive) 全部正确
-- [ ] 键盘 1/2/3/4/Escape 输入正确触发
-- [ ] destructive 模式红色警告 + 默认拒绝
-- [ ] TurnActionsBar 回滚两步确认正确
-- [ ] @元素搜索菜单正确弹出（需要 E3D API 支持）
-- [ ] /命令菜单正确弹出
-
-### Phase 1d 验收（M4: MVP 发布）
-
-- [ ] NavToolbar Plan/Act 颜色切换
-- [ ] WarmTurnCard 折叠/展开 + 工具统计
-- [ ] Hot Zone → Warm Zone 转移正确
-- [ ] 全部 22 种 EventKind 路由无漏
-- [ ] 停止按钮可中断 AgentLoop
-
-### Phase 2 验收（M5: 工具完备）
-
-- [ ] SettingsPanel 6 标签页正常弹出和切换
-- [ ] HistoryPanel 会话列表搜索和恢复
-- [ ] 虚拟滚动 100+ 消息不卡
-- [ ] 附件拖拽上传和预览
-- [ ] PML 语法着色正确
-- [ ] 完整 Markdown 语法支持（表格/引用/嵌套/链接）
-
----
-
-## 十、关键风险和缓解
-
-| 风险 | 影响 | 缓解 |
-|------|:----:|------|
-| WinForms RichTextBox 流式性能不足 | ChatListBox 卡顿 | 使用 SuspendLayout + Invoke 批处理 + 对象池 |
-| WinForms Timer 动画帧率不稳定 | 折叠动画掉帧 | 用精准的 16ms Timer + EaseOutCubic，降级方案用 Instant |
-| Markdown 解析性能差 | AI 长回复卡顿 | 分块解析，每 500ms 渲染一次，总时长 > 2s 降级为纯文本 |
-| 虚拟滚动实现复杂度高 | Phase 2 延期 | Phase 1 仅 Hot/Warm/Cold 分区延迟渲染，Phase 2 补虚拟滚动 |
-| DPI 缩放下布局错乱 | 控件重叠 | 使用 TableLayoutPanel + AutoSize + Percent，避免 Absolute 定位 |
-| E3D 内嵌 WinForms 兼容性 | 控件不显示 | Phase 0 先用一个空 Form 测试 E3D DockedWindow 加载 |
-
----
-
-## 十一、开发规范
-
-### 文件组织
+## 文件结构变化
 
 ```
-E3DCopilot.UI/
-├── Forms/                    ← 顶层 Form 或 UserControl (主窗口/弹窗)
-│   ├── CopilotForm.cs
-│   ├── SettingsPanel.cs
-│   └── HistoryPanel.cs
-├── Controls/                 ← 可复用 UserControl 组件
-│   ├── ChatListBox.cs
-│   ├── ToolCardControl.cs
-│   └── ... (25 个控件)
-├── Models/                   ← 数据模型 / 事件类型
-│   ├── CopilotEvent.cs
-│   └── ChatMessage.cs
-├── Services/                 ← 非 UI 逻辑服务
-│   ├── EventDispatcher.cs
-│   ├── MarkdownParser.cs
-│   ├── LcsDiff.cs
-│   └── SyntaxHighlighter.cs
-├── Theme/                    ← 主题常量
-│   ├── AppTheme.cs
-│   └── AppFonts.cs
-└── Animation/                ← 动画工具
-    └── AnimationHelper.cs
+新增/修改的文件（相对于 cline-chinese-main webview-ui）：
+├── src/
+│   ├── bridge.ts                          # 新增：WebView2 通信桥
+│   ├── services/bridgeClient.ts           # 新增：Bridge API 封装
+│   ├── theme.css                          # 修改：VSCode 变量 → E3D 固定值
+│   ├── index.css                          # 新增：E3D 全局样式
+│   ├── components/
+│   │   ├── chat/
+│   │   │   ├── CommandOutputRow.tsx        # 修改：PML 输出适配
+│   │   │   ├── ToolGroupRenderer.tsx       # 修改：E3D 工具分组
+│   │   │   └── PmlDiffRow.tsx             # 新增：PML Diff
+│   │   └── chat/ChatRowContent.tsx         # 修改：移除 browser
+│   └── locales/
+│       └── zh-CN.json                     # 修改：补充 E3D 术语
+
+移除的文件：
+├── src/components/chat/BrowserSessionRow.tsx    # E3D 无浏览器工具
+├── src/components/chat/browser/                   # 整个 browser 目录
+└── src/**/*.browser.*                             # 所有 browser 相关
 ```
-
-### 命名规范
-
-- 控件类：`{功能}Control` / `{功能}Panel` / `{功能}Bar`
-- 事件：`{动作}Clicked` / `{动作}Requested`
-- 回调：`On{动作}` / `Handle{事件}`
-- 私有字段：`camelCase` 不含前缀
-
-### 编码规范
-
-- 所有 UI 更新必须通过 `this.BeginInvoke()`（线程安全）
-- 批量添加控件时使用 `SuspendLayout()` / `ResumeLayout()`
-- 颜色使用 `AppTheme.*` 常量，禁止硬编码
-- 动画使用 `AnimationHelper.Animate()` 统一管理
-- 所有公开方法标注 XML 注释（`/// <summary>`）
