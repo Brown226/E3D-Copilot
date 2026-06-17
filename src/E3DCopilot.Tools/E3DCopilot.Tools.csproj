@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>E3DCopilot.Tools</RootNamespace>
+    <AssemblyName>E3DCopilot.Tools</AssemblyName>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\E3DCopilot.Core\E3DCopilot.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- E3D SDK 引用（从本地 lib/ 目录加载） -->
+    <Reference Include="Aveva.Core.Database">
+      <HintPath>..\..\lib\e3d\Aveva.Core.Database.dll</HintPath>
+    </Reference>
+    <Reference Include="Aveva.Core.Utilities">
+      <HintPath>..\..\lib\e3d\Aveva.Core.Utilities.dll</HintPath>
+    </Reference>
+    <Reference Include="Aveva.Core.Geometry">
+      <HintPath>..\..\lib\e3d\Aveva.Core.Geometry.dll</HintPath>
+    </Reference>
+    <Reference Include="Aveva.Core.Maths.Geometry">
+      <HintPath>..\..\lib\e3d\Aveva.Core.Maths.Geometry.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

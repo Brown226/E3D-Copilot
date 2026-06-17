@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>E3DCopilot.Addin</RootNamespace>
+    <AssemblyName>E3DCopilot.Addin</AssemblyName>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\E3DCopilot.Core\E3DCopilot.Core.csproj" />
+    <ProjectReference Include="..\E3DCopilot.UI\E3DCopilot.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- E3D SDK 引用（从本地 lib/ 目录加载） -->
+    <Reference Include="Aveva.ApplicationFramework">
+      <HintPath>..\..\lib\e3d\Aveva.ApplicationFramework.dll</HintPath>
+    </Reference>
+    <Reference Include="Aveva.ApplicationFramework.Presentation">
+      <HintPath>..\..\lib\e3d\Aveva.ApplicationFramework.Presentation.dll</HintPath>
+    </Reference>
+    <Reference Include="Aveva.Core.Utilities">
+      <HintPath>..\..\lib\e3d\Aveva.Core.Utilities.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+</Project>
