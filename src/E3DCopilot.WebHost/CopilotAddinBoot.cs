@@ -4,7 +4,7 @@ using System.Windows.Forms;
 using Aveva.ApplicationFramework;
 using Aveva.ApplicationFramework.Presentation;
 using E3DCopilot.Core;
-using E3DCopilot.Tools.Registry;
+using E3DCopilot.Tools.Bridge;
 
 namespace E3DCopilot.WebHost
 {
@@ -31,12 +31,12 @@ namespace E3DCopilot.WebHost
             {
                 _isStarted = true;
 
-                // 1. 创建 ToolRegistry（工具调度器）
-                var registry = new ToolRegistry();
-                // TODO: 注册具体的 IE3DTool 实现
+                // 1. 创建 E3D 环境（开发模式用 SimulatedE3DEnvironment，E3D 环境用 RealE3DEnvironment）
+                var env = new SimulatedE3DEnvironment();
+                var dispatcher = new E3DToolDispatcher(env);
 
-                // 2. 创建 Controller（传入 registry 作为 dispatcher）
-                _controller = CopilotController.CreateDefault(registry);
+                // 2. 创建 Controller（传入 E3DToolDispatcher 作为 dispatcher）
+                _controller = CopilotController.CreateDefault(dispatcher);
 
                 // 3. 创建 WebView2 宿主面板
                 _webViewForm = new WebViewForm(_controller);

@@ -76,7 +76,7 @@ namespace E3DCopilot.WebHost
 
                 // 创建 WebView2 环境
                 var env = await CoreWebView2Environment.CreateAsync(
-                    userDataDir: userDataDir);
+                    null, userDataDir);
 
                 _webView = new WebView2
                 {
