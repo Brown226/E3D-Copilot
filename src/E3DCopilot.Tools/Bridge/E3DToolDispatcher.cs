@@ -47,7 +47,7 @@ namespace E3DCopilot.Tools.Bridge
                     return Task.FromResult(HandleExecutePml(args));
 
                 default:
-                    return Task.FromResult($"{{\"error\": \"未知工具: {name}\"}}");
+                    return Task.FromResult($"{{\"success\": false, \"error\": \"未知工具: {name}\"}}");
             }
         }
 
@@ -191,7 +191,12 @@ namespace E3DCopilot.Tools.Bridge
 
                 string result = _env.ExecutePml(command);
 
-                return $"{{\"success\": true, \"result\": \"{result.Replace("\"", "\\\"")}\"}}";
+                var jResult = new JObject
+                {
+                    ["success"] = true,
+                    ["result"] = result
+                };
+                return jResult.ToString();
             }
             catch (Exception ex)
             {
