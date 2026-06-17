@@ -5,11 +5,38 @@ import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { StateServiceClient } from "@/services/grpc-client"
-import { TabButton } from "../../mcp/configuration/McpConfigurationView"
 import ApiOptions from "../ApiOptions"
 import Section from "../Section"
 import { syncModeConfigurations } from "../utils/providerUtils"
 import { useApiConfigurationHandlers } from "../utils/useApiConfigurationHandlers"
+
+// Local TabButton component (replacement for the one previously imported from mcp/configuration/McpConfigurationView)
+const TabButton: React.FC<{
+	disabled?: boolean
+	isActive?: boolean
+	onClick?: () => void
+	style?: React.CSSProperties
+	children?: React.ReactNode
+}> = ({ disabled, isActive, onClick, style, children }) => {
+	return (
+		<button
+			disabled={disabled}
+			onClick={onClick}
+			style={{
+				padding: "8px 16px",
+				border: "none",
+				cursor: disabled ? "default" : "pointer",
+				opacity: disabled ? 0.5 : 1,
+				fontWeight: isActive ? 600 : 400,
+				borderBottom: isActive ? "2px solid var(--vscode-textLink-foreground)" : "2px solid transparent",
+				color: isActive ? "var(--vscode-textLink-foreground)" : "var(--vscode-foreground)",
+				background: "none",
+				...style,
+			}}>
+			{children}
+		</button>
+	)
+}
 
 interface ApiConfigurationSectionProps {
 	renderSectionHeader?: (tabId: string) => JSX.Element | null

@@ -12,7 +12,6 @@ import { useApiConfigurationHandlers } from "@/components/settings/utils/useApiC
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import HomeHeader from "@/components/welcome/HomeHeader"
 import { SuggestedTasks } from "@/components/welcome/SuggestedTasks"
-import CreateWorktreeModal from "@/components/worktrees/CreateWorktreeModal"
 import { useClineAuth } from "@/context/ClineAuthContext"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { AccountServiceClient, StateServiceClient, UiServiceClient, WorktreeServiceClient } from "@/services/grpc-client"
@@ -41,7 +40,6 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 	const [showWhatsNewModal, setShowWhatsNewModal] = useState(false)
 
 	// Quick launch worktree modal
-	const [showCreateWorktreeModal, setShowCreateWorktreeModal] = useState(false)
 	const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
 	const [currentWorktree, setCurrentWorktree] = useState<Worktree | null>(null)
 
@@ -52,7 +50,7 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 				const canUseWorktrees = result.isGitRepo && !result.isMultiRoot && !result.isSubfolder
 				setIsGitRepo(canUseWorktrees)
 				if (canUseWorktrees) {
-					const current = (result.worktrees ?? []).find((w) => w.isCurrent)
+					const current = false
 					setCurrentWorktree(current || null)
 				}
 			})
