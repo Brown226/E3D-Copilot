@@ -1,100 +1,63 @@
 using System;
 using Aveva.ApplicationFramework;
 using Aveva.ApplicationFramework.Presentation;
-using E3DCopilot.Core;
-using E3DCopilot.Tools.Registry;
-using E3DCopilot.WebHost;
+using Aveva.Core.Utilities.CommandLine;
 
 namespace E3DCopilot.Addin
 {
     /// <summary>
-    /// E小智 E3D AI Copilot 插件入口
-    /// 委托 WebHost 管理 WebView2 面板
+    /// E小智 Addin — 直接实现 IAddin 接口（而不是继承 Addin 抽象类）
+    /// E3D 2.1 的 IAddin 只有 Name/Description + Start()/Stop()
     /// </summary>
-    public class CopilotAddin : Aveva.ApplicationFramework.Addin
+    public class CopilotAddin : IAddin
     {
-        private CopilotController _controller;
-        private WebViewForm _webViewForm;
         private DockedWindow _dockedWindow;
 
-        public override string Name => "E3DCopilot";
+        public string Name => "E3DCopilot";
+        public string Description => "E小智 AI Copilot for E3D";
 
-        public override string Description =>
-            "E3D AI Copilot — 自然语言驱动的 E3D 操作助手";
-
-        public override System.Reflection.Assembly Assembly =>
-            System.Reflection.Assembly.GetExecutingAssembly();
-
-        public override bool IsStarted => _isStarted;
-        private bool _isStarted;
-
-        public override Aveva.ApplicationFramework.IAddin IAddinInterfaceObject
-            => (Aveva.ApplicationFramework.IAddin)this;
-
-        public override void Start()
+        public void Start(ServiceManager serviceManager)
         {
             try
             {
-                _isStarted = true;
+                var panel = new System.Windows.Forms.Panel();
+                var label = new System.Windows.Forms.Label();
+                label.Text = "E小智 OK!";
+                label.Dock = System.Windows.Forms.DockStyle.Fill;
+                label.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+                label.Font = new System.Drawing.Font("Microsoft YaHei", 20, System.Drawing.FontStyle.Bold);
+                label.ForeColor = System.Drawing.Color.DodgerBlue;
+                panel.Controls.Add(label);
 
-                // 1. 创建 ToolRegistry（工具调度器）
-                var registry = new ToolRegistry();
-                // TODO: 注册具体的 IE3DTool 实现
-
-                // 2. 创建 Controller（传入 registry 作为 dispatcher）
-                _controller = CopilotController.CreateDefault(registry);
-
-                // 3. 创建 WebView2 宿主面板
-                _webViewForm = new WebViewForm(_controller);
-
-                // 4. 注册 DockedWindow
                 _dockedWindow = WindowManager.Instance.CreateDockedWindow(
                     "E3DCopilot",
-                    "E小智 Copilot",
-                    _webViewForm,
+                    "小智",
+                    panel,
                     DockedPosition.Right
                 );
+                _dockedWindow.Width = 400;
+                _dockedWindow.Show();
 
-                // 5. 输出启动消息
-                var cmd = Aveva.Core.Utilities.CommandLine.Command
-                    .CreateCommand("$p E小智 Copilot v1.0 已启动");
+                var cmd = Aveva.Core.Utilities.CommandLine.Command.CreateCommand("$p E小智 Copilot v1.0 已启动");
                 cmd.RunInPdms();
             }
             catch (Exception ex)
             {
-                var cmd = Aveva.Core.Utilities.CommandLine.Command
-                    .CreateCommand("$p E小智 启动失败: " + ex.Message);
-                cmd.RunInPdms();
+                try
+                {
+                    var cmd = Aveva.Core.Utilities.CommandLine.Command.CreateCommand("$p E小智 失败: " + ex.Message);
+                    cmd.RunInPdms();
+                }
+                catch { }
             }
         }
 
-        public override void Stop()
+        public void Stop()
         {
-            try
+            if (_dockedWindow != null)
             {
-                _isStarted = false;
-
-                if (_controller != null)
-                {
-                    _controller.Dispose();
-                    _controller = null;
-                }
-
-                if (_dockedWindow != null)
-                {
-                    _dockedWindow.Close();
-                    _dockedWindow = null;
-                }
-
-                var cmd = Aveva.Core.Utilities.CommandLine.Command
-                    .CreateCommand("$p E小智 Copilot 已停止");
-                cmd.RunInPdms();
-            }
-            catch (Exception ex)
-            {
-                var cmd = Aveva.Core.Utilities.CommandLine.Command
-                    .CreateCommand("$p E小智 停止异常: " + ex.Message);
-                cmd.RunInPdms();
+                _dockedWindow.Close();
+                _dockedWindow = null;
             }
         }
     }
