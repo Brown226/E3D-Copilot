@@ -79,7 +79,7 @@ namespace E3DCopilot.Core
             IEventSink sink = null)
         {
             var config = CopilotConfig.Load();
-            var provider = new VllmProvider(config.Llm.BaseUrl, config.Llm.Model);
+            var provider = new VllmProvider(config.Llm.BaseUrl, config.Llm.Model, config.Llm.ApiKey);
             var executor = ToolExecutor.CreateDefault(dispatcher, sink);
             var permission = CommandPermissionController.CreateDefault();
 

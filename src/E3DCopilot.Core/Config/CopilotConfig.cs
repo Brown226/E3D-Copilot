@@ -18,6 +18,7 @@ namespace E3DCopilot.Core.Config
         {
             public string BaseUrl { get; set; } = "http://localhost:8000/v1";
             public string Model { get; set; } = "Qwen3.5-32B";
+            public string ApiKey { get; set; } = "";
             public double Temperature { get; set; } = 0.1;
             public int MaxTokens { get; set; } = 8192;
             public int TimeoutMs { get; set; } = 120000;

@@ -18,12 +18,15 @@ namespace E3DCopilot.Core.Providers
         private readonly HttpClient _http;
         private readonly string _baseUrl;
         private readonly string _model;
+        private readonly string _apiKey;
 
         public VllmProvider(string baseUrl = "http://localhost:8000/v1",
-            string model = "Qwen3.5-32B")
+            string model = "Qwen3.5-32B",
+            string apiKey = "")
         {
             _baseUrl = baseUrl.TrimEnd('/');
             _model = model;
+            _apiKey = apiKey ?? "";
             _http = new HttpClient
             {
                 Timeout = TimeSpan.FromMilliseconds(120000)
@@ -54,6 +57,12 @@ namespace E3DCopilot.Core.Providers
 
             string jsonBody = JsonConvert.SerializeObject(body);
             var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+
+            if (!string.IsNullOrEmpty(_apiKey))
+            {
+                _http.DefaultRequestHeaders.Remove("Authorization");
+                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+            }
 
             using (var response = await _http.PostAsync(
                 $"{_baseUrl}/chat/completions", content, ct))
