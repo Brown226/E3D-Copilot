@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -10,8 +11,8 @@ using Newtonsoft.Json.Linq;
 namespace E3DCopilot.Core.Providers
 {
     /// <summary>
-    /// vLLM + Qwen 适配器（OpenAI 兼容接口）
-    /// net48 兼容：使用回调模式替代 IAsyncEnumerable
+    /// vLLM + Qwen adapter (OpenAI-compatible interface)
+    /// net48 compatible: uses callback mode instead of IAsyncEnumerable
     /// </summary>
     public class VllmProvider : ICopilotProvider
     {
@@ -20,7 +21,7 @@ namespace E3DCopilot.Core.Providers
         private readonly string _model;
         private readonly string _apiKey;
         
-        // 流式 tool_calls 累积器（按 index 存储）
+        // Streaming tool_calls accumulator (stored by index)
         private readonly System.Collections.Generic.Dictionary<int, ToolCallAccumulator> _toolCallAccumulators
             = new System.Collections.Generic.Dictionary<int, ToolCallAccumulator>();
 
@@ -38,7 +39,7 @@ namespace E3DCopilot.Core.Providers
         }
         
         /// <summary>
-        /// ToolCall 累积器（用于流式分片累积）
+        /// ToolCall accumulator (for streaming fragment accumulation)
         /// </summary>
         private class ToolCallAccumulator
         {
@@ -49,32 +50,54 @@ namespace E3DCopilot.Core.Providers
         }
 
         /// <summary>
-        /// 流式调用 vLLM，通过 onChunk 回调逐块返回
-        /// 使用 StreamReader 逐行读取 SSE 流
+        /// Stream call vLLM, returns chunks via onChunk callback
+        /// Uses StreamReader to read SSE line by line
         /// </summary>
         public async Task StreamAsync(
             CopilotRequest request,
             Action<Chunk> onChunk,
             CancellationToken ct)
         {
-            // 重置 tool_calls 累积器（每次新请求）
+            // Reset tool_calls accumulator (new request each time)
             _toolCallAccumulators.Clear();
-            
-            var body = new
+
+            // Build request body (using JObject for conditional fields)
+            var bodyObj = new JObject
             {
-                model = request.Model ?? _model,
-                messages = request.Messages.ConvertAll(m => new
-                {
-                    role = RoleToString(m.Role),
-                    content = m.Content
-                }),
-                stream = true,
-                temperature = request.Temperature,
-                max_tokens = request.MaxTokens
+                ["model"] = request.Model ?? _model,
+                ["stream"] = true,
+                ["temperature"] = request.Temperature,
+                ["max_tokens"] = request.MaxTokens,
+                ["messages"] = new JArray(request.Messages.Select(SerializeMessage))
             };
 
-            string jsonBody = JsonConvert.SerializeObject(body);
-            // 不使用默认 UTF8 编码（会带 BOM），手工构造避免 API 拒绝
+            // Inject tool definitions (OpenAI-compatible format)
+            if (request.Tools != null && request.Tools.Count > 0)
+            {
+                bodyObj["tools"] = new JArray(request.Tools.Select(t => new JObject
+                {
+                    ["type"] = "function",
+                    ["function"] = new JObject
+                    {
+                        ["name"] = t.Name,
+                        ["description"] = t.Description ?? "",
+                        ["parameters"] = !string.IsNullOrEmpty(t.ParametersJson)
+                            ? SafeParseParameters(t.ParametersJson)
+                            : JObject.FromObject(new { type = "object", properties = new JObject() })
+                    }
+                }));
+            }
+
+            string jsonBody = bodyObj.ToString(Formatting.None);
+            
+            // Debug: output request body
+            try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.Environment.GetEnvironmentVariable("TEMP") ?? ".", "vllm_request.json"), jsonBody); } catch { }
+
+            // Avoid default UTF8 encoding (would include BOM), construct manually to avoid API rejection
+            
+            // Debug: output request body size
+            System.Diagnostics.Debug.WriteLine($"[VllmProvider] Request body size: {jsonBody.Length} chars, tools: {request.Tools?.Count}");
+            // Avoid default UTF8 encoding (would include BOM), construct manually to avoid API rejection
             var jsonBytes = Encoding.UTF8.GetBytes(jsonBody);
             var content = new ByteArrayContent(jsonBytes);
             content.Headers.ContentType =
@@ -92,7 +115,7 @@ namespace E3DCopilot.Core.Providers
                 if (!response.IsSuccessStatusCode)
                 {
                     string errorBody = await response.Content.ReadAsStringAsync();
-                    onChunk(Chunk.FromText($"\n[API 错误 {response.StatusCode}]: {errorBody}"));
+                    onChunk(Chunk.FromText($"\n[API error {response.StatusCode}]: {errorBody}"));
                     return;
                 }
 
@@ -108,7 +131,7 @@ namespace E3DCopilot.Core.Providers
 
                         string data = line.Substring(6).Trim();
 
-                        // SSE 结束标志
+                        // SSE end marker
                         if (data == "[DONE]") break;
 
                         try
@@ -118,7 +141,7 @@ namespace E3DCopilot.Core.Providers
                         }
                         catch (JsonReaderException)
                         {
-                            // 跳过解析失败的chunk（vLLM 偶尔输出非标准格式）
+                            // Skip chunks that fail to parse (vLLM occasionally outputs non-standard format)
                             continue;
                         }
                     }
@@ -136,10 +159,10 @@ namespace E3DCopilot.Core.Providers
                 var delta = choice["delta"];
                 if (delta == null) continue;
 
-                // 检查 finish_reason，用于判断 tool_calls 是否完成
+                // Check finish_reason, used to determine if tool_calls are complete
                 var finishReason = choice["finish_reason"]?.Value<string>();
 
-                // 工具调用（流式分片累积）
+                // Tool calls (streaming fragment accumulation)
                 var toolCalls = delta["tool_calls"];
                 if (toolCalls != null && toolCalls.Type == JTokenType.Array)
                 {
@@ -152,7 +175,7 @@ namespace E3DCopilot.Core.Providers
                         
                         int index = indexToken.Value<int>();
                         
-                        // 获取或创建累积器
+                        // Get or create accumulator
                         if (!_toolCallAccumulators.TryGetValue(index, out var acc))
                         {
                             acc = new ToolCallAccumulator();
@@ -162,21 +185,21 @@ namespace E3DCopilot.Core.Providers
                         var function = tc["function"];
                         if (function != null && function.Type == JTokenType.Object)
                         {
-                            // 累积 name（通常只在第一个 chunk 出现）
+                            // Accumulate name (usually appears in first chunk only)
                             var name = function["name"];
                             if (name != null && name.Type == JTokenType.String)
                             {
                                 acc.Name = name.Value<string>();
                             }
                             
-                            // 累积 id（通常只在第一个 chunk 出现）
+                            // Accumulate id (usually appears in first chunk only)
                             var id = tc["id"];
                             if (id != null && id.Type == JTokenType.String)
                             {
                                 acc.Id = id.Value<string>();
                             }
                             
-                            // 累积 arguments（分片追加）
+                            // Accumulate arguments (append fragments)
                             var argsToken = function["arguments"];
                             if (argsToken != null && argsToken.Type == JTokenType.String)
                             {
@@ -187,37 +210,36 @@ namespace E3DCopilot.Core.Providers
                                 }
                             }
                             
-                            // 当 name 首次出现时，发送 ToolCallStart
                             if (!string.IsNullOrEmpty(acc.Name) && !acc.NameSent)
                             {
                                 acc.NameSent = true;
-                                onChunk(Chunk.FromToolCall(new ToolCall
-                                {
-                                    Id = acc.Id ?? $"call_{index}",
-                                    Name = acc.Name,
-                                    Arguments = "" // 参数还在累积中
-                                }));
                             }
                         }
-                        
-                        // 当 finish_reason 为 "tool_calls" 时，发送完整的 ToolCall（包含累积的 arguments）
-                        if (finishReason == "tool_calls" && acc.NameSent)
-                        {
-                            onChunk(Chunk.FromToolCall(new ToolCall
-                            {
-                                Id = acc.Id ?? $"call_{index}",
-                                Name = acc.Name,
-                                Arguments = acc.Arguments.ToString()
-                            }));
-                            
-                            // 清理累积器
-                            _toolCallAccumulators.Remove(index);
-                        }
                     }
-                    continue;
+                    // Continue to next choice, but DON'T skip finish_reason check
                 }
 
-                // 推理过程（部分模型支持）
+                // Consume accumulated tool calls when finish_reason signals completion
+                if (finishReason == "tool_calls" && _toolCallAccumulators.Count > 0)
+                {
+                    foreach (var kvp in _toolCallAccumulators)
+                    {
+                        var acc = kvp.Value;
+                        if (!string.IsNullOrEmpty(acc.Name) && acc.NameSent)
+                        {
+                            string accumulatedArgs = acc.Arguments.ToString();
+                            onChunk(Chunk.FromToolCall(new ToolCall
+                            {
+                                Id = acc.Id ?? $"call_{kvp.Key}",
+                                Name = acc.Name,
+                                Arguments = accumulatedArgs
+                            }));
+                        }
+                    }
+                    _toolCallAccumulators.Clear();
+                }
+
+                // Reasoning process (some models support)
                 string reasoning = delta["reasoning_content"]?.Value<string>();
                 if (!string.IsNullOrEmpty(reasoning))
                 {
@@ -225,7 +247,7 @@ namespace E3DCopilot.Core.Providers
                     continue;
                 }
 
-                // 文本内容
+                // Text content
                 string text = delta["content"]?.Value<string>();
                 if (!string.IsNullOrEmpty(text))
                 {
@@ -233,7 +255,7 @@ namespace E3DCopilot.Core.Providers
                 }
             }
 
-            // Token 用量（仅最后一个 chunk 包含）
+            // Token usage (only last chunk contains it)
             var usage = json["usage"];
             if (usage != null && usage.Type == JTokenType.Object)
             {
@@ -243,6 +265,63 @@ namespace E3DCopilot.Core.Providers
                 {
                     onChunk(Chunk.FromUsage(completion, prompt));
                 }
+            }
+        }
+
+        /// <summary>
+        /// Serialize ChatMessage to OpenAI message format
+        /// Correctly handles assistant tool_calls and tool result responses
+        /// </summary>
+        private static JObject SerializeMessage(ChatMessage m)
+        {
+            var msg = new JObject
+            {
+                ["role"] = RoleToString(m.Role),
+                ["content"] = m.Content
+            };
+
+            // Assistant message: inject tool_calls (required for multi-turn)
+            if (m.Role == MessageRole.Assistant
+                && m.ToolCalls != null
+                && m.ToolCalls.Count > 0)
+            {
+                msg["tool_calls"] = new JArray(m.ToolCalls.Select(tc => new JObject
+                {
+                    ["id"] = tc.Id,
+                    ["type"] = "function",
+                    ["function"] = new JObject
+                    {
+                        ["name"] = tc.Name,
+                        ["arguments"] = tc.Arguments
+                    }
+                }));
+                // When there are tool_calls, content should be null (OpenAI spec)
+                msg["content"] = null;
+            }
+
+            // Tool result message: inject tool_call_id (associate result to call)
+            if (m.Role == MessageRole.Tool && !string.IsNullOrEmpty(m.ToolCallId))
+            {
+                msg["tool_call_id"] = m.ToolCallId;
+            }
+
+            return msg;
+        }
+
+        /// <summary>
+        /// Safely parse JSON Schema parameters, return empty object on failure
+        /// </summary>
+        private static JObject SafeParseParameters(string json)
+        {
+            if (string.IsNullOrEmpty(json)) 
+                return JObject.FromObject(new { type = "object", properties = new JObject() });
+            try
+            {
+                return JObject.Parse(json);
+            }
+            catch
+            {
+                return JObject.FromObject(new { type = "object", properties = new JObject() });
             }
         }
 

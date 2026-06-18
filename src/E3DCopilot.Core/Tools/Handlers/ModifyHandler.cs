@@ -6,8 +6,8 @@ using E3DCopilot.Core.Tools;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
-    /// 修改 E3D 元素属性（单个或批量）
-    /// 写操作，需触发审批流
+    /// Modify E3D element attributes (single or batch)
+    /// Write operation, triggers approval flow
     /// </summary>
     public class ModifyHandler : IToolHandler
     {
@@ -19,13 +19,13 @@ namespace E3DCopilot.Core.Tools.Handlers
         }
 
         public string Name => "modify";
-        public string Description => "修改 E3D 元素属性值（单个或批量）。修改前需先查询确认目标元素";
+        public string Description => "Modify E3D element attribute values (single or batch). Query first to confirm target element";
         public string ParameterSchema => @"{
   ""type"": ""object"",
   ""properties"": {
-    ""dburi"": { ""type"": ""string"", ""description"": ""目标元素的 DBURI"", ""required"": true },
-    ""attributes"": { ""type"": ""object"", ""description"": ""要修改的属性键值对，如 {""WTHK"": ""6.0""}"", ""required"": true },
-    ""preview"": { ""type"": ""boolean"", ""description"": ""是否仅预览不执行"", ""required"": false }
+    ""dburi"": { ""type"": ""string"", ""description"": ""Target element DBURI"" },
+    ""attributes"": { ""type"": ""object"", ""description"": ""Attribute key-value pairs to modify"" },
+    ""preview"": { ""type"": ""boolean"", ""description"": ""Preview only, do not execute"" }
   },
   ""required"": [""dburi"", ""attributes""]
 }";
@@ -40,7 +40,7 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
             catch (Exception ex)
             {
-                return ToolResult.Fail($"修改失败: {ex.Message}");
+                return ToolResult.Fail($"Modify failed: {ex.Message}");
             }
         }
     }

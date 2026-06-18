@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Config;
@@ -13,9 +14,9 @@ using E3DCopilot.Core.Tools;
 namespace E3DCopilot.Core
 {
     /// <summary>
-    /// 核心 Agent 循环：LLM 调用 → ToolExecutor 调度 → 结果注入 → 循环
-    /// net48 兼容：回调模式流式处理，无 IAsyncEnumerable
-    /// 对应 cline-chinese-main 的 Task 引擎 + ToolExecutor
+    /// Core Agent loop: LLM call → ToolExecutor dispatch → result injection → loop
+    /// net48 compatible: callback mode streaming, no IAsyncEnumerable
+    /// Corresponds to cline-chinese-main's Task engine + ToolExecutor
     /// </summary>
     public class AgentLoop
     {
@@ -41,7 +42,7 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// 运行 Agent 循环
+        /// Run Agent loop
         /// </summary>
         public async Task RunAsync(CopilotSession session, string input,
             CancellationToken ct = default)
@@ -51,7 +52,7 @@ namespace E3DCopilot.Core
             _sink.Emit(new CopilotEvent
             {
                 Kind = EventKind.TurnStarted,
-                Text = $"处理: {input}"
+                Text = $"Processing: {input}"
             });
 
             for (int step = 0; step < MaxSteps; step++)
@@ -60,41 +61,48 @@ namespace E3DCopilot.Core
 
                 try
                 {
-                    // 1. 组装请求（含可用工具定义）
+                    // 1. Build request (including available tool definitions)
                     var request = BuildRequest(session);
 
-                    // 2. 调用 LLM（流式）
+                    // 2. Call LLM (streaming)
                     var result = await StreamLlmAsync(request, ct);
 
-                    // 3. 保存助手消息
+                    // 3. Save assistant message
                     session.AddAssistantMessage(result.Text, result.ToolCalls);
 
-                    // 4. 无工具调用 → 完成
+                    // 4. No tool calls → done
                     if (result.ToolCalls == null || result.ToolCalls.Count == 0)
                     {
                         _sink.Emit(CopilotEvent.TurnDone());
                         return;
                     }
 
-                    // 5. 通过 ToolExecutor 执行工具
+                    // 5. Execute tools via ToolExecutor
                     foreach (var call in result.ToolCalls)
                     {
                         ct.ThrowIfCancellationRequested();
+                        
+                        // Skip empty tool calls (LLM sometimes returns tool calls with no name/args)
+                        if (string.IsNullOrWhiteSpace(call.Name))
+                        {
+                            _sink.Emit(CopilotEvent.Notice($"Skipped tool call with empty name (args: {call.Arguments})"));
+                            continue;
+                        }
 
-                        // 5a. 权限检查（CommandPermissionController）
+                        // 5a. Permission check (CommandPermissionController)
                         var access = _permission.CheckTool(call.Name, call.Arguments);
                         if (access == CommandPermissionController.AccessMode.Block)
                         {
-                            string msg = $"工具 {call.Name} 被策略阻止";
+                            string msg = $"Tool {call.Name} blocked by policy";
                             session.AddToolResult(call.Id, msg);
                             _sink.Emit(CopilotEvent.Error(msg));
                             continue;
                         }
 
-                        // 5b. 批量操作检测（>5个元素需额外确认）
+                        // 5b. Batch operation detection (>5 elements need extra confirmation)
                         bool isBatch = _permission.IsBatchOperation(call.Arguments);
 
-                        // 5c. 需要审批？
+                        // 5c. Needs approval?
                         if (access == CommandPermissionController.AccessMode.Ask || isBatch)
                         {
                             var approval = new PendingApproval
@@ -102,17 +110,17 @@ namespace E3DCopilot.Core
                                 ToolName = call.Name,
                                 Args = call.Arguments,
                                 Description = $"{call.Name}({call.Arguments})"
-                                    + (isBatch ? " [批量操作]" : "")
+                                    + (isBatch ? " [batch]" : "")
                             };
 
-                            // 通过 Controller 注册审批请求（如果有 Controller）
+                            // Register approval via Controller (if controller is available)
                             if (_controller != null)
                             {
                                 _controller.RegisterApproval(approval);
                             }
                             else
                             {
-                                // 降级：直接 emit 事件（兼容旧代码）
+                                // Fallback: emit event directly (backward compat)
                                 _sink.Emit(new CopilotEvent
                                 {
                                     Kind = EventKind.ApprovalRequest,
@@ -123,46 +131,49 @@ namespace E3DCopilot.Core
                             var approvalResult = await approval.WaitAsync();
                             if (!approvalResult.Allow)
                             {
-                                string msg = $"用户拒绝了 {call.Name}";
+                                string msg = $"User rejected {call.Name}";
                                 session.AddToolResult(call.Id, msg);
                                 _sink.Emit(CopilotEvent.Error(msg));
                                 continue;
                             }
                         }
 
-                        // 5d. 通过 ToolExecutor 执行
+                        // 5d. Execute via ToolExecutor
                         var toolResult = await _executor.ExecuteAsync(
                             call.Name, call.Arguments, ct);
                         session.AddToolResult(call.Id,
                             toolResult.Success ? toolResult.Text : toolResult.Error);
                     }
 
-                    // 6. 上下文压缩（可选）
+                    // 6. Context compression (optional)
                     MaybeCompact(session);
                 }
                 catch (OperationCanceledException)
                 {
-                    _sink.Emit(CopilotEvent.Notice("已取消"));
+                    _sink.Emit(CopilotEvent.Notice("Cancelled"));
                     return;
                 }
                 catch (Exception ex)
                 {
-                    // 最简化的异常处理，避免任何额外操作导致级联失败
-                    try { CopilotLogger.Error(ex, "AgentLoop 步骤 {0} 失败", step); } catch { }
+                    // Minimal exception handling, avoid cascading failures from extra operations
+                    try { CopilotLogger.Error(ex, "AgentLoop step {0} failed", step); } catch { }
                     
-                    string msg = "遇到错误";
-                    try { msg = $"遇到错误: {ex.GetType().Name}"; } catch { }
+                    string msg = "Error encountered";
+                    try { msg = $"Error: {ex.GetType().Name}"; } catch { }
                     
                     _sink?.Emit(CopilotEvent.Error(msg));
                 }
             }
 
-            _sink.Emit(CopilotEvent.Notice($"已达最大步骤数 {MaxSteps}"));
+            _sink.Emit(CopilotEvent.Notice($"Reached max steps {MaxSteps}"));
             _sink.Emit(CopilotEvent.TurnDone());
         }
 
         /// <summary>
-        /// 流式调用 LLM（net48 回调模式）
+        /// Stream LLM call (net48 callback mode)
+        /// Supports two tool call methods:
+        ///   1. Standard OpenAI tool_calls (streaming fragments)
+        ///   2. XML fallback: extract &lt;tool_invocation name="..." arguments={...} /&gt; from text
         /// </summary>
         private async Task<(string Text, List<ToolCall> ToolCalls)> StreamLlmAsync(
             CopilotRequest request, CancellationToken ct)
@@ -195,11 +206,27 @@ namespace E3DCopilot.Core
                 }
             }, ct);
 
+            // ── Fallback: if standard tool_calls not detected, try extracting XML format from text ──
+            if (toolCalls.Count == 0 && !string.IsNullOrEmpty(text)
+                && Providers.ToolInvocationParser.ContainsToolInvocation(text))
+            {
+                var xmlCalls = Providers.ToolInvocationParser.ExtractToolCalls(text);
+                if (xmlCalls.Count > 0)
+                {
+                    toolCalls.AddRange(xmlCalls);
+                    // Strip XML tags from text, keep plain text response
+                    text = Providers.ToolInvocationParser.StripToolInvocationTags(text);
+
+                    _sink.Emit(CopilotEvent.Notice(
+                        $"Parsed {xmlCalls.Count} XML format tool calls from text (fallback mode)"));
+                }
+            }
+
             return (text, toolCalls);
         }
 
         /// <summary>
-        /// 合并增量工具调用（vLLM 流式 tool_calls 可能分片）
+        /// Merge incremental tool calls (vLLM streaming tool_calls may be fragmented)
         /// </summary>
         private void MergeToolCall(List<ToolCall> existing, ToolCall incoming)
         {
@@ -218,11 +245,79 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// 构建 LLM 请求（含工具定义）
+        /// Parse XML format tool calls from text (fallback)
+        /// When LLM does not use standard function calling, try to extract from text
+        /// </summary>
+        private List<ToolCall> ParseTextToolCalls(string text)
+        {
+            var results = new List<ToolCall>();
+            if (string.IsNullOrEmpty(text)) return results;
+
+            int idx = 0;
+            while (true)
+            {
+                // Search for <tool_call> or <function=xxx> tags
+                int start = text.IndexOf("<tool_call", idx, StringComparison.OrdinalIgnoreCase);
+                int funcStart = text.IndexOf("<function=", idx, StringComparison.OrdinalIgnoreCase);
+                
+                // Take the first occurrence
+                if (funcStart >= 0 && (start < 0 || funcStart < start))
+                    start = funcStart;
+                
+                if (start < 0) break;
+                
+                int end = text.IndexOf("</tool_call>", start, StringComparison.OrdinalIgnoreCase);
+                int funcEnd = text.IndexOf("</function>", start, StringComparison.OrdinalIgnoreCase);
+                if (end < 0 && funcEnd < 0) break;
+                
+                int closeTag = (funcEnd >= 0 && (end < 0 || funcEnd < end)) ? funcEnd + "</function>".Length : end + "</tool_call>".Length;
+                
+                string block = text.Substring(start, closeTag - start);
+                idx = closeTag;
+                
+                // Parse function name
+                string funcName = null;
+                var nameMatch = System.Text.RegularExpressions.Regex.Match(block, @"<function=(.+?)>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (nameMatch.Success)
+                    funcName = nameMatch.Groups[1].Value.Trim();
+                
+                if (string.IsNullOrEmpty(funcName)) continue;
+                
+                // Parse arguments
+                var sb = new StringBuilder("{");
+                bool first = true;
+                foreach (System.Text.RegularExpressions.Match paramMatch in System.Text.RegularExpressions.Regex.Matches(block, @"<parameter=([^>]+)>(.*?)</parameter>", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                {
+                    if (!first) sb.Append(", ");
+                    string paramName = paramMatch.Groups[1].Value.Trim();
+                    string paramValue = paramMatch.Groups[2].Value.Trim();
+                    sb.AppendFormat("\"{0}\": \"{1}\"", 
+                        System.Security.SecurityElement.Escape(paramName),
+                        System.Security.SecurityElement.Escape(paramValue));
+                    first = false;
+                }
+                sb.Append("}");
+                
+                string args = sb.ToString();
+                if (args == "{}") args = "";
+                
+                results.Add(new ToolCall
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = funcName,
+                    Arguments = args
+                });
+            }
+            
+            return results;
+        }
+
+        /// <summary>
+        /// Build LLM request (with tool definitions)
         /// </summary>
         private CopilotRequest BuildRequest(CopilotSession session)
         {
-            // 解析当前使用的 Provider 和模型
+            // Resolve current Provider and model
             var (providerConfig, modelName) = _config.ResolveModel(_config.DefaultModel);
             
             var request = new CopilotRequest
@@ -237,7 +332,7 @@ namespace E3DCopilot.Core
             request.Messages.Add(new ChatMessage(MessageRole.System,
                 SystemPrompt.Build()));
 
-            // 工具定义（从 ToolExecutor 获取）
+            // Tool definitions (from ToolExecutor)
             var toolSchemas = new List<ToolSchema>();
             foreach (var handler in _executor.GetAllHandlers())
             {
@@ -250,7 +345,7 @@ namespace E3DCopilot.Core
             }
             request.Tools = toolSchemas;
 
-            // 历史消息（最近 20 条）
+            // History messages (last 20)
             request.Messages.AddRange(session.GetRecentMessages(20));
 
             return request;
@@ -258,7 +353,7 @@ namespace E3DCopilot.Core
 
         private void MaybeCompact(CopilotSession session)
         {
-            // Phase 3: 上下文压缩
+            // Phase 3: context compression
         }
     }
 }
