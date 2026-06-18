@@ -79,7 +79,27 @@ namespace E3DCopilot.Core
             IEventSink sink = null)
         {
             var config = CopilotConfig.Load();
-            var provider = new VllmProvider(config.Llm.BaseUrl, config.Llm.Model, config.Llm.ApiKey);
+            
+            // 解析默认模型（支持 provider/model 格式）
+            var (providerConfig, modelName) = config.ResolveModel(config.DefaultModel);
+            
+            // 根据 Provider 类型创建对应的实例
+            ICopilotProvider provider;
+            if (providerConfig.Kind == "anthropic")
+            {
+                // TODO: 实现 AnthropicProvider
+                throw new NotSupportedException("Anthropic Provider 尚未实现");
+            }
+            else
+            {
+                // 默认使用 OpenAI 兼容的 VllmProvider
+                provider = new VllmProvider(
+                    providerConfig.BaseUrl,
+                    modelName,
+                    providerConfig.ApiKey
+                );
+            }
+            
             var executor = ToolExecutor.CreateDefault(dispatcher, sink);
             var permission = CommandPermissionController.CreateDefault();
 
@@ -194,7 +214,24 @@ namespace E3DCopilot.Core
 
         public void Dispose()
         {
-            _cts?.Dispose();
+            try
+            {
+                _cts?.Cancel();  // 先取消，再释放
+            }
+            catch
+            {
+                // 忽略取消异常
+            }
+            
+            try
+            {
+                _cts?.Dispose();
+            }
+            catch
+            {
+                // 忽略释放异常
+            }
+            
             _cts = null;
             _pendingApprovals.Clear();
         }

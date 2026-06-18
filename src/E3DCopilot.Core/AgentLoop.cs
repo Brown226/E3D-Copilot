@@ -147,8 +147,13 @@ namespace E3DCopilot.Core
                 }
                 catch (Exception ex)
                 {
-                    CopilotLogger.Error(ex, "AgentLoop 步骤 {0} 失败", step);
-                    _sink.Emit(CopilotEvent.Error($"遇到错误: {ex.Message}"));
+                    // 最简化的异常处理，避免任何额外操作导致级联失败
+                    try { CopilotLogger.Error(ex, "AgentLoop 步骤 {0} 失败", step); } catch { }
+                    
+                    string msg = "遇到错误";
+                    try { msg = $"遇到错误: {ex.GetType().Name}"; } catch { }
+                    
+                    _sink?.Emit(CopilotEvent.Error(msg));
                 }
             }
 
@@ -217,11 +222,14 @@ namespace E3DCopilot.Core
         /// </summary>
         private CopilotRequest BuildRequest(CopilotSession session)
         {
+            // 解析当前使用的 Provider 和模型
+            var (providerConfig, modelName) = _config.ResolveModel(_config.DefaultModel);
+            
             var request = new CopilotRequest
             {
-                Model = _config.Llm.Model,
-                Temperature = _config.Llm.Temperature,
-                MaxTokens = _config.Llm.MaxTokens,
+                Model = modelName,
+                Temperature = providerConfig.Temperature,
+                MaxTokens = providerConfig.MaxTokens,
                 Messages = new List<ChatMessage>()
             };
 

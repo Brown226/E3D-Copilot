@@ -44,8 +44,23 @@ namespace E3DCopilot.Core.Logging
 
         public static void Error(Exception ex, string format, params object[] args)
         {
-            string msg = string.Format(format, args) + " | " + ex.ToString();
-            Write(LogLevel.ERROR, "{0}", msg);
+            try
+            {
+                string msg = string.Format(format, args);
+                try
+                {
+                    msg += " | " + ex.ToString();
+                }
+                catch
+                {
+                    msg += " | [无法序列化异常]";
+                }
+                Write(LogLevel.ERROR, "{0}", msg);
+            }
+            catch
+            {
+                // 日志写入失败时静默处理，避免级联异常
+            }
         }
 
         private static void Write(LogLevel level, string format, params object[] args)

@@ -14,6 +14,27 @@ namespace E3DCopilot.E2ETest
     {
         static async Task Main(string[] args)
         {
+            // 全局未处理异常捕获
+            AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+            {
+                try
+                {
+                    string msg = e.ExceptionObject?.ToString() ?? "未知错误";
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"\n💥 未处理异常: {msg}");
+                    Console.ResetColor();
+                }
+                catch
+                {
+                    // 尽力而为
+                }
+            };
+            
+            TaskScheduler.UnobservedTaskException += (sender, e) =>
+            {
+                e.SetObserved(); // 防止进程崩溃
+            };
+            
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Title = "E小智 E2E 测试";
 
@@ -22,24 +43,25 @@ namespace E3DCopilot.E2ETest
             Console.WriteLine("╚══════════════════════════════════════╝");
             Console.WriteLine();
 
-            // 配置 LLM
-            string baseUrl = "https://token-plan-cn.xiaomimimo.com/v1";
-            string model = "mimo-v2.5";
-            string apiKey = "tp-c6vbxwk3ttizyn5z97ua2to1szxz3eso49r11x65nwoi4r2e";
-
-            Console.WriteLine($"🔗 LLM: {baseUrl}");
-            Console.WriteLine($"📦 模型: {model}");
+            // 配置 LLM（使用 CopilotConfig 默认值）
+            var config = CopilotConfig.Load();
+            
+            // 解析默认模型（支持 provider/model 格式）
+            var (providerConfig, modelName) = config.ResolveModel(config.DefaultModel);
+            
+            Console.WriteLine($"🔗 Provider: {providerConfig.Name}");
+            Console.WriteLine($"📦 模型: {modelName}");
+            Console.WriteLine($"🌐 BaseUrl: {providerConfig.BaseUrl}");
             Console.WriteLine();
 
             // 创建 E3D 环境（模拟模式）
             var env = new SimulatedE3DEnvironment();
             var dispatcher = new E3DToolDispatcher(env);
 
-            // 创建 Provider
-            var provider = new VllmProvider(baseUrl, model, apiKey);
+            // 创建 Provider（使用解析后的配置）
+            var provider = new VllmProvider(providerConfig.BaseUrl, modelName, providerConfig.ApiKey);
 
-            // 创建 Controller（使用默认配置）
-            var config = CopilotConfig.Load();
+            // 创建 Controller（使用 config）
             var executor = ToolExecutor.CreateDefault(dispatcher, null);
             var permission = CommandPermissionController.CreateDefault();
             var controller = new CopilotController(provider, executor, permission, config, null);
@@ -125,35 +147,44 @@ namespace E3DCopilot.E2ETest
                 // "你好，你是谁？",           // 测试普通对话
             };
 
-            foreach (var query in testQueries)
+            using (controller)
             {
-                Console.WriteLine();
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.WriteLine($"👤 >>> {query}");
-                Console.ResetColor();
-                Console.WriteLine();
-
-                try
+                foreach (var query in testQueries)
                 {
-                    await controller.SendAsync(query);
-                }
-                catch (Exception ex)
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"\n💥 异常: {ex.GetType().Name}: {ex.Message}");
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.White;
+                    Console.WriteLine($"👤 >>> {query}");
                     Console.ResetColor();
-                }
+                    Console.WriteLine();
 
-                Console.WriteLine();
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine("══════════════════════════════════════");
-                Console.ResetColor();
-                await Task.Delay(500);
+                    try
+                    {
+                        await controller.SendAsync(query);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"\n💥 异常: {ex.GetType().Name}: {ex.Message}");
+                        Console.ResetColor();
+                    }
+
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine("══════════════════════════════════════");
+                    Console.ResetColor();
+                    await Task.Delay(500);
+                }
             }
 
             Console.WriteLine();
-            Console.WriteLine("按任意键退出...");
-            Console.ReadKey();
+            Console.WriteLine("按回车键退出...");
+            try { Console.ReadLine(); } catch { }
+            
+            // 如果是重定向环境，自动退出
+            if (!Console.IsOutputRedirected)
+            {
+                try { Console.ReadKey(); } catch { }
+            }
         }
     }
 }
