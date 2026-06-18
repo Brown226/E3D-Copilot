@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "E3DCopilot.WebHost", "E3DCo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "E3DCopilot.Tests", "E3DCopilot.Tests\E3DCopilot.Tests.csproj", "{D328ED4A-5DC7-42DD-963B-2DBCB7E7E859}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "E3DCopilot.E2ETest", "E3DCopilot.E2ETest\E3DCopilot.E2ETest.csproj", "{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{D328ED4A-5DC7-42DD-963B-2DBCB7E7E859}.Release|x64.Build.0 = Release|Any CPU
 		{D328ED4A-5DC7-42DD-963B-2DBCB7E7E859}.Release|x86.ActiveCfg = Release|Any CPU
 		{D328ED4A-5DC7-42DD-963B-2DBCB7E7E859}.Release|x86.Build.0 = Release|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Debug|x64.Build.0 = Debug|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Debug|x86.Build.0 = Debug|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Release|x64.ActiveCfg = Release|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Release|x64.Build.0 = Release|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Release|x86.ActiveCfg = Release|Any CPU
+		{E1E2E3E4-E5E6-7890-ABCD-EF1234567890}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
