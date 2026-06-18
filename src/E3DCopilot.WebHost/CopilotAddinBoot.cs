@@ -31,8 +31,8 @@ namespace E3DCopilot.WebHost
             {
                 _isStarted = true;
 
-                // 1. 创建 E3D 环境（开发模式用 SimulatedE3DEnvironment，E3D 环境用 RealE3DEnvironment）
-                var env = new SimulatedE3DEnvironment();
+                // 1. 创建 E3D 环境（RealE3DEnvironment 调用真实 E3D API）
+                var env = new RealE3DEnvironment();
                 var dispatcher = new E3DToolDispatcher(env);
 
                 // 2. 创建 Controller（传入 E3DToolDispatcher 作为 dispatcher）
