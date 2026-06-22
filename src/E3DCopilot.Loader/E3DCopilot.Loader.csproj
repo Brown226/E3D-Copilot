@@ -3,8 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <LangVersion>7.3</LangVersion>
-    <RootNamespace>E3DCopilot.Addin</RootNamespace>
-    <AssemblyName>E3DCopilot.Addin</AssemblyName>
+    <RootNamespace>E3DCopilot.Loader</RootNamespace>
+    <AssemblyName>E3DCopilot.Loader</AssemblyName>
     <OutputType>Library</OutputType>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
@@ -12,16 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\E3DCopilot.WebHost\E3DCopilot.WebHost.csproj" />
-    <ProjectReference Include="..\E3DCopilot.Loader\E3DCopilot.Loader.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="..\SharedAssemblyInfo.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- E3D SDK — 从 E3D 安装目录直接引用 -->
+    <!-- E3D SDK — 直接从 E3D 安装目录引用 -->
     <Reference Include="Aveva.ApplicationFramework">
       <HintPath>D:\AVEVA\Everything3D2.10\Aveva.ApplicationFramework.dll</HintPath>
     </Reference>
@@ -36,6 +27,10 @@
     </Reference>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\SharedAssemblyInfo.cs" />
   </ItemGroup>
 
 </Project>

@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\SharedAssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- E3D SDK 引用（从本地 lib/ 目录加载） -->
     <Reference Include="Aveva.Core.Database">
       <HintPath>..\..\lib\e3d\Aveva.Core.Database.dll</HintPath>
