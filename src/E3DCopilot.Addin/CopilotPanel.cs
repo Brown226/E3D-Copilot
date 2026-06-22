@@ -219,7 +219,7 @@ namespace E3DCopilot.Addin
 
             // ---- 装盘 ----
             this.Controls.AddRange(new Control[] {
-                _outputBox, _chipPanel, bottomPanel, topPanel
+                _outputBox, bottomPanel, _chipPanel, topPanel
             });
 
             // ---- UserControl settings ----

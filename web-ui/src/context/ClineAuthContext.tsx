@@ -98,8 +98,8 @@ export const ClineAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 export const useClineAuth = () => {
 	const context = useContext(ClineAuthContext)
 	if (context === undefined) {
-		// Return safe defaults when used outside ClineAuthProvider (e.g. fork cleanup)
-		return { clineUser: null, organizations: null, activeOrganization: null }
+		// Stub: no auth provider available in standalone E3D mode
+		return { clineUser: null, setClineUser: () => {} }
 	}
 	return context
 }

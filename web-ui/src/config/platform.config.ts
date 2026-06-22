@@ -1,4 +1,4 @@
-import platformConfigs from "./platform-configs.json"
+﻿import platformConfigs from "./platform-configs.json"
 
 export interface PlatformConfig {
 	type: PlatformType
@@ -35,7 +35,7 @@ function stringToPlatformType(name: string): PlatformType {
 type PlatformConfigJson = {
 	messageEncoding: "none" | "json"
 	showNavbar: boolean
-	postMessageHandler: "vscode" | "standalone"
+	postMessageHandler: "e3d" | "standalone"
 	togglePlanActKeys: string
 	supportsTerminalMentions: boolean
 }

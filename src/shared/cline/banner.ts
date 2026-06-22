@@ -1,1 +1,1 @@
-﻿export const BANNER_DATA = null; export const BannerActionType = {};
+﻿export const BANNER_DATA = []; export const BannerActionType = {};

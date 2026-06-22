@@ -42,7 +42,7 @@ import {
 	slashCommandRegexGlobal,
 	validateSlashCommand,
 } from "@/utils/slash-commands"
-// ClineRulesToggleModal removed in simplification
+import ClineRulesToggleModal from "../cline-rules/ClineRulesToggleModal"
 import ServersToggleModal from "./ServersToggleModal"
 
 const { MAX_IMAGES_AND_FILES_PER_MESSAGE } = CHAT_CONSTANTS
@@ -365,7 +365,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							)
 								.then((results) => {
 									if (myToken !== latestSearchTokenRef.current) {
-										// Stale response â€” a newer search has been issued.
+										// Stale response â€?a newer search has been issued.
 										return
 									}
 									setFileSearchResults((results.results || []) as SearchResult[])
@@ -795,7 +795,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							)
 								.then((results) => {
 									if (myToken !== latestSearchTokenRef.current) {
-										// Stale response â€” a newer search has been issued.
+										// Stale response â€?a newer search has been issued.
 										return
 									}
 									setFileSearchResults((results.results || []) as SearchResult[])
@@ -1596,10 +1596,6 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 									</VSCodeButton>
 								</TooltipTrigger>
 							</Tooltip>
-
-							<ServersToggleModal />
-
-							{/* ClineRulesToggleModal removed in simplification */}
 
 							<ModelContainer>
 								<ModelButtonWrapper>

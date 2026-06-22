@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using Aveva.Core.Database;
 using Aveva.Core.Utilities.CommandLine;
+using Newtonsoft.Json.Linq;
 
 namespace E3DCopilot.Tools.Bridge
 {
@@ -326,6 +327,74 @@ namespace E3DCopilot.Tools.Bridge
                 {
                     DbElement elem = ResolveElement(elementName);
                     return elem != null;
+                }
+                catch
+                {
+                    return false;
+                }
+            });
+        }
+
+        /// <summary>
+        /// 创建子元素（通过 PML，与现有 SetAttribute 模式保持一致）
+        /// </summary>
+        public string CreateElement(string parentElement, string name, string elementType, string attributesJson)
+        {
+            return InvokeOnUi(() =>
+            {
+                try
+                {
+                    // 构建 PML 创建脚本
+                    string pml = $"$P parent = DB ELEMENT '{parentElement.Replace("'", "''")}'";
+                    pml += $" ; $P new = NEW {elementType.ToUpper()} parent";
+                    if (!string.IsNullOrEmpty(name))
+                        pml += $" ; $P new.NAME = '{name.Replace("'", "''")}'";
+
+                    // 设置附加属性
+                    if (!string.IsNullOrEmpty(attributesJson))
+                    {
+                        try
+                        {
+                            var jattrs = JObject.Parse(attributesJson);
+                            foreach (var prop in jattrs.Properties())
+                            {
+                                string val = prop.Value?.ToString() ?? "";
+                                pml += $" ; $P new.{prop.Name.ToUpper()} = '{val.Replace("'", "''")}'";
+                            }
+                        }
+                        catch { /* 忽略属性解析错误 */ }
+                    }
+
+                    ExecutePml(pml);
+
+                    var result = new JObject
+                    {
+                        ["success"] = true,
+                        ["name"] = name ?? "",
+                        ["type"] = elementType,
+                        ["parent"] = parentElement
+                    };
+                    return result.ToString();
+                }
+                catch (Exception ex)
+                {
+                    return $"{{\"success\": false, \"error\": \"创建元素失败: {ex.Message}\"}}";
+                }
+            });
+        }
+
+        /// <summary>
+        /// 删除元素（通过 PML）
+        /// </summary>
+        public bool DeleteElement(string elementName)
+        {
+            return InvokeOnUi(() =>
+            {
+                try
+                {
+                    string pml = $"$P var = DB ELEMENT '{elementName.Replace("'", "''")}' ; DELETE $P var";
+                    ExecutePml(pml);
+                    return true;
                 }
                 catch
                 {

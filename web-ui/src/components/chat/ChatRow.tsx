@@ -52,7 +52,7 @@ import { findMatchingResourceOrTemplate, getMcpServerDisplayName } from "@/utils
 import CodeAccordian, { cleanPathPrefix } from "../common/CodeAccordian"
 import { CommandOutputContent, CommandOutputRow } from "./CommandOutputRow"
 import { CompletionOutputRow } from "./CompletionOutputRow"
-// DiffEditRow imported below but removed in simplification
+import { DiffEditRow } from "./DiffEditRow"
 import ErrorRow from "./ErrorRow"
 import { FeatureTip } from "./FeatureTip"
 import HookMessage from "./HookMessage"
@@ -437,14 +437,22 @@ export const ChatRowContent = memo(
 									toolIcon("sign-out", "yellow", -90, t("chatRow.outsideWorkspace"))}
 								<span style={{ fontWeight: "bold" }}>{editToolTitle}</span>
 							</div>
-							{/* DiffEditRow removed in simplification, using CodeAccordian instead */}
-							<CodeAccordian
-								// isLoading={message.partial}
-								code={tool.content}
-								isExpanded={isExpanded}
-								onToggleExpand={handleToggle}
-								path={tool.path!}
-							/>
+							{backgroundEditEnabled && tool.path && tool.content ? (
+								<DiffEditRow
+									isLoading={message.partial}
+									patch={tool.content}
+									path={tool.path}
+									startLineNumbers={tool.startLineNumbers}
+								/>
+							) : (
+								<CodeAccordian
+									// isLoading={message.partial}
+									code={tool.content}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path={tool.path!}
+								/>
+							)}
 						</div>
 					)
 				case "fileDeleted":
@@ -474,14 +482,17 @@ export const ChatRowContent = memo(
 									toolIcon("sign-out", "yellow", -90, t("chatRow.outsideWorkspace"))}
 								<span className="font-bold">{t("chatRow.wantsToCreate")}</span>
 							</div>
-							{/* DiffEditRow removed in simplification */}
-							<CodeAccordian
-								code={tool.content!}
-								isExpanded={isExpanded}
-								isLoading={message.partial}
-								onToggleExpand={handleToggle}
-								path={tool.path!}
-							/>
+							{backgroundEditEnabled && tool.path && tool.content ? (
+								<DiffEditRow patch={tool.content} path={tool.path} startLineNumbers={tool.startLineNumbers} />
+							) : (
+								<CodeAccordian
+									code={tool.content!}
+									isExpanded={isExpanded}
+									isLoading={message.partial}
+									onToggleExpand={handleToggle}
+									path={tool.path!}
+								/>
+							)}
 						</div>
 					)
 				case "readFile":

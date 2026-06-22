@@ -6,8 +6,8 @@ using E3DCopilot.Core.Tools;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
-    /// 导入导出（Excel/CSV/PML 脚本）
-    /// 写操作
+    /// Import/Export (Excel/CSV/PML script)
+    /// Write operation
     /// </summary>
     public class ExportHandler : IToolHandler
     {
@@ -19,14 +19,14 @@ namespace E3DCopilot.Core.Tools.Handlers
         }
 
         public string Name => "export";
-        public string Description => "导入导出：导出元素列表到 Excel/CSV、生成 PML 脚本、批量导出属性";
+        public string Description => "Import/Export: export element list to Excel/CSV, generate PML script, batch export attributes";
         public string ParameterSchema => @"{
   ""type"": ""object"",
   ""properties"": {
-    ""action"": { ""type"": ""string"", ""enum"": [""export"", ""import"", ""generate_pml""], ""description"": ""操作类型"" },
-    ""format"": { ""type"": ""string"", ""enum"": [""csv"", ""excel"", ""pml""], ""description"": ""导出格式"" },
-    ""query"": { ""type"": ""string"", ""description"": ""要导出的元素查询条件"" },
-    ""filePath"": { ""type"": ""string"", ""description"": ""导出文件路径"" }
+    ""action"": { ""type"": ""string"", ""enum"": [""export"", ""import"", ""generate_pml""], ""description"": ""Operation type"" },
+    ""format"": { ""type"": ""string"", ""enum"": [""csv"", ""excel"", ""pml""], ""description"": ""Export format"" },
+    ""query"": { ""type"": ""string"", ""description"": ""Element query condition for export"" },
+    ""filePath"": { ""type"": ""string"", ""description"": ""Export file path"" }
   },
   ""required"": [""action"", ""format""]
 }";
@@ -41,7 +41,7 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
             catch (Exception ex)
             {
-                return ToolResult.Fail($"导出失败: {ex.Message}");
+                return ToolResult.Fail($"Export failed: {ex.Message}");
             }
         }
     }

@@ -98,9 +98,21 @@ namespace E3DCopilot.WebHost
                 await _webView.EnsureCoreWebView2Async(env);
 
                 // 配置 WebView2 设置
-                _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = true; // 临时开启方便调试
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
                 _webView.CoreWebView2.Settings.IsScriptEnabled = true;
+
+                // 使用虚拟主机名映射，避免 file:// 的 CORS 限制（ES Module 需要）
+                var wwwrootDir = Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "wwwroot");
+                if (Directory.Exists(wwwrootDir))
+                {
+                    _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        "app.e3dcopilot.local",
+                        wwwrootDir,
+                        CoreWebView2HostResourceAccessKind.Allow
+                    );
+                }
 
                 // 创建桥接
                 _bridge = new Bridge(_webView, _controller);
@@ -132,29 +144,18 @@ namespace E3DCopilot.WebHost
                 };
 
                 // 加载前端页面
-                var indexPath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory,
-                    "wwwroot", "index.html");
-
-                // 开发模式优先连接 Vite HMR
+                // 使用虚拟主机名映射（SetVirtualHostNameToFolderMapping），
+                // 避免 file:// 导致 ES Module 加载失败
                 var devUrl = Environment.GetEnvironmentVariable("E3D_COPILOT_DEV_URL");
                 if (!string.IsNullOrEmpty(devUrl))
                 {
                     _webView.CoreWebView2.Navigate(devUrl);
                 }
-                else if (File.Exists(indexPath))
-                {
-                    _webView.CoreWebView2.Navigate(
-                        $"file:///{indexPath.Replace('\\', '/')}");
-                }
                 else
                 {
-                    // 回退：显示错误页面
-                    _webView.CoreWebView2.NavigateToString(
-                        "<html><body style='background:#0c0c14;color:#e8e8f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;'>"
-                        + "<div style='text-align:center'><h2>E小智</h2>"
-                        + "<p>未找到前端资源，请先构建 web-ui 项目。</p>"
-                        + "<p style='color:#686880;font-size:12px'>npm run build:addin</p></div></body></html>");
+                    // 使用虚拟域名导航，支持 ES Module
+                    _webView.CoreWebView2.Navigate(
+                        "https://app.e3dcopilot.local/index.html");
                 }
 
                 // 移除加载面板

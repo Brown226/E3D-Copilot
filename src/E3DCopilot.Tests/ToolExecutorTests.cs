@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Tools;
@@ -65,10 +66,13 @@ namespace E3DCopilot.Tests
         }
 
         [Test]
-        public void GetAllHandlers_ReturnsSixHandlers()
+        public void GetAllHandlers_ReturnsExpectedHandlers()
         {
             var handlers = _executor.GetAllHandlers();
-            Assert.AreEqual(6, handlers.Count);
+            Assert.AreEqual(10, handlers.Count);
+            Assert.IsTrue(handlers.Any(h => h.Name == "design"));
+            Assert.IsTrue(handlers.Any(h => h.Name == "piping"));
+            Assert.IsTrue(handlers.Any(h => h.Name == "geometry"));
         }
     }
 }

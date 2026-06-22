@@ -151,6 +151,11 @@ namespace E3DCopilot.Core.Tools
             executor.Register(new ExportHandler(dispatcher));
             executor.Register(new GetAttributesHandler(dispatcher));
 
+            // 新增 Handler
+            executor.Register(new DesignHandler(dispatcher));
+            executor.Register(new PipingHandler(dispatcher));
+            executor.Register(new GeometryHandler(dispatcher));
+
             return executor;
         }
     }

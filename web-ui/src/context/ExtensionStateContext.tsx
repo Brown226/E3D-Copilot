@@ -297,20 +297,6 @@ export const ExtensionStateContextProvider: React.FC<{
 	const [expandTaskHeader, setExpandTaskHeader] = useState(true)
 	const [didHydrateState, setDidHydrateState] = useState(false)
 
-	// 浏览器开发模式：无后端时自动"水合"，让 UI 可渲染
-	useEffect(() => {
-		const isBrowser = typeof window !== 'undefined' && !(window as any).chrome?.webview
-		if (isBrowser) {
-			console.log('[ExtensionStateContext] Browser mode detected, hydrating state...')
-			const timer = setTimeout(() => {
-				console.log('[ExtensionStateContext] Setting didHydrateState to true')
-				setDidHydrateState(true)
-				setShowWelcome(true) // 显示欢迎页面
-			}, 500) // 缩短到 0.5 秒
-			return () => clearTimeout(timer)
-		}
-	}, [])
-
 	const [showWelcome, setShowWelcome] = useState(false)
 	const [onboardingModels, setOnboardingModels] = useState<OnboardingModelGroup | undefined>(undefined)
 

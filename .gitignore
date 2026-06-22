@@ -30,3 +30,10 @@ Desktop.ini
 
 # Logs
 *.log
+web-ui/nul
+.reasonix/
+deploy/
+git/
+.reasonix/
+deploy/
+git/

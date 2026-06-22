@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react"
 import { expect, userEvent, within } from "storybook/test"
 import { ExtensionStateContext, useExtensionState } from "@/context/ExtensionStateContext"
 import ChatView from "./components/chat/ChatView"
-import WelcomeView from "./components/welcome/WelcomeView"
+import OnboardingView from "./components/onboarding/OnboardingView"
 
 // Mock component that mimics App behavior but works in Storybook
 const MockApp = () => {
@@ -17,7 +17,7 @@ const MockApp = () => {
 	return (
 		<HeroUIProvider>
 			{showWelcome ? (
-				<WelcomeView />
+				<OnboardingView />
 			) : (
 				<ChatView
 					hideAnnouncement={() => {}}

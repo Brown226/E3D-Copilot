@@ -30,6 +30,14 @@ namespace E3DCopilot.Tools.Bridge
 
         /// <summary>获取多选元素名称列表</summary>
         List<string> GetSelectedElementNames();
+
+        // 新增：Design / Piping 操作
+
+        /// <summary>创建子元素（Equipment/Pipe/Component/Branch 等）</summary>
+        string CreateElement(string parentElement, string name, string elementType, string attributesJson);
+
+        /// <summary>删除元素</summary>
+        bool DeleteElement(string elementName);
     }
 
     /// <summary>

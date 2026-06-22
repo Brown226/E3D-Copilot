@@ -1,1 +1,12 @@
-{}
+{
+	"list": [
+		{
+			"value": "vllm",
+			"label": "vLLM (本地)"
+		},
+		{
+			"value": "openai",
+			"label": "OpenAI Compatible"
+		}
+	]
+}

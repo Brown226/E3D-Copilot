@@ -1,8 +1,8 @@
 import { useCallback, useEffect } from "react"
-import SettingsView from "./components/settings/SettingsView"
 import ChatView from "./components/chat/ChatView"
 import HistoryView from "./components/history/HistoryView"
-import WelcomeView from "./components/welcome/WelcomeView"
+import OnboardingView from "./components/onboarding/OnboardingView"
+import SettingsView from "./components/settings/SettingsView"
 import { useExtensionState } from "./context/ExtensionStateContext"
 import { Providers } from "./Providers"
 
@@ -10,26 +10,42 @@ const AppContent = () => {
 	const {
 		didHydrateState,
 		showWelcome,
+		shouldShowAnnouncement,
 		showSettings,
 		settingsTargetSection,
 		showHistory,
+		showAnnouncement,
+		setShowAnnouncement,
+		setShouldShowAnnouncement,
+		navigateToHistory,
 		hideSettings,
 		hideHistory,
+		hideAnnouncement,
 	} = useExtensionState()
 
-	if (!didHydrateState) {
-		return null
-	}
+	const showUpdateAnnouncementModal = useCallback(() => {
+		setShowAnnouncement(true)
+		setShouldShowAnnouncement(false)
+	}, [setShouldShowAnnouncement, setShowAnnouncement])
 
-	if (showWelcome) {
-		return <WelcomeView />
-	}
+	useEffect(() => {
+		if (!didHydrateState || showWelcome || !shouldShowAnnouncement || showAnnouncement) return
+		showUpdateAnnouncementModal()
+	}, [didHydrateState, showWelcome, shouldShowAnnouncement, showAnnouncement, showUpdateAnnouncementModal])
+
+	if (!didHydrateState) return null
+	if (showWelcome) return <OnboardingView />
 
 	return (
 		<div className="flex h-screen w-full flex-col">
 			{showSettings && <SettingsView onDone={hideSettings} targetSection={settingsTargetSection} />}
 			{showHistory && <HistoryView onDone={hideHistory} />}
-			<ChatView isHidden={showSettings || showHistory} showHistoryView={() => {}} />
+			<ChatView
+				hideAnnouncement={hideAnnouncement}
+				isHidden={showSettings || showHistory}
+				showAnnouncement={showAnnouncement}
+				showHistoryView={navigateToHistory}
+			/>
 		</div>
 	)
 }

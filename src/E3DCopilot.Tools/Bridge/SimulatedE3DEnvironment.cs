@@ -134,5 +134,49 @@ namespace E3DCopilot.Tools.Bridge
         {
             return new List<string> { "PIPE-001", "EQUI-A1" };
         }
+
+        public string CreateElement(string parentElement, string name, string elementType, string attributesJson)
+        {
+            string key = (name ?? "NEW-" + elementType).ToUpper();
+            if (_elements.ContainsKey(key))
+                return $"{{\"success\": false, \"error\": \"元素 {key} 已存在\"}}";
+
+            var attrs = new Dictionary<string, string>
+            {
+                ["NAME"] = name,
+                ["TYPE"] = elementType,
+                ["PARENT"] = parentElement
+            };
+
+            // 解析 JSON 属性
+            if (!string.IsNullOrEmpty(attributesJson))
+            {
+                try
+                {
+                    var jattrs = Newtonsoft.Json.Linq.JObject.Parse(attributesJson);
+                    foreach (var prop in jattrs.Properties())
+                    {
+                        attrs[prop.Name.ToUpper()] = prop.Value.ToString();
+                    }
+                }
+                catch { /* 忽略解析错误 */ }
+            }
+
+            _elements[key] = attrs;
+
+            var result = new Newtonsoft.Json.Linq.JObject
+            {
+                ["success"] = true,
+                ["name"] = name,
+                ["type"] = elementType,
+                ["dbUri"] = $"/{key}"
+            };
+            return result.ToString();
+        }
+
+        public bool DeleteElement(string elementName)
+        {
+            return _elements.Remove((elementName ?? "").ToUpper());
+        }
     }
 }

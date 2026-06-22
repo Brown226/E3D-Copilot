@@ -1,6 +1,7 @@
 import type { ClineMessage } from "@shared/ExtensionMessage"
 import type React from "react"
 import { useMemo } from "react"
+import BrowserSessionRow from "@/components/chat/BrowserSessionRow"
 import ChatRow from "@/components/chat/ChatRow"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { cn } from "@/lib/utils"
@@ -80,38 +81,20 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
 		return <ToolGroupRenderer allMessages={modifiedMessages} isLastGroup={isLastToolGroup} messages={messageOrGroup} />
 	}
 
-	// For any remaining arrays (browser sessions, etc.), render them as regular messages
+	// Browser session group
 	if (Array.isArray(messageOrGroup)) {
-		// Render the first message of the group as a regular message
-		const firstMessage = messageOrGroup[0]
-		if (firstMessage) {
-			return (
-				<div
-					className={cn({
-						"pb-2.5": isLastMessage && !footerActive,
-					})}
-					data-message-ts={firstMessage.ts}>
-					<ChatRow
-						inputValue={inputValue}
-						isExpanded={expandedRows[firstMessage.ts] || false}
-						isLast={isLastMessage}
-						isRequestInProgress={isRequestInProgress}
-						key={firstMessage.ts}
-						lastModifiedMessage={modifiedMessages.at(-1)}
-						message={firstMessage}
-						mode={mode}
-						onCancelCommand={() => messageHandlers.executeButtonAction("cancel")}
-						onHeightChange={onHeightChange}
-						onSetQuote={onSetQuote}
-						onToggleExpand={onToggleExpand}
-						reasoningContent={reasoningData.reasoning}
-						responseStarted={reasoningData.responseStarted}
-						sendMessageFromChatRow={messageHandlers.handleSendMessage}
-					/>
-				</div>
-			)
-		}
-		return null
+		return (
+			<BrowserSessionRow
+				expandedRows={expandedRows}
+				isLast={isLastMessage}
+				key={messageOrGroup[0]?.ts}
+				lastModifiedMessage={modifiedMessages.at(-1)}
+				messages={messageOrGroup}
+				onHeightChange={onHeightChange}
+				onSetQuote={onSetQuote}
+				onToggleExpand={onToggleExpand}
+			/>
+		)
 	}
 
 	// Regular message

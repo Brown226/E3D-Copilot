@@ -30,7 +30,7 @@ const isDevBuild = process.argv.includes("--dev-build")
 
 // Valid platforms, these should the keys in platform-configs.json
 const VALID_PLATFORMS = ["vscode", "standalone", "e3d"]
-const platform = process.env.PLATFORM || "e3d" // Default to E3D WebView2
+const platform = process.env.PLATFORM || "e3d" // Default to E3D
 
 if (!VALID_PLATFORMS.includes(platform)) {
 	throw new Error(`Invalid PLATFORM "${platform}". Must be one of: ${VALID_PLATFORMS.join(", ")}`)
@@ -42,7 +42,7 @@ export default defineConfig({
 	optimizeDeps: {
 		force: true, // Forces re-optimization
 	},
-	plugins: [react({ jsxRuntime: 'automatic' }), tailwindcss(), writePortToFile()],
+	plugins: [react(), tailwindcss(), writePortToFile()],
 	test: {
 		environment: "jsdom",
 		globals: true,
@@ -76,7 +76,7 @@ export default defineConfig({
 		},
 	},
 	build: {
-		outDir: "../E3DCopilot.WebHost/wwwroot",
+		outDir: "../src/E3DCopilot.WebHost/wwwroot",
 		reportCompressedSize: false,
 		// Only minify in production build
 		minify: !isDevBuild,

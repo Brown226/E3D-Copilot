@@ -2,51 +2,10 @@ import { ApiFormat, ShengSuanYunModelInfo as ProtoShengSuanYunModelInfo } from "
 import type { ApiHandlerSettings } from "./storage/state-keys"
 
 export type ApiProvider =
-	| "anthropic"
-	| "claude-code"
-	| "openrouter"
-	| "bedrock"
-	| "vertex"
+	| "vllm"
 	| "openai"
-	| "ollama"
-	| "lmstudio"
-	| "gemini"
-	| "openai-native"
-	| "openai-codex"
-	| "requesty"
-	| "together"
-	| "deepseek"
-	| "qwen"
-	| "qwen-code"
-	| "doubao"
-	| "mistral"
-	| "vscode-lm"
-	| "cline"
-	| "litellm"
-	| "moonshot"
-	| "nebius"
-	| "fireworks"
-	| "asksage"
-	| "xai"
-	| "sambanova"
-	| "cerebras"
-	| "sapaicore"
-	| "groq"
-	| "huggingface"
-	| "huawei-cloud-maas"
-	| "dify"
-	| "baseten"
-	| "vercel-ai-gateway"
-	| "zai"
-	| "oca"
-	| "aihubmix"
-	| "minimax"
-	| "hicap"
-	| "nousResearch"
-	| "shengsuanyun"
-	| "wandb"
 
-export const DEFAULT_API_PROVIDER = "openrouter" as ApiProvider
+export const DEFAULT_API_PROVIDER = "vllm" as ApiProvider
 
 export interface ApiHandlerOptions extends Partial<ApiHandlerSettings> {
 	ulid?: string // Used to identify the task in API requests
@@ -1556,6 +1515,19 @@ export const openAiModelInfoSaneDefaults: OpenAiCompatibleModelInfo = {
 	maxTokens: -1,
 	contextWindow: 128_000,
 	supportsImages: true,
+	supportsPromptCache: false,
+	isR1FormatRequired: false,
+	inputPrice: 0,
+	outputPrice: 0,
+	temperature: 0,
+}
+
+// vLLM (Local Inference)
+// Default configuration for vLLM local inference service
+export const vllmModelInfoSaneDefaults: OpenAiCompatibleModelInfo = {
+	maxTokens: -1,
+	contextWindow: 128_000,
+	supportsImages: false,
 	supportsPromptCache: false,
 	isR1FormatRequired: false,
 	inputPrice: 0,

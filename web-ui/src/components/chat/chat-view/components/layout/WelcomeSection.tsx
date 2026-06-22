@@ -12,6 +12,7 @@ import { useApiConfigurationHandlers } from "@/components/settings/utils/useApiC
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import HomeHeader from "@/components/welcome/HomeHeader"
 import { SuggestedTasks } from "@/components/welcome/SuggestedTasks"
+import CreateWorktreeModal from "@/components/worktrees/CreateWorktreeModal"
 import { useClineAuth } from "@/context/ClineAuthContext"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { AccountServiceClient, StateServiceClient, UiServiceClient, WorktreeServiceClient } from "@/services/grpc-client"
@@ -40,6 +41,7 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 	const [showWhatsNewModal, setShowWhatsNewModal] = useState(false)
 
 	// Quick launch worktree modal
+	const [showCreateWorktreeModal, setShowCreateWorktreeModal] = useState(false)
 	const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
 	const [currentWorktree, setCurrentWorktree] = useState<Worktree | null>(null)
 
@@ -50,7 +52,7 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 				const canUseWorktrees = result.isGitRepo && !result.isMultiRoot && !result.isSubfolder
 				setIsGitRepo(canUseWorktrees)
 				if (canUseWorktrees) {
-					const current = false
+					const current = result.worktrees.find((w) => w.isCurrent)
 					setCurrentWorktree(current || null)
 				}
 			})
@@ -130,7 +132,7 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 	 */
 	const bannerConfig = useMemo((): BannerCardData[] => {
 		// Filter banners based on version tracking and user status
-		return (BANNER_DATA ?? []).filter((banner) => {
+		return BANNER_DATA.filter((banner) => {
 			if (isBannerDismissed(banner.id)) {
 				return false
 			}
@@ -263,7 +265,6 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 				<HomeHeader shouldShowQuickWins={shouldShowQuickWins} />
 				{!showWhatsNewModal && (
 					<>
-						<BannerCarousel banners={activeBanners} />
 						{!shouldShowQuickWins && taskHistory.length > 0 && <HistoryPreview showHistoryView={showHistoryView} />}
 						{/* Quick launch worktree button */}
 						{isGitRepo && worktreesEnabled?.featureFlag && worktreesEnabled?.user && (

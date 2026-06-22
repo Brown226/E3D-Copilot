@@ -1,4 +1,4 @@
-{
+﻿{
 	"vscode": {
 		"messageEncoding": "none",
 		"showNavbar": false,
@@ -15,7 +15,7 @@
 	},
 	"e3d": {
 		"messageEncoding": "none",
-		"showNavbar": false,
+		"showNavbar": true,
 		"postMessageHandler": "vscode",
 		"togglePlanActKeys": "Ctrl+Shift+p",
 		"supportsTerminalMentions": false
