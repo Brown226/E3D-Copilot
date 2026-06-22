@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Tools;
 using Newtonsoft.Json.Linq;
@@ -48,6 +49,51 @@ namespace E3DCopilot.Tools.Bridge
 
                 default:
                     return Task.FromResult($"{{\"success\": false, \"error\": \"未知工具: {name}\"}}");
+            }
+        }
+
+        /// <summary>
+        /// 获取 E3D 当前选中元素名称（通过 CurrentElement.Element 静态属性）
+        /// </summary>
+        public string GetCurrentElementName()
+        {
+            try
+            {
+                return _env.GetCurrentElementName();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 获取 E3D 多选元素名称列表
+        /// </summary>
+        public List<string> GetSelectedElementNames()
+        {
+            try
+            {
+                return _env.GetSelectedElementNames();
+            }
+            catch
+            {
+                return new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// 读取指定元素的指定属性（C# 直接 API）
+        /// </summary>
+        public string GetAttribute(string element, string attribute)
+        {
+            try
+            {
+                return _env.GetAttribute(element, attribute);
+            }
+            catch
+            {
+                return null;
             }
         }
 

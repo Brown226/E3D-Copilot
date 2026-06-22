@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using Aveva.Core.Database;
 using Aveva.Core.Utilities.CommandLine;
 
@@ -12,6 +14,7 @@ namespace E3DCopilot.Tools.Bridge
     /// 已验证 API 签名（文档核实 + 反射验证）：
     ///   DbElement.GetElement(string dbUri)   -> static   ✅
     ///   DbElement.GetElement()              -> static   ✅
+    ///   CurrentElement.Element              -> static   ✅ (正确获取 CE 的 API)
     ///   DbElement.GetAsString(DbAttribute)  -> string   ✅
     ///   DbElement.FirstMember()            -> DbElement ✅
     ///   DbElement.LastMember()             -> DbElement ✅
@@ -21,139 +24,384 @@ namespace E3DCopilot.Tools.Bridge
     ///   Command.RunInPdms()                -> bool     ✅
     ///
     /// 只应在 E3D 进程内加载（作为 Addin）。
+    /// ⚠ 所有 E3D API 调用通过 SynchronizationContext 封送到 UI 线程
     /// </summary>
     public class RealE3DEnvironment : IE3DEnvironment
     {
-        public List<ElementInfo> QueryElements(string elementType, string namePattern, string scope, int limit)
-        {
-            var results = new List<ElementInfo>();
-            if (limit <= 0) limit = 100;
+        private readonly SynchronizationContext _uiContext;
+        // 缓存当前元素名称，通过 CurrentElementChanged 事件实时更新
+        private string _currentElementName;
+        // 多选元素列表，通过 Selection.SelectionChanged 事件实时更新
+        private readonly List<string> _selectedElementNames = new List<string>();
+        private readonly object _selectedLock = new object();
 
+        /// <summary>
+        /// 必须在 E3D UI 线程上创建（捕获 SynchronizationContext）
+        /// 同时订阅 CurrentElementChanged 事件，实时跟踪当前选中元素
+        /// </summary>
+        public RealE3DEnvironment()
+        {
+            _uiContext = SynchronizationContext.Current
+                ?? new SynchronizationContext();
+
+            // 初始化当前元素缓存 — 使用 DbElement.GetElement()
             try
             {
-                // 确定起始元素
-                DbElement root;
-                if (!string.IsNullOrEmpty(scope) && scope != "/")
+                DbElement ce = DbElement.GetElement();
+                if (ce != null && ce.IsValid)
                 {
-                    root = DbElement.GetElement(scope);
+                    string initName;
+                    try { initName = ce.GetAsString(DbAttributeInstance.NAME); } catch { initName = null; }
+                    if (string.IsNullOrEmpty(initName))
+                        try { initName = ce.GetAsString(DbAttributeInstance.FLNN); } catch { initName = null; }
+                    _currentElementName = initName;
+                }
+            }
+            catch
+            {
+                _currentElementName = null;
+            }
+
+            // 订阅 CE 变化事件 — 实时跟踪用户选择的元素
+            try
+            {
+                CurrentElement.CurrentElementChanged += OnCurrentElementChanged;
+            }
+            catch
+            {
+                // E3D 可能尚未完全初始化，忽略订阅失败
+            }
+
+            // 订阅多选变化事件 — 实时跟踪用户选中的所有元素
+            // 注意：Selection 类在 Aveva.Pdms.Shared 命名空间，需引用 Aveva.Pdms.Shared.dll
+            // 暂未引用该 DLL，后续添加引用后启用以下代码
+            /*
+            try
+            {
+                Selection.SelectionChanged += OnSelectionChanged;
+                var sel = Selection.CurrentSelection;
+                if (sel != null && sel.Members != null)
+                {
+                    lock (_selectedLock)
+                    {
+                        _selectedElementNames.Clear();
+                        foreach (DbElement member in sel.Members)
+                        {
+                            if (member != null && member.IsValid)
+                            {
+                                string n;
+                                try { n = member.GetAsString(DbAttributeInstance.NAME); } catch { n = null; }
+                                if (!string.IsNullOrEmpty(n))
+                                    _selectedElementNames.Add(n);
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // E3D 可能尚未完全初始化，忽略订阅失败
+            }
+            */
+        }
+
+        /// <summary>
+        /// 当前元素变化时的回调
+        /// </summary>
+        private void OnCurrentElementChanged(object sender, CurrentElementChangedEventArgs e)
+        {
+            try
+            {
+                DbElement ce = e?.Element;
+                if (ce != null && ce.IsValid)
+                {
+                    string name;
+                    try { name = ce.GetAsString(DbAttributeInstance.NAME); } catch { name = null; }
+                    if (string.IsNullOrEmpty(name))
+                        try { name = ce.GetAsString(DbAttributeInstance.FLNN); } catch { name = null; }
+                    _currentElementName = name;
                 }
                 else
                 {
-                    root = DbElement.GetElement("/");
+                    _currentElementName = null;
+                }
+            }
+            catch
+            {
+                _currentElementName = null;
+            }
+        }
+
+        /// <summary>
+        /// 多选变化时的回调
+        /// 注意：需要先引用 Aveva.Pdms.Shared.dll 并添加 using Aveva.Pdms.Shared;
+        /// </summary>
+        /*
+        private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            try
+            {
+                lock (_selectedLock)
+                {
+                    _selectedElementNames.Clear();
+                    var sel = Selection.CurrentSelection;
+                    if (sel != null && sel.Members != null)
+                    {
+                        foreach (DbElement member in sel.Members)
+                        {
+                            if (member != null && member.IsValid)
+                            {
+                                string n;
+                                try { n = member.GetAsString(DbAttributeInstance.NAME); } catch { n = null; }
+                                if (!string.IsNullOrEmpty(n))
+                                    _selectedElementNames.Add(n);
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略
+            }
+        }
+        */
+
+        /// <summary>
+        /// 获取当前多选的所有元素名称
+        /// </summary>
+        public List<string> GetSelectedElementNames()
+        {
+            lock (_selectedLock)
+            {
+                return _selectedElementNames.ToList();
+            }
+        }
+
+        /// <summary>
+        /// 在 E3D UI 线程上执行委托（E3D API 非线程安全）
+        /// </summary>
+        private T InvokeOnUi<T>(Func<T> action)
+        {
+            T result = default(T);
+            Exception error = null;
+            _uiContext.Send(_ =>
+            {
+                try { result = action(); }
+                catch (Exception ex) { error = ex; }
+            }, null);
+            if (error != null) throw error;
+            return result;
+        }
+
+        private void InvokeOnUi(Action action)
+        {
+            _uiContext.Send(_ =>
+            {
+                try { action(); }
+                catch (Exception ex) { throw ex; }
+            }, null);
+        }
+        public List<ElementInfo> QueryElements(string elementType, string namePattern, string scope, int limit)
+        {
+            return InvokeOnUi(() =>
+            {
+                var results = new List<ElementInfo>();
+                if (limit <= 0) limit = 100;
+
+                try
+                {
+                    // 确定起始元素
+                    DbElement root;
+                    if (!string.IsNullOrEmpty(scope) && scope != "/")
+                    {
+                        root = DbElement.GetElement(scope);
+                    }
+                    else
+                    {
+                        root = DbElement.GetElement("/");
+                    }
+
+                    if (root == null) return results;
+
+                    int count = 0;
+                    QueryRecursive(root, elementType, namePattern, limit, ref count, results);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("[RealE3DEnvironment] QueryElements error: " + ex.Message);
                 }
 
-                if (root == null) return results;
+                return results;
+            });
+        }
 
-                // 一次性获取所有子元素并遍历
-                DbElement[] children = root.Members();
-                if (children == null) return results;
+        /// <summary>
+        /// 递归遍历所有子元素（深度优先），支持按类型/名称过滤
+        /// </summary>
+        private void QueryRecursive(DbElement parent, string elementType, string namePattern, int limit, ref int count, List<ElementInfo> results)
+        {
+            if (count >= limit) return;
+            if (parent == null) return;
 
-                int count = 0;
+            try
+            {
+                DbElement[] children = parent.Members();
+                if (children == null) return;
+
                 foreach (var child in children)
                 {
                     if (count >= limit) break;
+                    if (child == null) continue;
 
                     string type = SafeGetAttr(child, "TYPE");
-                    if (!string.IsNullOrEmpty(elementType) && !type.ToUpper().Contains(elementType.ToUpper()))
-                        continue;
+                    bool typeMatch = string.IsNullOrEmpty(elementType) 
+                        || type.ToUpper().Contains(elementType.ToUpper());
 
                     string name = SafeGetAttr(child, "NAME");
-                    bool nameMatch = string.IsNullOrEmpty(namePattern);
-                    if (!nameMatch)
-                    {
-                        string pat = namePattern.Replace("*", "").ToUpper();
-                        nameMatch = name.ToUpper().Contains(pat);
-                    }
+                    bool nameMatch = string.IsNullOrEmpty(namePattern)
+                        || name.ToUpper().Contains(namePattern.Replace("*", "").ToUpper());
 
-                    if (nameMatch)
+                    if (typeMatch && nameMatch)
                     {
                         results.Add(BuildElementInfo(child));
                         count++;
                     }
+
+                    // 递归遍历子元素
+                    QueryRecursive(child, elementType, namePattern, limit, ref count, results);
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                System.Diagnostics.Debug.WriteLine("[RealE3DEnvironment] QueryElements error: " + ex.Message);
+                // 跳过无法访问的元素，继续遍历
             }
-
-            return results;
         }
 
         public string GetAttribute(string elementName, string attributeName)
         {
-            try
+            return InvokeOnUi(() =>
             {
-                DbElement elem = ResolveElement(elementName);
-                if (elem == null) return null;
+                try
+                {
+                    DbElement elem = ResolveElement(elementName);
+                    if (elem == null) return null;
 
-                DbAttribute attr = DbAttribute.GetDbAttribute(attributeName.ToUpper());
-                return elem.GetAsString(attr);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("[RealE3DEnvironment] GetAttribute error: " + ex.Message);
-                return null;
-            }
+                    DbAttribute attr = DbAttribute.GetDbAttribute(attributeName.ToUpper());
+                    return elem.GetAsString(attr);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("[RealE3DEnvironment] GetAttribute error: " + ex.Message);
+                    return null;
+                }
+            });
         }
 
         public void SetAttribute(string elementName, string attributeName, string value)
         {
-            try
+            InvokeOnUi(() =>
             {
-                // 属性写入通过 PML 执行（DbElement 没有直接的 SetAsString API）
-                string pml = string.Format("{0}.{1} = '{2}'",
-                    elementName.TrimStart('/'),
-                    attributeName.ToUpper(),
-                    value.Replace("'", "''"));
-                ExecutePml(pml);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("[RealE3DEnvironment] SetAttribute error: " + ex.Message);
-            }
+                try
+                {
+                    // 属性写入通过 PML 执行（DbElement 没有直接的 SetAsString API）
+                    string pml = string.Format("{0}.{1} = '{2}'",
+                        elementName.TrimStart('/'),
+                        attributeName.ToUpper(),
+                        value.Replace("'", "''"));
+                    ExecutePml(pml);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("[RealE3DEnvironment] SetAttribute error: " + ex.Message);
+                }
+            });
         }
 
         public bool CheckExists(string elementName)
         {
-            try
+            return InvokeOnUi(() =>
             {
-                DbElement elem = ResolveElement(elementName);
-                return elem != null;
-            }
-            catch
-            {
-                return false;
-            }
+                try
+                {
+                    DbElement elem = ResolveElement(elementName);
+                    return elem != null;
+                }
+                catch
+                {
+                    return false;
+                }
+            });
         }
 
         public string ExecutePml(string pmlCommand)
         {
-            try
+            return InvokeOnUi(() =>
             {
-                var cmd = Command.CreateCommand(pmlCommand);
-                bool ok = cmd.RunInPdms();
-                return ok ? (cmd.Result ?? "") : "Error: PML execution failed";
-            }
-            catch (Exception ex)
-            {
-                return "Error: " + ex.Message;
-            }
+                try
+                {
+                    var cmd = Command.CreateCommand(pmlCommand);
+                    bool ok = cmd.RunInPdms();
+                    return ok ? (cmd.Result ?? "") : "Error: PML execution failed";
+                }
+                catch (Exception ex)
+                {
+                    return "Error: " + ex.Message;
+                }
+            });
         }
 
         public string GetCurrentElementName()
         {
-            try
+            return InvokeOnUi(() =>
             {
-                // DbElement.GetElement() 无参静态方法返回当前元素
-                DbElement current = DbElement.GetElement();
-                if (current == null) return null;
-                return SafeGetAttr(current, "NAME");
-            }
-            catch
-            {
-                return null;
-            }
+                // 方法1: CurrentElement.Element 静态属性（推荐，参考项目验证）
+                try
+                {
+                    DbElement current = CurrentElement.Element;
+                    if (current != null && current.IsValid)
+                    {
+                        string name;
+                        try { name = current.GetAsString(DbAttributeInstance.NAME); } catch { name = null; }
+                        if (string.IsNullOrEmpty(name))
+                            try { name = current.GetAsString(DbAttributeInstance.FLNN); } catch { name = null; }
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            _currentElementName = name;
+                            return name;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("[CE] CurrentElement.Element 异常: " + ex.Message);
+                }
+
+                // 方法2: DbElement.GetElement() 无参调用（回退）
+                try
+                {
+                    DbElement current = DbElement.GetElement();
+                    if (current != null && current.IsValid)
+                    {
+                        string name;
+                        try { name = current.GetAsString(DbAttributeInstance.NAME); } catch { name = null; }
+                        if (string.IsNullOrEmpty(name))
+                            try { name = current.GetAsString(DbAttributeInstance.FLNN); } catch { name = null; }
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            _currentElementName = name;
+                            return name;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("[CE] DbElement.GetElement 异常: " + ex.Message);
+                }
+
+                // 最终回退：使用缓存值
+                return _currentElementName;
+            });
         }
 
         /// <summary>
@@ -174,17 +422,41 @@ namespace E3DCopilot.Tools.Bridge
             DbElement root = DbElement.GetElement("/");
             if (root != null)
             {
-                DbElement[] all = root.Members();
-                if (all != null)
+                var found = FindElementRecursive(root, elementName);
+                if (found != null) return found;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 递归搜索元素（深度优先），按 NAME 匹配
+        /// </summary>
+        private DbElement FindElementRecursive(DbElement parent, string elementName)
+        {
+            if (parent == null) return null;
+
+            try
+            {
+                string name = SafeGetAttr(parent, "NAME");
+                if (name.Equals(elementName, StringComparison.OrdinalIgnoreCase))
+                    return parent;
+            }
+            catch { }
+
+            try
+            {
+                DbElement[] children = parent.Members();
+                if (children != null)
                 {
-                    foreach (var child in all)
+                    foreach (var child in children)
                     {
-                        string name = SafeGetAttr(child, "NAME");
-                        if (name.Equals(elementName, StringComparison.OrdinalIgnoreCase))
-                            return child;
+                        var found = FindElementRecursive(child, elementName);
+                        if (found != null) return found;
                     }
                 }
             }
+            catch { }
 
             return null;
         }

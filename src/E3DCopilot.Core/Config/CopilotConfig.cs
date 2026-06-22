@@ -1,32 +1,33 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json;
 
 namespace E3DCopilot.Core.Config
 {
     /// <summary>
-    /// 全局配置 — 首次启动自动生成默认 config.json
-    /// 支持多 Provider 配置，参考 Reasonix 设计
+    /// Global config — auto-generates default config.json on first start
+    /// Supports multi-Provider setup, inspired by Reasonix design
     /// </summary>
     public class CopilotConfig
     {
         /// <summary>
-        /// 默认使用的 Provider 名称（对应 Providers 列表中的 Name）
+        /// Default Provider name (corresponds to Name in Providers list)
         /// </summary>
-        public string DefaultProvider { get; set; } = "mimo";
+        public string DefaultProvider { get; set; } = "qwen37";
         
         /// <summary>
-        /// 默认使用的模型名称（格式：provider/model 或纯模型名）
+        /// Default model name (format: provider/model or plain model name)
         /// </summary>
-        public string DefaultModel { get; set; } = "mimo/mimo-v2.5";
+        public string DefaultModel { get; set; } = "qwen37/Qwen3.7-Plus";
         
         /// <summary>
-        /// Provider 列表，支持多个 LLM 服务
+        /// Provider list, supports multiple LLM services
         /// </summary>
         public List<ProviderConfig> Providers { get; set; } = new List<ProviderConfig>();
         
         /// <summary>
-        /// 向后兼容：旧的单 LLM 配置（已废弃，保留用于迁移）
+        /// Backward compat: old single LLM config (deprecated, kept for migration)
         /// </summary>
         [JsonIgnore]
         public LlmConfig Llm { get; set; } = new LlmConfig();
@@ -37,40 +38,40 @@ namespace E3DCopilot.Core.Config
         public LoggingConfig Logging { get; set; } = new LoggingConfig();
 
         /// <summary>
-        /// Provider 配置
+        /// Provider configuration
         /// </summary>
         public class ProviderConfig
         {
-            /// <summary>Provider 唯一标识名</summary>
+            /// <summary>Provider unique identifier</summary>
             public string Name { get; set; }
             
-            /// <summary>Provider 类型：openai（兼容 OpenAI API）或 anthropic</summary>
+            /// <summary>Provider type: openai (OpenAI-compatible API) or anthropic</summary>
             public string Kind { get; set; } = "openai";
             
-            /// <summary>API 基础 URL</summary>
+            /// <summary>API base URL</summary>
             public string BaseUrl { get; set; }
             
             /// <summary>API Key</summary>
             public string ApiKey { get; set; } = "";
             
-            /// <summary>该 Provider 下可用的模型列表</summary>
+            /// <summary>List of available models under this Provider</summary>
             public List<string> Models { get; set; } = new List<string>();
             
-            /// <summary>默认模型名称</summary>
+            /// <summary>Default model name</summary>
             public string DefaultModel { get; set; }
             
-            /// <summary>请求超时时间（毫秒）</summary>
+            /// <summary>Request timeout (milliseconds)</summary>
             public int TimeoutMs { get; set; } = 120000;
             
-            /// <summary>温度参数</summary>
+            /// <summary>Temperature parameter</summary>
             public double Temperature { get; set; } = 0.1;
             
-            /// <summary>最大 Token 数</summary>
+            /// <summary>Maximum tokens</summary>
             public int MaxTokens { get; set; } = 8192;
         }
 
         /// <summary>
-        /// 向后兼容：旧的单 LLM 配置（已废弃）
+        /// Backward compat: old single LLM config (deprecated)
         /// </summary>
         public class LlmConfig
         {
@@ -115,7 +116,7 @@ namespace E3DCopilot.Core.Config
         private static readonly object LockObj = new object();
 
         /// <summary>
-        /// 加载配置，文件不存在则创建默认配置
+        /// Load config, create default config.json if not exists
         /// </summary>
         public static CopilotConfig Load(string configPath = null)
         {
@@ -134,7 +135,7 @@ namespace E3DCopilot.Core.Config
                     _instance = JsonConvert.DeserializeObject<CopilotConfig>(json)
                         ?? new CopilotConfig();
                     
-                    // 迁移旧配置到新格式
+                    // Migrate old config to new format
                     _instance.MigrateFromLegacy();
                 }
                 else
@@ -150,7 +151,7 @@ namespace E3DCopilot.Core.Config
         }
 
         /// <summary>
-        /// 初始化默认 Provider 列表
+        /// Initialize default Provider list
         /// </summary>
         private void InitDefaultProviders()
         {
@@ -177,24 +178,35 @@ namespace E3DCopilot.Core.Config
                     DefaultModel = "Qwen3.5-32B",
                     Temperature = 0.1,
                     MaxTokens = 8192
+                },
+                new ProviderConfig
+                {
+                    Name = "qwen37",
+                    Kind = "openai",
+                    BaseUrl = "https://opencode.ai/zen/go/v1",
+                    ApiKey = "sk-jnDafVDYkBqpd6X81cWbkNuocNQtgHcaaiwm08fU6EtQcavJV97iPr6J1SgPq1pe",
+                    Models = new List<string> { "Qwen3.7-Plus" },
+                    DefaultModel = "Qwen3.7-Plus",
+                    Temperature = 0.1,
+                    MaxTokens = 8192
                 }
             };
             
-            DefaultProvider = "mimo";
-            DefaultModel = "mimo/mimo-v2.5";
+            DefaultProvider = "qwen37";
+            DefaultModel = "qwen37/Qwen3.7-Plus";
         }
 
         /// <summary>
-        /// 从旧配置迁移到新格式
+        /// Migrate from old config to new format
         /// </summary>
         private void MigrateFromLegacy()
         {
-            // 如果 Providers 为空，说明是旧配置，需要迁移
+            // If Providers is empty, it's old config, need migration
             if (Providers == null || Providers.Count == 0)
             {
                 Providers = new List<ProviderConfig>();
                 
-                // 从旧的 Llm 配置创建默认 Provider
+                // Create default Provider from old Llm config
                 if (Llm != null && !string.IsNullOrEmpty(Llm.BaseUrl))
                 {
                     Providers.Add(new ProviderConfig
@@ -221,9 +233,19 @@ namespace E3DCopilot.Core.Config
         }
 
         /// <summary>
-        /// 解析模型引用（格式：provider/model 或纯模型名）
+        /// 按名称获取 Provider 配置
         /// </summary>
-        /// <returns>ProviderConfig 和模型名称</returns>
+        public ProviderConfig GetProvider(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return Providers.Find(p => p.Name == DefaultProvider) ?? Providers.FirstOrDefault();
+            return Providers.Find(p => p.Name == name);
+        }
+
+        /// <summary>
+        /// Resolve model reference (format: provider/model or plain model name)
+        /// </summary>
+        /// <returns>ProviderConfig and model name</returns>
         public (ProviderConfig provider, string modelName) ResolveModel(string modelRef)
         {
             if (string.IsNullOrEmpty(modelRef))
@@ -231,7 +253,7 @@ namespace E3DCopilot.Core.Config
                 modelRef = DefaultModel;
             }
 
-            // 解析 provider/model 格式
+            // Parse provider/model format
             string providerName = null;
             string modelName = modelRef;
             
@@ -242,20 +264,20 @@ namespace E3DCopilot.Core.Config
                 modelName = modelRef.Substring(slashIndex + 1);
             }
 
-            // 查找 Provider
+            // Find Provider
             ProviderConfig provider = null;
             if (!string.IsNullOrEmpty(providerName))
             {
                 provider = Providers.Find(p => p.Name == providerName);
             }
             
-            // 如果找不到或没指定，使用默认 Provider
+            // If not found or not specified, use default Provider
             if (provider == null)
             {
                 provider = Providers.Find(p => p.Name == DefaultProvider);
             }
             
-            // 如果还是找不到，使用第一个 Provider
+            // If still not found, use first Provider
             if (provider == null && Providers.Count > 0)
             {
                 provider = Providers[0];
@@ -265,11 +287,11 @@ namespace E3DCopilot.Core.Config
         }
 
         /// <summary>
-        /// 运行时数据目录 .e3dcopilot/
+        /// Runtime data directory .e3dcopilot/
         /// </summary>
         public static string GetDataDir()
         {
-            // 优先使用环境变量指定的目录，否则用 LocalApplicationData
+            // Prefer directory from environment variable, otherwise use LocalApplicationData
             string envDir = System.Environment.GetEnvironmentVariable("E3DCOPILOT_DATA");
             if (!string.IsNullOrEmpty(envDir))
                 return envDir;

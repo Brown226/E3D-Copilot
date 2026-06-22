@@ -11,42 +11,47 @@ using E3DCopilot.Core.Tools;
 namespace E3DCopilot.Core
 {
     /// <summary>
-    /// 主控制器 — 中央调度器
-    /// 聚合所有服务：会话管理 / AI 引擎 / 工具执行 / 权限控制 / 状态管理
-    /// 对应 cline-chinese-main 的 Controller 类
+    /// Main controller — central dispatcher
+    /// Aggregates all services: session management / AI engine / tool execution / permission control / state management
+    /// Corresponds to cline-chinese-main's Controller class
     /// </summary>
     public class CopilotController : IDisposable
     {
-        // ── 核心引擎 ──
+        // ── Core engine ──
         private AgentLoop _agent;
         private CopilotSession _session;
 
-        // ── 聚合服务 ──
-        public ICopilotProvider Provider { get; }
+        // ── Aggregated services ──
+        private ICopilotProvider _provider;
+        public ICopilotProvider Provider => _provider;
         public ToolExecutor Executor { get; }
         public CommandPermissionController Permission { get; }
         public CopilotConfig Config { get; }
+        
+        // ── Current model ──
+        public string CurrentModelName { get; private set; }
 
-        // ── 基础设施 ──
+        // ── Infrastructure ──
         private readonly IEventSink _sink;
         private CancellationTokenSource _cts;
-        private bool _isRunning;
+        private volatile bool _isRunning;
+        private int _runningFlag;
 
-        // ── 审批管理 ──
+        // ── Approval management ──
         private readonly Dictionary<string, PendingApproval> _pendingApprovals
             = new Dictionary<string, PendingApproval>();
 
-        // ── 事件 ──
+        // ── Events ──
         public event Action<CopilotEvent> OnEvent;
         public IEventSink EventSink => _sink;
 
-        // ── 状态 ──
+        // ── State ──
         public bool IsRunning => _isRunning;
         public CopilotSession Session => _session;
         public bool IsPlanMode => _session?.IsPlanMode ?? false;
 
         /// <summary>
-        /// 完整构造函数
+        /// Full constructor
         /// </summary>
         public CopilotController(
             ICopilotProvider provider,
@@ -55,14 +60,14 @@ namespace E3DCopilot.Core
             CopilotConfig config,
             IEventSink sink = null)
         {
-            Provider = provider ?? throw new ArgumentNullException(nameof(provider));
+            _provider = provider ?? throw new ArgumentNullException(nameof(provider));
             Executor = executor ?? throw new ArgumentNullException(nameof(executor));
             Permission = permission ?? CommandPermissionController.CreateDefault();
             Config = config ?? CopilotConfig.Load();
 
             _session = new CopilotSession();
 
-            // 桥接事件接收器
+            // Bridge event sink
             var externalSink = sink;
             _sink = new BridgeEventSink(evt =>
             {
@@ -72,7 +77,7 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// 创建默认 Controller（快捷方式）
+        /// Create default Controller (shortcut)
         /// </summary>
         public static CopilotController CreateDefault(
             IToolDispatcher dispatcher = null,
@@ -80,19 +85,19 @@ namespace E3DCopilot.Core
         {
             var config = CopilotConfig.Load();
             
-            // 解析默认模型（支持 provider/model 格式）
+            // Resolve default model (supports provider/model format)
             var (providerConfig, modelName) = config.ResolveModel(config.DefaultModel);
             
-            // 根据 Provider 类型创建对应的实例
+            // Create corresponding provider based on Provider type
             ICopilotProvider provider;
             if (providerConfig.Kind == "anthropic")
             {
-                // TODO: 实现 AnthropicProvider
-                throw new NotSupportedException("Anthropic Provider 尚未实现");
+                // TODO: implement AnthropicProvider
+                throw new NotSupportedException("Anthropic Provider not yet implemented");
             }
             else
             {
-                // 默认使用 OpenAI 兼容的 VllmProvider
+                // Default to OpenAI-compatible VllmProvider
                 provider = new VllmProvider(
                     providerConfig.BaseUrl,
                     modelName,
@@ -107,14 +112,14 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// 发送用户输入 → AgentLoop 处理
+        /// Send user input → AgentLoop processing
         /// </summary>
         public async Task SendAsync(string input)
         {
             if (string.IsNullOrWhiteSpace(input)) return;
-            if (_isRunning) return;
-
+            if (Interlocked.Exchange(ref _runningFlag, 1) == 1) return;
             _isRunning = true;
+
             _cts = new CancellationTokenSource();
 
             try
@@ -125,20 +130,34 @@ namespace E3DCopilot.Core
             finally
             {
                 _isRunning = false;
+                Interlocked.Exchange(ref _runningFlag, 0);
             }
         }
 
         /// <summary>
-        /// 取消当前操作
+        /// Cancel current operation
         /// </summary>
         public void Cancel()
         {
             _cts?.Cancel();
             _isRunning = false;
+            Interlocked.Exchange(ref _runningFlag, 0);
         }
 
         /// <summary>
-        /// 切换 Plan Mode（只读规划模式）
+        /// 切换 LLM Provider（运行时动态切换）
+        /// </summary>
+        public void SwitchProvider(ICopilotProvider newProvider, string modelRef = null)
+        {
+            if (newProvider == null) throw new ArgumentNullException(nameof(newProvider));
+            if (_isRunning) throw new InvalidOperationException("Cannot switch provider while a task is running");
+            _provider = newProvider;
+            CurrentModelName = modelRef; // 记录当前模型引用（如 "mimo/mimo-v2.5"）
+            _sink.Emit(CopilotEvent.Notice($"Provider switched to {newProvider.Name ?? "unknown"}"));
+        }
+
+        /// <summary>
+        /// Toggle Plan Mode (read-only planning mode)
         /// </summary>
         public void SetPlanMode(bool enabled)
         {
@@ -148,17 +167,28 @@ namespace E3DCopilot.Core
             _sink.Emit(new CopilotEvent
             {
                 Kind = EventKind.PlanModeChanged,
-                Text = enabled ? "Plan Mode 已启用" : "Plan Mode 已禁用"
+                Text = enabled ? "Plan Mode enabled" : "Plan Mode disabled"
             });
         }
 
         /// <summary>
-        /// 注册待审批请求（AgentLoop 调用）
+        /// Register pending approval (called by AgentLoop)
         /// </summary>
         public void RegisterApproval(PendingApproval approval)
         {
             if (approval == null) return;
             _pendingApprovals[approval.Id] = approval;
+
+            // 审批超时：5分钟后自动拒绝
+            var timeout = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                if (_pendingApprovals.TryGetValue(approval.Id, out var timedOut))
+                {
+                    timedOut.Complete(false, false);
+                    _pendingApprovals.Remove(approval.Id);
+                    _sink.Emit(CopilotEvent.Notice($"Approval timed out: {approval.ToolName}"));
+                }
+            });
 
             _sink.Emit(new CopilotEvent
             {
@@ -170,7 +200,7 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// 处理审批结果（UI 线程调用）
+        /// Handle approval result (called by UI thread)
         /// </summary>
         public void Approve(string approvalId, bool allow, bool persist = false)
         {
@@ -178,49 +208,49 @@ namespace E3DCopilot.Core
 
             if (_pendingApprovals.TryGetValue(approvalId, out var req))
             {
-                req.Complete(allow, persist);  // 唤醒 TaskCompletionSource
+                req.Complete(allow, persist);  // Unblock TaskCompletionSource
                 _pendingApprovals.Remove(approvalId);
 
                 _sink.Emit(new CopilotEvent
                 {
                     Kind = EventKind.Notice,
-                    Text = allow ? "已批准" : "已拒绝"
+                    Text = allow ? "Approved" : "Rejected"
                 });
             }
             else
             {
-                _sink.Emit(CopilotEvent.Error($"未找到审批请求: {approvalId}"));
+                _sink.Emit(CopilotEvent.Error($"Approval request not found: {approvalId}"));
             }
         }
 
         /// <summary>
-        /// 新建会话
+        /// New session
         /// </summary>
         public void NewSession()
         {
             _session = new CopilotSession();
             _pendingApprovals.Clear();
-            _sink.Emit(CopilotEvent.Notice("已创建新会话"));
+            _sink.Emit(CopilotEvent.Notice("New session created"));
         }
 
         /// <summary>
-        /// 获取当前会话摘要（用于状态栏显示）
+        /// Get current session summary (for status bar display)
         /// </summary>
         public string GetSessionSummary()
         {
-            if (_session == null) return "无会话";
-            return $"消息: {_session.Messages.Count} | 模式: {(_session.IsPlanMode ? "Plan" : "Act")}";
+            if (_session == null) return "No session";
+            return $"Messages: {_session.Messages.Count} | Mode: {(_session.IsPlanMode ? "Plan" : "Act")}";
         }
 
         public void Dispose()
         {
             try
             {
-                _cts?.Cancel();  // 先取消，再释放
+                _cts?.Cancel();  // Cancel first, then dispose
             }
             catch
             {
-                // 忽略取消异常
+                // Ignore cancellation exception
             }
             
             try
@@ -229,15 +259,20 @@ namespace E3DCopilot.Core
             }
             catch
             {
-                // 忽略释放异常
+                // Ignore dispose exception
             }
             
             _cts = null;
+            // 拒绝所有待处理的审批
+            foreach (var kvp in _pendingApprovals)
+            {
+                try { kvp.Value.Complete(false, false); } catch { }
+            }
             _pendingApprovals.Clear();
         }
 
         /// <summary>
-        /// 桥接事件接收器
+        /// Bridge event sink
         /// </summary>
         private class BridgeEventSink : IEventSink
         {

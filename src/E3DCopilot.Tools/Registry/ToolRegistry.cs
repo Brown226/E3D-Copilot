@@ -64,6 +64,18 @@ namespace E3DCopilot.Tools.Registry
             }
         }
 
+        /// <summary>
+        /// 获取当前元素名称（未关联环境，返回 null）
+        /// </summary>
+        public string GetCurrentElementName() => null;
+
+        /// <summary>
+        /// 获取多选元素名称列表（未关联环境，返回空列表）
+        /// </summary>
+        public List<string> GetSelectedElementNames() => new List<string>();
+
+        public string GetAttribute(string element, string attribute) => null;
+
         /// <summary>核心工具列表（6 个）</summary>
         public static readonly string[] CoreToolNames =
         {

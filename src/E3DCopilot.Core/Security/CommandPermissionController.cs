@@ -169,15 +169,18 @@ namespace E3DCopilot.Core.Security
         {
             var ctrl = new CommandPermissionController();
 
-            // 只读工具白名单
-            ctrl.AddRule("query", AccessMode.Allow, "查询");
-            ctrl.AddRule("check", AccessMode.Allow, "检查");
-            ctrl.AddRule("calculate", AccessMode.Allow, "计算");
+            // 只读工具 —— 自动批准（Allow）
+            ctrl.AddRule("query",          AccessMode.Allow, "查询数据库");
+            ctrl.AddRule("get_attributes", AccessMode.Allow, "获取属性");
+            ctrl.AddRule("check",          AccessMode.Allow, "检查/校验");
+            ctrl.AddRule("calculate",      AccessMode.Allow, "几何计算（纯数学）");
 
-            // 写工具需确认
-            ctrl.AddRule("modify", AccessMode.Ask, "属性修改需确认");
-            ctrl.AddRule("execute_pml", AccessMode.Ask, "PML 执行需确认");
-            ctrl.AddRule("export", AccessMode.Ask, "导入导出需确认");
+            // 导出 —— 涉及文件写入，需确认
+            ctrl.AddRule("export",    AccessMode.Ask, "导出需确认");
+
+            // 写工具 —— 明确需审批
+            ctrl.AddRule("modify",       AccessMode.Ask, "属性修改需审批");
+            ctrl.AddRule("execute_pml",  AccessMode.Ask, "PML 执行需审批");
 
             return ctrl;
         }

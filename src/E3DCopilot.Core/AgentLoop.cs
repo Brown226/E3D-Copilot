@@ -318,7 +318,11 @@ namespace E3DCopilot.Core
         private CopilotRequest BuildRequest(CopilotSession session)
         {
             // Resolve current Provider and model
-            var (providerConfig, modelName) = _config.ResolveModel(_config.DefaultModel);
+            // If controller has a current model set (user switched), use it; otherwise use default
+            string modelRef = !string.IsNullOrEmpty(_controller?.CurrentModelName) 
+                ? _controller.CurrentModelName 
+                : _config.DefaultModel;
+            var (providerConfig, modelName) = _config.ResolveModel(modelRef);
             
             var request = new CopilotRequest
             {
@@ -328,9 +332,11 @@ namespace E3DCopilot.Core
                 Messages = new List<ChatMessage>()
             };
 
-            // System Prompt
+            // System Prompt（包含当前选中元素上下文 + 多选元素列表）
+            string currentElement = _executor.GetCurrentElementName();
+            var selectedElements = _executor.GetSelectedElementNames();
             request.Messages.Add(new ChatMessage(MessageRole.System,
-                SystemPrompt.Build()));
+                SystemPrompt.Build(currentElement, null, selectedElements)));
 
             // Tool definitions (from ToolExecutor)
             var toolSchemas = new List<ToolSchema>();

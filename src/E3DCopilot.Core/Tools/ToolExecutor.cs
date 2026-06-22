@@ -17,6 +17,7 @@ namespace E3DCopilot.Core.Tools
     {
         private readonly Dictionary<string, IToolHandler> _handlers;
         private readonly IEventSink _sink;
+        private IToolDispatcher _dispatcher;
 
         public ToolExecutor(IEventSink sink)
         {
@@ -43,6 +44,22 @@ namespace E3DCopilot.Core.Tools
         {
             foreach (var h in handlers)
                 Register(h);
+        }
+
+        /// <summary>
+        /// 获取当前 E3D 选中元素名称（供 AgentLoop 构建上下文）
+        /// </summary>
+        public string GetCurrentElementName()
+        {
+            return _dispatcher?.GetCurrentElementName();
+        }
+
+        /// <summary>
+        /// 获取 E3D 多选元素名称列表（供 AgentLoop 构建多元素上下文）
+        /// </summary>
+        public List<string> GetSelectedElementNames()
+        {
+            return _dispatcher?.GetSelectedElementNames() ?? new List<string>();
         }
 
         /// <summary>
@@ -124,13 +141,15 @@ namespace E3DCopilot.Core.Tools
         public static ToolExecutor CreateDefault(IToolDispatcher dispatcher, IEventSink sink)
         {
             var executor = new ToolExecutor(sink);
+            executor._dispatcher = dispatcher;
 
             executor.Register(new DbQueryHandler(dispatcher));
             executor.Register(new ModifyHandler(dispatcher));
             executor.Register(new PmlCommandHandler(dispatcher));
             executor.Register(new CheckHandler(dispatcher));
-            executor.Register(new CalculateHandler(dispatcher));
+            executor.Register(new CalculateHandler());
             executor.Register(new ExportHandler(dispatcher));
+            executor.Register(new GetAttributesHandler(dispatcher));
 
             return executor;
         }

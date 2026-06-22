@@ -121,11 +121,21 @@ namespace E3DCopilot.Core.Providers
     public interface ICopilotProvider
     {
         /// <summary>
+        /// Provider 名称标识
+        /// </summary>
+        string Name { get; }
+
+        /// <summary>
         /// 流式调用 LLM，通过 onChunk 回调逐块返回
         /// </summary>
         Task StreamAsync(
             CopilotRequest request,
             Action<Chunk> onChunk,
             CancellationToken ct);
+
+        /// <summary>
+        /// 健康检查 — 检测 Provider 是否可用
+        /// </summary>
+        Task<bool> HealthCheckAsync();
     }
 }

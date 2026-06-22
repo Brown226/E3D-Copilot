@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -21,6 +21,11 @@ namespace E3DCopilot.Core.Providers
         private readonly string _model;
         private readonly string _apiKey;
         
+        /// <summary>
+        /// Provider 名称
+        /// </summary>
+        public string Name { get; set; } = "vllm";
+        
         // Streaming tool_calls accumulator (stored by index)
         private readonly System.Collections.Generic.Dictionary<int, ToolCallAccumulator> _toolCallAccumulators
             = new System.Collections.Generic.Dictionary<int, ToolCallAccumulator>();
@@ -32,6 +37,10 @@ namespace E3DCopilot.Core.Providers
             _baseUrl = baseUrl.TrimEnd('/');
             _model = model;
             _apiKey = apiKey ?? "";
+            
+            // 强制启用 TLS 1.2（.NET 4.8 在某些系统上默认不包含，导致 HTTPS 连接失败）
+            System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
+            
             _http = new HttpClient
             {
                 Timeout = TimeSpan.FromMilliseconds(120000)
@@ -50,6 +59,24 @@ namespace E3DCopilot.Core.Providers
         }
 
         /// <summary>
+        /// 健康检查 — 调用 /models 端点检查 Provider 是否可用
+        /// </summary>
+        public async Task<bool> HealthCheckAsync()
+        {
+            try
+            {
+                using (var resp = await _http.GetAsync($"{_baseUrl}/models", new CancellationTokenSource(5000).Token))
+                {
+                    return resp.IsSuccessStatusCode;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Stream call vLLM, returns chunks via onChunk callback
         /// Uses StreamReader to read SSE line by line
         /// </summary>
@@ -61,90 +88,107 @@ namespace E3DCopilot.Core.Providers
             // Reset tool_calls accumulator (new request each time)
             _toolCallAccumulators.Clear();
 
-            // Build request body (using JObject for conditional fields)
-            var bodyObj = new JObject
+            int maxRetries = 2;
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
             {
-                ["model"] = request.Model ?? _model,
-                ["stream"] = true,
-                ["temperature"] = request.Temperature,
-                ["max_tokens"] = request.MaxTokens,
-                ["messages"] = new JArray(request.Messages.Select(SerializeMessage))
-            };
-
-            // Inject tool definitions (OpenAI-compatible format)
-            if (request.Tools != null && request.Tools.Count > 0)
-            {
-                bodyObj["tools"] = new JArray(request.Tools.Select(t => new JObject
+                try
                 {
-                    ["type"] = "function",
-                    ["function"] = new JObject
+                    // Build request body (using JObject for conditional fields)
+                    var bodyObj = new JObject
                     {
-                        ["name"] = t.Name,
-                        ["description"] = t.Description ?? "",
-                        ["parameters"] = !string.IsNullOrEmpty(t.ParametersJson)
-                            ? SafeParseParameters(t.ParametersJson)
-                            : JObject.FromObject(new { type = "object", properties = new JObject() })
+                        ["model"] = request.Model ?? _model,
+                        ["stream"] = true,
+                        ["temperature"] = request.Temperature,
+                        ["max_tokens"] = request.MaxTokens,
+                        ["messages"] = new JArray(request.Messages.Select(SerializeMessage))
+                    };
+        
+                    // Inject tool definitions (OpenAI-compatible format)
+                    if (request.Tools != null && request.Tools.Count > 0)
+                    {
+                        bodyObj["tools"] = new JArray(request.Tools.Select(t => new JObject
+                        {
+                            ["type"] = "function",
+                            ["function"] = new JObject
+                            {
+                                ["name"] = t.Name,
+                                ["description"] = t.Description ?? "",
+                                ["parameters"] = !string.IsNullOrEmpty(t.ParametersJson)
+                                    ? SafeParseParameters(t.ParametersJson)
+                                    : JObject.FromObject(new { type = "object", properties = new JObject() })
+                            }
+                        }));
                     }
-                }));
-            }
+        
+                    string jsonBody = bodyObj.ToString(Formatting.None);
+                    
+                    // Debug: output request body
+                    try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.Environment.GetEnvironmentVariable("TEMP") ?? ".", "vllm_request.json"), jsonBody); } catch { }
+        
+                    // Avoid default UTF8 encoding (would include BOM), construct manually to avoid API rejection
+                    
+                    // Debug: output request body size
+                    System.Diagnostics.Debug.WriteLine($"[VllmProvider] Request body size: {jsonBody.Length} chars, tools: {request.Tools?.Count}");
+                    // Avoid default UTF8 encoding (would include BOM), construct manually to avoid API rejection
+                    var jsonBytes = Encoding.UTF8.GetBytes(jsonBody);
+                    var content = new ByteArrayContent(jsonBytes);
+                    content.Headers.ContentType =
+                        new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
 
-            string jsonBody = bodyObj.ToString(Formatting.None);
+                    var requestMsg = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions")
+                    {
+                        Content = content
+                    };
+                    if (!string.IsNullOrEmpty(_apiKey))
+                    {
+                        requestMsg.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
+                    }
+        
+                    using (var response = await _http.SendAsync(requestMsg, ct))
+                    {
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            string errorBody = await response.Content.ReadAsStringAsync();
+                            onChunk(Chunk.FromText($"\n[API error {response.StatusCode}]: {errorBody}"));
+                            return;
+                        }
+        
+                        using (var stream = await response.Content.ReadAsStreamAsync())
+                        using (var reader = new StreamReader(stream))
+                        {
+                            while (!reader.EndOfStream && !ct.IsCancellationRequested)
+                            {
+                                string line = await reader.ReadLineAsync();
+        
+                                if (string.IsNullOrEmpty(line)) continue;
+                                if (!line.StartsWith("data: ")) continue;
+        
+                                string data = line.Substring(6).Trim();
+        
+                                // SSE end marker
+                                if (data == "[DONE]") break;
+        
+                                try
+                                {
+                                    var json = JObject.Parse(data);
+                                    ProcessChunk(json, onChunk);
+                                }
+                                catch (JsonReaderException)
+                                {
+                                    // Skip chunks that fail to parse (vLLM occasionally outputs non-standard format)
+                                    continue;
+                                }
+                            }
+                        }
+                    }
             
-            // Debug: output request body
-            try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.Environment.GetEnvironmentVariable("TEMP") ?? ".", "vllm_request.json"), jsonBody); } catch { }
-
-            // Avoid default UTF8 encoding (would include BOM), construct manually to avoid API rejection
-            
-            // Debug: output request body size
-            System.Diagnostics.Debug.WriteLine($"[VllmProvider] Request body size: {jsonBody.Length} chars, tools: {request.Tools?.Count}");
-            // Avoid default UTF8 encoding (would include BOM), construct manually to avoid API rejection
-            var jsonBytes = Encoding.UTF8.GetBytes(jsonBody);
-            var content = new ByteArrayContent(jsonBytes);
-            content.Headers.ContentType =
-                new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
-
-            if (!string.IsNullOrEmpty(_apiKey))
-            {
-                _http.DefaultRequestHeaders.Remove("Authorization");
-                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-            }
-
-            using (var response = await _http.PostAsync(
-                $"{_baseUrl}/chat/completions", content, ct))
-            {
-                if (!response.IsSuccessStatusCode)
-                {
-                    string errorBody = await response.Content.ReadAsStringAsync();
-                    onChunk(Chunk.FromText($"\n[API error {response.StatusCode}]: {errorBody}"));
-                    return;
+                    return; // 成功则退出
                 }
-
-                using (var stream = await response.Content.ReadAsStreamAsync())
-                using (var reader = new StreamReader(stream))
+                catch (HttpRequestException) when (attempt < maxRetries)
                 {
-                    while (!reader.EndOfStream && !ct.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync();
-
-                        if (string.IsNullOrEmpty(line)) continue;
-                        if (!line.StartsWith("data: ")) continue;
-
-                        string data = line.Substring(6).Trim();
-
-                        // SSE end marker
-                        if (data == "[DONE]") break;
-
-                        try
-                        {
-                            var json = JObject.Parse(data);
-                            ProcessChunk(json, onChunk);
-                        }
-                        catch (JsonReaderException)
-                        {
-                            // Skip chunks that fail to parse (vLLM occasionally outputs non-standard format)
-                            continue;
-                        }
-                    }
+                    int delayMs = (int)Math.Pow(2, attempt) * 1000;
+                    onChunk(Chunk.FromText($"\n[重试 {attempt + 1}/{maxRetries} 在 {delayMs}ms 后...]"));
+                    await Task.Delay(delayMs, ct);
                 }
             }
         }

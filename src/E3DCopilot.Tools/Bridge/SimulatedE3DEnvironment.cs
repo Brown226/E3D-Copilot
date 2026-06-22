@@ -129,5 +129,10 @@ namespace E3DCopilot.Tools.Bridge
         {
             return "PIPE-001";
         }
+
+        public List<string> GetSelectedElementNames()
+        {
+            return new List<string> { "PIPE-001", "EQUI-A1" };
+        }
     }
 }

@@ -27,6 +27,9 @@ namespace E3DCopilot.Tools.Bridge
 
         /// <summary>获取当前元素名称</summary>
         string GetCurrentElementName();
+
+        /// <summary>获取多选元素名称列表</summary>
+        List<string> GetSelectedElementNames();
     }
 
     /// <summary>
