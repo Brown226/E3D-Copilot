@@ -18,7 +18,16 @@ namespace E3DCopilot.Core.Messaging
         public const string UserApprove = "user:approve";
         public const string UserAskResponse = "user:ask_response";
         public const string Ping = "ping";
-        
+
+        // === Provider / Model 管理（参考 Reasonix） ===
+        public const string ModelsList = "models:list";
+        public const string ModelSwitch = "model:switch";
+        public const string ProvidersList = "providers:list";
+        public const string ProviderSave = "provider:save";
+        public const string ProviderDelete = "provider:delete";
+        public const string ProviderFetchModels = "provider:fetch_models";
+        public const string ProviderSetKey = "provider:set_key";
+
         // === 后端 → 前端 ===
         public const string Pong = "pong";
         public const string LlmStreamDelta = "llm:stream:delta";
@@ -33,6 +42,9 @@ namespace E3DCopilot.Core.Messaging
         public const string Error = "error";
         public const string HostReady = "host:ready";
         public const string ConfigSync = "config:sync";
+        public const string ModelsListResult = "models:list:result";
+        public const string ProvidersListResult = "providers:list:result";
+        public const string ProviderFetchResult = "provider:fetch_models:result";
     }
     
     #endregion
@@ -203,20 +215,174 @@ namespace E3DCopilot.Core.Messaging
     {
         [JsonProperty("provider")]
         public string Provider { get; set; } = "";
-        
+
         [JsonProperty("model")]
         public string Model { get; set; } = "";
-        
+
         [JsonProperty("baseUrl")]
         public string BaseUrl { get; set; } = "";
-        
+
         [JsonProperty("apiKey")]
         public string ApiKey { get; set; } = "";
-        
+
         [JsonProperty("mode")]
         public string Mode { get; set; } = "";
+
+        // === 多 provider 模式（参考 Reasonix） ===
+        [JsonProperty("currentProvider")]
+        public string CurrentProvider { get; set; } = "";
+
+        [JsonProperty("currentModel")]
+        public string CurrentModel { get; set; } = "";
+
+        [JsonProperty("providers")]
+        public ProviderInfo[] Providers { get; set; }
     }
-    
+
+    /// <summary>
+    /// 单个 provider 信息（前后端传输格式）
+    /// </summary>
+    public class ProviderInfo
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("kind")]
+        public string Kind { get; set; } = "openai";
+
+        [JsonProperty("baseUrl")]
+        public string BaseUrl { get; set; }
+
+        [JsonProperty("apiKey")]
+        public string ApiKey { get; set; } = "";
+
+        [JsonProperty("keySet")]
+        public bool KeySet { get; set; }
+
+        [JsonProperty("models")]
+        public string[] Models { get; set; } = new string[0];
+
+        [JsonProperty("default")]
+        public string Default { get; set; } = "";
+
+        [JsonProperty("enabled")]
+        public bool Enabled { get; set; } = true;
+
+        [JsonProperty("builtIn")]
+        public bool BuiltIn { get; set; } = false;
+    }
+
+    /// <summary>
+    /// 单个模型信息（前后端传输格式）
+    /// </summary>
+    public class ModelInfo
+    {
+        [JsonProperty("ref")]
+        public string Ref { get; set; }      // "provider/model"
+
+        [JsonProperty("provider")]
+        public string Provider { get; set; }
+
+        [JsonProperty("model")]
+        public string Model { get; set; }
+
+        [JsonProperty("current")]
+        public bool Current { get; set; }
+    }
+
+    /// <summary>
+    /// 切换模型请求（"provider/model"）
+    /// </summary>
+    public class ModelSwitchPayload
+    {
+        [JsonProperty("ref")]
+        public string Ref { get; set; }
+    }
+
+    /// <summary>
+    /// Provider 列表/模型列表响应
+    /// </summary>
+    public class ModelsListResultPayload
+    {
+        [JsonProperty("models")]
+        public ModelInfo[] Models { get; set; } = new ModelInfo[0];
+
+        [JsonProperty("currentProvider")]
+        public string CurrentProvider { get; set; }
+
+        [JsonProperty("currentModel")]
+        public string CurrentModel { get; set; }
+    }
+
+    public class ProvidersListResultPayload
+    {
+        [JsonProperty("providers")]
+        public ProviderInfo[] Providers { get; set; } = new ProviderInfo[0];
+
+        [JsonProperty("currentProvider")]
+        public string CurrentProvider { get; set; }
+
+        [JsonProperty("currentModel")]
+        public string CurrentModel { get; set; }
+    }
+
+    public class ProviderFetchResultPayload
+    {
+        [JsonProperty("providerName")]
+        public string ProviderName { get; set; }
+
+        [JsonProperty("success")]
+        public bool Success { get; set; }
+
+        [JsonProperty("models")]
+        public string[] Models { get; set; } = new string[0];
+
+        [JsonProperty("error")]
+        public string Error { get; set; }
+    }
+
+    public class ProviderSavePayload
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("kind")]
+        public string Kind { get; set; } = "openai";
+
+        [JsonProperty("baseUrl")]
+        public string BaseUrl { get; set; }
+
+        [JsonProperty("apiKey")]
+        public string ApiKey { get; set; }
+
+        [JsonProperty("models")]
+        public string[] Models { get; set; } = new string[0];
+
+        [JsonProperty("default")]
+        public string Default { get; set; }
+
+        [JsonProperty("enabled")]
+        public bool Enabled { get; set; } = true;
+
+        [JsonProperty("builtIn")]
+        public bool BuiltIn { get; set; } = false;
+    }
+
+    public class ProviderDeletePayload
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+    }
+
+    public class ProviderSetKeyPayload
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("apiKey")]
+        public string ApiKey { get; set; }
+    }
+
     #endregion
     
     #region 消息信封

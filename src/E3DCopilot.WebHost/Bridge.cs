@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using E3DCopilot.Core;
+using E3DCopilot.Core.Config;
 using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Messaging;
+using E3DCopilot.Core.Providers;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace E3DCopilot.WebHost
@@ -73,6 +76,35 @@ namespace E3DCopilot.WebHost
 
                     case MessageTypes.Ping:
                         SendToFrontend(MessageTypes.Pong, new { timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
+                        break;
+
+                    // === Provider / Model 管理 ===
+                    case MessageTypes.ModelsList:
+                        HandleModelsList();
+                        break;
+
+                    case MessageTypes.ModelSwitch:
+                        HandleModelSwitch(payload);
+                        break;
+
+                    case MessageTypes.ProvidersList:
+                        HandleProvidersList();
+                        break;
+
+                    case MessageTypes.ProviderSave:
+                        HandleProviderSave(payload);
+                        break;
+
+                    case MessageTypes.ProviderDelete:
+                        HandleProviderDelete(payload);
+                        break;
+
+                    case MessageTypes.ProviderFetchModels:
+                        HandleProviderFetchModels(payload);
+                        break;
+
+                    case MessageTypes.ProviderSetKey:
+                        HandleProviderSetKey(payload);
                         break;
 
                     default:
@@ -257,6 +289,139 @@ namespace E3DCopilot.WebHost
                     SendToFrontend(MessageTypes.Error, new { message = evt.Text });
                     break;
             }
+        }
+
+        // ════════════════════════════════════════════════
+        //  Provider / Model 管理（参考 Reasonix）
+        // ════════════════════════════════════════════════
+
+        private void HandleModelsList()
+        {
+            try
+            {
+                var result = ProvidersService.ListModels(_controller.Config);
+                SendToFrontend(MessageTypes.ModelsListResult, result);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"列出模型失败: {ex.Message}" });
+            }
+        }
+
+        private void HandleModelSwitch(JsonElement? payload)
+        {
+            try
+            {
+                string ref_ = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("ref", out var prop))
+                    ref_ = prop.GetString();
+
+                bool ok = ProvidersService.SwitchModel(_controller.Config, ref_ ?? "");
+                if (ok)
+                {
+                    // 重建 provider 指向新模型
+                    _controller.SwitchProvider(BuildProviderFromConfig(_controller.Config));
+                    SendToFrontend(MessageTypes.Notice, new { text = $"已切换到: {ref_}" });
+                }
+                SendToFrontend(MessageTypes.ModelSwitch, new Dictionary<string, object> { ["success"] = ok, ["ref"] = ref_ ?? "" });
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"切换模型失败: {ex.Message}" });
+            }
+        }
+
+        private void HandleProvidersList()
+        {
+            try
+            {
+                var result = ProvidersService.ListProviders(_controller.Config);
+                SendToFrontend(MessageTypes.ProvidersListResult, result);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"列出 Provider 失败: {ex.Message}" });
+            }
+        }
+
+        private void HandleProviderSave(JsonElement? payload)
+        {
+            try
+            {
+                if (!payload.HasValue)
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少 payload" });
+                    return;
+                }
+                var savePayload = JsonSerializer.Deserialize<ProviderSavePayload>(payload.Value.GetRawText(), JsonOpts);
+                bool ok = ProvidersService.SaveProvider(_controller.Config, savePayload);
+                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config));
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"保存 Provider 失败: {ex.Message}" });
+            }
+        }
+
+        private void HandleProviderDelete(JsonElement? payload)
+        {
+            try
+            {
+                string name = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("name", out var prop))
+                    name = prop.GetString();
+                bool ok = ProvidersService.DeleteProvider(_controller.Config, name ?? "");
+                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config));
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"删除 Provider 失败: {ex.Message}" });
+            }
+        }
+
+        private void HandleProviderFetchModels(JsonElement? payload)
+        {
+            try
+            {
+                string name = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("name", out var prop))
+                    name = prop.GetString();
+                var result = ProvidersService.FetchProviderModels(_controller.Config, name ?? "");
+                SendToFrontend(MessageTypes.ProviderFetchResult, result);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"拉取模型失败: {ex.Message}" });
+            }
+        }
+
+        private void HandleProviderSetKey(JsonElement? payload)
+        {
+            try
+            {
+                if (!payload.HasValue) return;
+                string name = null, key = null;
+                if (payload.Value.TryGetProperty("name", out var n)) name = n.GetString();
+                if (payload.Value.TryGetProperty("apiKey", out var k)) key = k.GetString();
+                ProvidersService.SetProviderKey(_controller.Config, name ?? "", key ?? "");
+                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config));
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"设置 Key 失败: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// 根据 Config 重新构建 Provider 实例（用于切换模型后让 Controller 指向新 Provider）
+        /// </summary>
+        private ICopilotProvider BuildProviderFromConfig(CopilotConfig config)
+        {
+            var (prov, modelName) = config.ResolveModel(config.DefaultModel);
+            if (prov == null) return _controller.Provider;
+            if (prov.Kind == "anthropic")
+                throw new NotSupportedException("Anthropic Provider not yet implemented");
+            return new VllmProvider(prov.BaseUrl, modelName, prov.ApiKey);
         }
     }
 }

@@ -10,6 +10,7 @@ using E3DCopilot.Core.Events;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using E3DCopilot.Core.Messaging;
+using E3DCopilot.Core.Providers;
 
 namespace E3DCopilot.WebHost
 {
@@ -131,7 +132,7 @@ namespace E3DCopilot.WebHost
                 {
                     if (e.IsSuccess)
                     {
-                        _bridge.SendToFrontend("host:ready", new
+                        _bridge.SendToFrontend(MessageTypes.HostReady, new
                         {
                             version = Assembly.GetExecutingAssembly()
                                 .GetName().Version?.ToString() ?? "1.0.0",
@@ -139,21 +140,30 @@ namespace E3DCopilot.WebHost
                             timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                         });
 
-                        // 推送实际配置到前端（同步设置界面）
+                        // 推送实际配置到前端（同步设置界面）— 多 provider 模式
                         try
                         {
                             var config = _controller.Config;
                             var (prov, model) = config.ResolveModel(config.DefaultModel);
-                            _bridge.SendToFrontend("config:sync", new
+                            var providersList = E3DCopilot.Core.Providers.ProvidersService
+                                .ListProviders(config);
+                            _bridge.SendToFrontend(MessageTypes.ConfigSync, new
                             {
                                 provider = config.DefaultProvider,
                                 model = model,
                                 baseUrl = prov?.BaseUrl ?? "",
                                 apiKey = prov?.ApiKey ?? "",
-                                mode = _controller.IsPlanMode ? "plan" : "act"
+                                mode = _controller.IsPlanMode ? "plan" : "act",
+                                currentProvider = prov?.Name ?? "",
+                                currentModel = model ?? "",
+                                providers = providersList.Providers
                             });
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            // 配置推送失败不阻塞主流程
+                            System.Diagnostics.Debug.WriteLine($"[ConfigSync] {ex.Message}");
+                        }
 
                         // 连接 Controller 事件（确保 WebView 已加载）
                         _eventDispatcher.ConnectTo(_controller);

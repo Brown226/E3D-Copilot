@@ -18,7 +18,14 @@ export const MessageTypes = {
   UserApprove: 'user:approve',
   UserAskResponse: 'user:ask_response',
   Ping: 'ping',
-  
+  ModelsList: 'models:list',
+  ModelSwitch: 'model:switch',
+  ProvidersList: 'providers:list',
+  ProviderSave: 'provider:save',
+  ProviderDelete: 'provider:delete',
+  ProviderFetchModels: 'provider:fetch_models',
+  ProviderSetKey: 'provider:set_key',
+
   // === 后端 → 前端 ===
   Pong: 'pong',
   LlmStreamDelta: 'llm:stream:delta',
@@ -33,6 +40,9 @@ export const MessageTypes = {
   Error: 'error',
   HostReady: 'host:ready',
   ConfigSync: 'config:sync',
+  ModelsListResult: 'models:list:result',
+  ProvidersListResult: 'providers:list:result',
+  ProviderFetchResult: 'provider:fetch_models:result',
 } as const;
 
 export type MessageType = typeof MessageTypes[keyof typeof MessageTypes];
@@ -151,4 +161,70 @@ export function createApproval(id: string, allow: boolean): CopilotMessage<Appro
 
 export function createAskResponse(questionId: string, answer: string): CopilotMessage<AskResponsePayload> {
   return createMessage(MessageTypes.UserAskResponse, { questionId, answer });
+}
+
+// ============================================
+// Provider / Model 管理（参考 Reasonix）
+// ============================================
+
+export interface ModelInfo {
+  ref: string;        // "provider/model"
+  provider: string;
+  model: string;
+  current: boolean;
+}
+
+export interface ProviderInfo {
+  name: string;
+  kind: string;
+  baseUrl: string;
+  apiKey: string;
+  keySet: boolean;
+  models: string[];
+  default: string;
+  enabled: boolean;
+  builtIn: boolean;
+}
+
+export interface ModelsListResultPayload {
+  models: ModelInfo[];
+  currentProvider: string;
+  currentModel: string;
+}
+
+export interface ProvidersListResultPayload {
+  providers: ProviderInfo[];
+  currentProvider: string;
+  currentModel: string;
+}
+
+export interface ProviderFetchResultPayload {
+  providerName: string;
+  success: boolean;
+  models: string[];
+  error?: string;
+}
+
+export interface ModelSwitchPayload {
+  ref: string; // "provider/model"
+}
+
+export interface ProviderSavePayload {
+  name: string;
+  kind: string;
+  baseUrl: string;
+  apiKey?: string;
+  models: string[];
+  default: string;
+  enabled: boolean;
+  builtIn: boolean;
+}
+
+export interface ProviderDeletePayload {
+  name: string;
+}
+
+export interface ProviderSetKeyPayload {
+  name: string;
+  apiKey: string;
 }

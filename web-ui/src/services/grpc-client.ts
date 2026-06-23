@@ -11,17 +11,61 @@ import bridge, { MessageTypes } from "../bridge"
 
 type Cb = { onResponse?: (...a: any[]) => void; onError?: (e: any) => void; onComplete?: () => void }
 
+// ── Provider / Model 类型定义（参考 Reasonix ModelInfo/ProviderView） ──
+export interface ModelInfo {
+  ref: string          // "provider/model"
+  provider: string
+  model: string
+  current: boolean
+}
+
+export interface ProviderView {
+  name: string
+  kind: "openai" | "anthropic" | string
+  baseUrl: string
+  apiKey: string
+  keySet: boolean
+  models: string[]
+  default: string
+  enabled: boolean
+  builtIn: boolean
+}
+
+// 当前激活的 provider/model
+let _currentProviderName = "openai"
+let _currentModelName = "qwen3.7-plus"
+
+let _providers: ProviderView[] = []
+const _providerListeners: Set<() => void> = new Set()
+
+export function getProviders(): ProviderView[] {
+  return _providers
+}
+
+export function getCurrentModel(): { provider: string; model: string; ref: string } {
+  return { provider: _currentProviderName, model: _currentModelName, ref: `${_currentProviderName}/${_currentModelName}` }
+}
+
+export function subscribeProviders(cb: () => void): () => void {
+  _providerListeners.add(cb)
+  return () => { _providerListeners.delete(cb) }
+}
+
+function notifyProvidersChanged() {
+  _providerListeners.forEach((cb) => cb())
+}
+
 // ── 初始状态 ──
 const INITIAL_STATE = {
   version: 1,
   welcomeViewCompleted: true,
-  apiConfiguration: { 
-    provider: "openai", 
-    planModeApiProvider: "openai", 
-    actModeApiProvider: "openai", 
-    apiModelId: "qwen3.7-plus", 
-    openAiBaseUrl: "https://opencode.ai/zen/go/v1", 
-    openAiApiKey: "sk-jnDafVDYkBqpd6X81cWbkNuocNQtgHcaaiwm08fU6EtQcavJV97iPr6J1SgPq1pe" 
+  apiConfiguration: {
+    provider: "openai",
+    planModeApiProvider: "openai",
+    actModeApiProvider: "openai",
+    apiModelId: "qwen3.7-plus",
+    openAiBaseUrl: "https://opencode.ai/zen/go/v1",
+    openAiApiKey: "sk-jnDafVDYkBqpd6X81cWbkNuocNQtgHcaaiwm08fU6EtQcavJV97iPr6J1SgPq1pe"
   },
   autoApprovalSettings: { enabled: false, actions: [], notifications: true },
   focusChainSettings: { enabled: false, modifiedMessages: [], checklists: [] },
@@ -60,17 +104,41 @@ bridge.on((msg: { type: string; payload: any }) => {
     // ── 配置同步 ──
     case MessageTypes.ConfigSync:
       console.log("[gRPC-Client] Config sync:", msg.payload)
-      // 更新前端初始状态中的 API 配置
       if (msg.payload) {
-        INITIAL_STATE.apiConfiguration = {
-          provider: "openai",
-          planModeApiProvider: "openai",
-          actModeApiProvider: "openai",
-          apiModelId: msg.payload.model || INITIAL_STATE.apiConfiguration.apiModelId,
-          openAiBaseUrl: msg.payload.baseUrl || INITIAL_STATE.apiConfiguration.openAiBaseUrl,
-          openAiApiKey: msg.payload.apiKey || INITIAL_STATE.apiConfiguration.openAiApiKey,
+        // 多 provider 模式（新）
+        if (msg.payload.providers && Array.isArray(msg.payload.providers)) {
+          _providers = msg.payload.providers
+        } else if (msg.payload.baseUrl) {
+          // 兼容旧单 provider 模式
+          _providers = [{
+            name: msg.payload.provider || "openai",
+            kind: "openai",
+            baseUrl: msg.payload.baseUrl || "",
+            apiKey: msg.payload.apiKey || "",
+            keySet: !!(msg.payload.apiKey),
+            models: msg.payload.model ? [msg.payload.model] : [],
+            default: msg.payload.model || "",
+            enabled: true,
+            builtIn: false,
+          }]
         }
-        // 通知状态订阅者更新配置
+        // 更新当前激活
+        if (msg.payload.currentProvider) _currentProviderName = msg.payload.currentProvider
+        if (msg.payload.currentModel) _currentModelName = msg.payload.currentModel
+        else if (msg.payload.model) _currentModelName = msg.payload.model
+        // 兼容：填充 apiConfiguration（cline 框架依赖）
+        const active = _providers.find((p) => p.name === _currentProviderName) || _providers[0]
+        if (active) {
+          INITIAL_STATE.apiConfiguration = {
+            provider: "openai",
+            planModeApiProvider: "openai",
+            actModeApiProvider: "openai",
+            apiModelId: _currentModelName,
+            openAiBaseUrl: active.baseUrl,
+            openAiApiKey: active.apiKey,
+          }
+        }
+        notifyProvidersChanged()
         notifyStateChange()
       }
       break
@@ -430,13 +498,95 @@ function createStubClient(name: string) {
   }})
 }
 
+// ── ModelsServiceClient 真实实现（基于 bridge） ──
+function createModelsServiceClient() {
+  return {
+    // 列出所有可用模型（含当前激活标记）
+    listModels: async (_req?: any) => {
+      const result = await bridge.sendAndWait(MessageTypes.ModelsList, {}, 10000)
+      if (result && (result as any).models) {
+        _currentProviderName = (result as any).currentProvider || _currentProviderName
+        _currentModelName = (result as any).currentModel || _currentModelName
+        notifyProvidersChanged()
+      }
+      return result || { models: [] }
+    },
+
+    // 切换当前模型
+    switchModel: async (req: { ref: string }) => {
+      const result: any = await bridge.sendAndWait(MessageTypes.ModelSwitch, req, 5000)
+      if (result?.success && req.ref) {
+        const parts = req.ref.split("/")
+        _currentProviderName = parts[0] || _currentProviderName
+        _currentModelName = parts[1] || _currentModelName
+        notifyProvidersChanged()
+      }
+      return result || { success: false }
+    },
+
+    // 列出所有 provider
+    listProviders: async (_req?: any) => {
+      const result: any = await bridge.sendAndWait(MessageTypes.ProvidersList, {}, 10000)
+      if (result?.providers) {
+        _providers = result.providers
+        if (result.currentProvider) _currentProviderName = result.currentProvider
+        if (result.currentModel) _currentModelName = result.currentModel
+        notifyProvidersChanged()
+      }
+      return result || { providers: [] }
+    },
+
+    // 保存 provider
+    saveProvider: async (req: any) => {
+      return await bridge.sendAndWait(MessageTypes.ProviderSave, req, 10000)
+    },
+
+    // 删除 provider
+    deleteProvider: async (req: { name: string }) => {
+      return await bridge.sendAndWait(MessageTypes.ProviderDelete, req, 10000)
+    },
+
+    // 拉取 provider 的模型列表
+    fetchProviderModels: async (req: { name: string }) => {
+      return await bridge.sendAndWait(MessageTypes.ProviderFetchModels, req, 30000)
+    },
+
+    // 设置 API Key
+    setProviderKey: async (req: { name: string; apiKey: string }) => {
+      return await bridge.sendAndWait(MessageTypes.ProviderSetKey, req, 5000)
+    },
+
+    // 兼容 cline 旧接口
+    refreshOpenAi: async () => {
+      return await bridge.sendAndWait(MessageTypes.ProvidersList, {}, 10000)
+    },
+    refreshOpenAiModels: async () => {
+      return await bridge.sendAndWait(MessageTypes.ModelsList, {}, 10000)
+    },
+    updateApiConfigurationProto: async (req: any) => {
+      // 旧版 cline 改 apiConfiguration 的调用 → 路由到 saveProvider
+      const provider = req?.apiProvider || req?.provider || "openai"
+      return await bridge.sendAndWait(MessageTypes.ProviderSave, {
+        name: provider,
+        kind: "openai",
+        baseUrl: req?.openAiBaseUrl || req?.baseUrl || "",
+        apiKey: req?.openAiApiKey || req?.apiKey || "",
+        models: req?.apiModelId ? [req.apiModelId] : [],
+        default: req?.apiModelId || req?.model || "",
+        enabled: true,
+        builtIn: false,
+      }, 10000)
+    },
+  }
+}
+
 // ── 导出 ──
 export const TaskServiceClient = createTaskServiceClient()
 export const StateServiceClient = createStateServiceClient()
 export const UiServiceClient = createUiServiceClient()
 export const FileServiceClient = createFileServiceClient()
 export const McpServiceClient = createStubClient("Mcp")
-export const ModelsServiceClient = createStubClient("Models")
+export const ModelsServiceClient = createModelsServiceClient()
 export const AccountServiceClient = createStubClient("Account")
 export const CheckpointsServiceClient = createStubClient("Checkpoints")
 export const WorktreeServiceClient = createStubClient("Worktree")

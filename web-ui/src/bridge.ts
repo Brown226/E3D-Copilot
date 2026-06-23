@@ -172,6 +172,55 @@ class Bridge {
     return this.sendAndWait('ping', null, 5000);
   }
 
+  /**
+   * 获取模型列表
+   */
+  listModels(): Promise<any> {
+    return this.sendAndWait('models:list', null, 10000);
+  }
+
+  /**
+   * 切换模型
+   */
+  switchModel(ref: string): Promise<any> {
+    return this.sendAndWait('model:switch', { ref }, 10000);
+  }
+
+  /**
+   * 获取 Provider 列表
+   */
+  listProviders(): Promise<any> {
+    return this.sendAndWait('providers:list', null, 10000);
+  }
+
+  /**
+   * 保存 Provider
+   */
+  saveProvider(provider: any): Promise<any> {
+    return this.sendAndWait('provider:save', provider, 10000);
+  }
+
+  /**
+   * 删除 Provider
+   */
+  deleteProvider(name: string): Promise<any> {
+    return this.sendAndWait('provider:delete', { name }, 10000);
+  }
+
+  /**
+   * 拉取 Provider 模型列表
+   */
+  fetchProviderModels(name: string): Promise<any> {
+    return this.sendAndWait('provider:fetch_models', { name }, 15000);
+  }
+
+  /**
+   * 设置 Provider API Key
+   */
+  setProviderKey(name: string, apiKey: string): Promise<any> {
+    return this.sendAndWait('provider:set_key', { name, apiKey }, 10000);
+  }
+
   // ============================================
   // 消息监听便利方法（改进点）
   // ============================================
@@ -205,6 +254,127 @@ class Bridge {
     return this.on((msg) => {
       if (msg.type === 'tool:result') {
         callback(msg.payload?.id || '', msg.payload?.result, msg.payload?.error);
+      }
+    });
+  }
+
+  /**
+   * 监听 LLM 流式输出结束
+   */
+  onLlmStreamEnd(callback: (usage?: any) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'llm:stream:end') {
+        callback(msg.payload?.usage);
+      }
+    });
+  }
+
+  /**
+   * 监听 LLM 思考/推理内容
+   */
+  onLlmThinking(callback: (text: string) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'llm:thinking') {
+        callback(msg.payload?.text || '');
+      }
+    });
+  }
+
+  /**
+   * 监听工具错误
+   */
+  onToolError(callback: (id: string, error: string) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'tool:error') {
+        callback(msg.payload?.id || '', msg.payload?.error || '');
+      }
+    });
+  }
+
+  /**
+   * 监听工具审批请求
+   */
+  onToolApproval(callback: (id: string, name: string, args?: string, description?: string) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'tool:approval') {
+        callback(msg.payload?.id || '', msg.payload?.name || '', msg.payload?.args, msg.payload?.description || '');
+      }
+    });
+  }
+
+  /**
+   * 监听 AI 询问用户
+   */
+  onAskUser(callback: (questionId: string, question: string, data?: any) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'ask_user') {
+        callback(msg.payload?.questionId || '', msg.payload?.question || '', msg.payload?.data);
+      }
+    });
+  }
+
+  /**
+   * 监听宿主就绪
+   */
+  onHostReady(callback: (version: string, platform: string, timestamp: number) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'host:ready') {
+        callback(msg.payload?.version || '', msg.payload?.platform || '', msg.payload?.timestamp || 0);
+      }
+    });
+  }
+
+  /**
+   * 监听配置同步
+   */
+  onConfigSync(callback: (provider: string, model: string, baseUrl: string, apiKey: string, mode: string) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'config:sync') {
+        callback(msg.payload?.provider || '', msg.payload?.model || '', msg.payload?.baseUrl || '', msg.payload?.apiKey || '', msg.payload?.mode || '');
+      }
+    });
+  }
+
+  /**
+   * 监听 Pong 响应
+   */
+  onPong(callback: (timestamp: number) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'pong') {
+        callback(msg.payload?.timestamp || 0);
+      }
+    });
+  }
+
+  /**
+   * 监听模型列表响应
+   */
+  onModelsListResult(callback: (models: any[], currentProvider: string, currentModel: string) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'models:list:result') {
+        callback(msg.payload?.models || [], msg.payload?.currentProvider || '', msg.payload?.currentModel || '');
+      }
+    });
+  }
+
+  /**
+   * 监听 Provider 列表响应
+   */
+  onProvidersListResult(callback: (providers: any[], currentProvider: string, currentModel: string) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'providers:list:result') {
+        callback(msg.payload?.providers || [], msg.payload?.currentProvider || '', msg.payload?.currentModel || '');
+      }
+    });
+  }
+
+  /**
+   * 监听 Provider 模型拉取响应
+   */
+  onProviderFetchResult(callback: (providerName: string, success: boolean, models: string[], error?: string) => void): () => void {
+    return this.on((msg) => {
+      if (msg.type === 'provider:fetch_models:result') {
+        callback(msg.payload?.providerName || '', msg.payload?.success || false, msg.payload?.models || [], msg.payload?.error);
       }
     });
   }
