@@ -177,6 +177,17 @@ bridge.on((msg: { type: string; payload: any }) => {
       handleTurnDone()
       break
 
+    case MessageTypes.LlmUsage:
+      // Token 用量统计（后端 LLM 调用完成后推送）
+      // 加入消息列表作为 tool_result 类型的用量行
+      addMessage({
+        type: "say",
+        say: "tool_result",
+        text: JSON.stringify({ usage: msg.payload }),
+        ts: Date.now(),
+      })
+      break
+
     case MessageTypes.LlmThinking:
       handleThinking(msg.payload)
       break
@@ -637,6 +648,11 @@ function createStateServiceClient() {
 
     getSettings: async () => {
       return { settings: "{}" }
+    },
+
+    updateAutoApprovalSettings: async (_req?: any) => {
+      console.log("[StateServiceClient] updateAutoApprovalSettings stub:", _req)
+      return {}
     },
   }
 }

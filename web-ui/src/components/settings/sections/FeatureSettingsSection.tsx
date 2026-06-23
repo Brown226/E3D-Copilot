@@ -83,7 +83,7 @@ const editorFeatures: FeatureToggle[] = [
 	{
 		id: "show-feature-tips",
 		label: "Feature Tips",
-		description: "Show rotating tips during the thinking phase to help you discover Cline features.",
+		description: "Show rotating tips during the thinking phase to help you discover features.",
 		stateKey: "showFeatureTips",
 		settingKey: "showFeatureTips",
 	},
@@ -103,45 +103,16 @@ const editorFeatures: FeatureToggle[] = [
 	},
 	{
 		id: "cline-web-tools",
-		label: "Cline Web Tools",
+		label: "Web Tools",
 		description: "Access web browsing and search capabilities",
 		stateKey: "clineWebToolsEnabled",
 		settingKey: "clineWebToolsEnabled",
 	},
-	{
-		id: "worktrees",
-		label: "Worktrees",
-		description: "Enables git worktree management for running parallel Cline tasks.",
-		stateKey: "worktreesEnabled",
-		settingKey: "worktreesEnabled",
-	},
+	// E3D: Worktrees removed (no git worktree support)
 ]
 
-const experimentalFeatures: FeatureToggle[] = [
-	{
-		id: "yolo",
-		label: "Yolo Mode",
-		description:
-			"Execute tasks without user's confirmation. Auto-switches from Plan to Act mode and disables the ask question tool. Use with extreme caution.",
-		stateKey: "yoloModeToggled",
-		settingKey: "yoloModeToggled",
-	},
-	{
-		id: "double-check-completion",
-		label: "Double-Check Completion",
-		description:
-			"Rejects the first completion attempt and asks the model to re-verify its work against the original task requirements before accepting.",
-		stateKey: "doubleCheckCompletionEnabled",
-		settingKey: "doubleCheckCompletionEnabled",
-	},
-	{
-		id: "lazy-teammate",
-		label: "Lazy Teammate Mode",
-		description: "Sometimes Cline just isn't feeling it today. For entertainment purposes only.",
-		stateKey: "lazyTeammateModeEnabled",
-		settingKey: "lazyTeammateModeEnabled",
-	},
-]
+// E3D: Experimental features (Yolo, DoubleCheck, LazyTeammate) removed
+const experimentalFeatures: FeatureToggle[] = []
 
 const advancedFeatures: FeatureToggle[] = [
 	{
@@ -242,15 +213,7 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 			description: t("featureSettings.clineWebToolsDescription"),
 		},
 		worktrees: { label: t("featureSettings.worktrees"), description: t("featureSettings.worktreesDescription") },
-		yolo: { label: t("featureSettings.yoloMode"), description: t("featureSettings.yoloModeDescription") },
-		"double-check-completion": {
-			label: t("featureSettings.doubleCheckCompletion"),
-			description: t("featureSettings.doubleCheckCompletionDescription"),
-		},
-		"lazy-teammate": {
-			label: t("featureSettings.lazyTeammateMode"),
-			description: t("featureSettings.lazyTeammateModeDescription"),
-		},
+		// E3D: removed yolo, doubleCheck, lazyTeammate (experimental features)
 		hooks: { label: t("featureSettings.hooks"), description: t("featureSettings.hooksDescription") },
 	}
 
@@ -259,18 +222,14 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 		hooksEnabled,
 		mcpDisplayMode,
 		strictPlanModeEnabled,
-		yoloModeToggled,
 		useAutoCondense,
 		subagentsEnabled,
 		clineWebToolsEnabled,
 		worktreesEnabled,
 		focusChainSettings,
-		remoteConfigSettings,
 		nativeToolCallSetting,
 		enableParallelToolCalling,
 		backgroundEditEnabled,
-		doubleCheckCompletionEnabled,
-		lazyTeammateModeEnabled,
 		showFeatureTips,
 	} = useExtensionState()
 
@@ -281,9 +240,8 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 		[focusChainSettings],
 	)
 
-	const isYoloRemoteLocked = remoteConfigSettings?.yoloModeToggled !== undefined
-
 	// State lookup for mapped features
+	// E3D: remote config / yolo removed
 	const featureState: Record<string, boolean | undefined> = {
 		showFeatureTips,
 		enableCheckpointsSetting,
@@ -297,9 +255,6 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 		worktreesEnabled: worktreesEnabled?.user,
 		enableParallelToolCalling,
 		backgroundEditEnabled,
-		doubleCheckCompletionEnabled,
-		lazyTeammateModeEnabled,
-		yoloModeToggled: isYoloRemoteLocked ? remoteConfigSettings?.yoloModeToggled : yoloModeToggled,
 	}
 
 	// Visibility lookup for features with feature flags
@@ -401,13 +356,10 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 								<FeatureRow
 									checked={featureState[feature.stateKey]}
 									description={featureTranslations[feature.id]?.description || feature.description}
-									disabled={feature.id === "yolo" && isYoloRemoteLocked}
-									isRemoteLocked={feature.id === "yolo" && isYoloRemoteLocked}
 									isVisible={featureVisibility[feature.stateKey] ?? true}
 									key={feature.id}
 									label={featureTranslations[feature.id]?.label || feature.label}
 									onChange={(checked) => handleFeatureChange(feature, checked)}
-									remoteTooltip={t("remoteConfig.settingsManagedByOrg")}
 								/>
 							))}
 						</div>

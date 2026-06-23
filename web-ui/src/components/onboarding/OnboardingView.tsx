@@ -279,7 +279,7 @@ const OnboardingStepContent = ({
 const OnboardingViewContent = ({ onboardingModels }: { onboardingModels: OnboardingModelGroup }) => {
 	const { t } = useTranslation("settings")
 	const { handleFieldsChange } = useApiConfigurationHandlers()
-	const { openRouterModels, hideSettings, hideAccount, setShowWelcome } = useExtensionState()
+	const { openRouterModels, hideSettings, setShowWelcome } = useExtensionState()
 
 	const [stepNumber, setStepNumber] = useState(0)
 	const [isActionLoading, setIsActionLoading] = useState(false)
@@ -329,12 +329,11 @@ const OnboardingViewContent = ({ onboardingModels }: { onboardingModels: Onboard
 					actModeApiProvider: "cline",
 				})
 			}
-			hideAccount()
 			hideSettings()
 			const action = "onboarding_completed"
 			StateServiceClient.captureOnboardingProgress({ step, modelSelected, action, completed: true })
 		},
-		[hideAccount, hideSettings, handleFieldsChange, selectedModelId, openRouterModels],
+		[hideSettings, handleFieldsChange, selectedModelId, openRouterModels],
 	)
 
 	const handleFooterAction = useCallback(
