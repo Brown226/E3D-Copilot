@@ -21,8 +21,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ isHidden, children }) =>
 const ChatLayoutContainer = styled.div.withConfig({
 	shouldForwardProp: (prop) => !["isHidden"].includes(prop),
 })<{ isHidden: boolean }>`
-	display: ${(props) => (props.isHidden ? "none" : "grid")};
-	grid-template-rows: 1fr auto;
+	display: ${(props) => (props.isHidden ? "none" : "flex")};
+	flex-direction: column;
 	overflow: hidden;
 	padding: 0;
 	margin: 0;
@@ -36,5 +36,6 @@ const MainContent = styled.div`
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-	grid-row: 1;
+	width: 100%;
+	height: 100%;
 `

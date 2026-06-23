@@ -12,22 +12,22 @@ export const SuggestedTasks: React.FC<{ shouldShowQuickWins: boolean }> = ({ sho
 		await TaskServiceClient.newTask(NewTaskRequest.create({ text: prompt, images: [] }))
 	}
 
-	if (shouldShowQuickWins) {
-		return (
-			<div className="px-4 pt-1 pb-3 select-none">
-				{" "}
-				<h2 className="text-sm font-medium mb-2.5 text-center text-muted-foreground">
-					{t("suggestedTasks.title")}
-					<span className="text-foreground">{t("suggestedTasks.titleHighlight")}</span>
-					{t("suggestedTasks.titleSuffix")}
-				</h2>
-				<div className="flex flex-col space-y-1">
-					{" "}
-					{quickWinTasks.map((task) => (
-						<QuickWinCard key={task.id} onExecute={() => handleExecuteQuickWin(task.prompt)} task={task} />
-					))}
-				</div>
-			</div>
-		)
+	if (!shouldShowQuickWins) {
+		return null
 	}
+
+	return (
+		<div className="select-none">
+			<h2 className="text-sm font-medium mb-2.5 text-center text-muted-foreground">
+				{t("suggestedTasks.title")}
+				<span className="text-foreground">{t("suggestedTasks.titleHighlight")}</span>
+				{t("suggestedTasks.titleSuffix")}
+			</h2>
+			<div className="grid grid-cols-2 gap-2">
+				{quickWinTasks.map((task) => (
+					<QuickWinCard key={task.id} onExecute={() => handleExecuteQuickWin(task.prompt)} task={task} />
+				))}
+			</div>
+		</div>
+	)
 }

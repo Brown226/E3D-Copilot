@@ -1,7 +1,6 @@
 import React from "react"
 import ChatTextArea from "@/components/chat/ChatTextArea"
 import QuotedMessagePreview from "@/components/chat/QuotedMessagePreview"
-import { ModelSwitcher } from "@/components/chat/ModelSwitcher"
 import { ChatState, MessageHandlers, ScrollBehavior } from "../../types/chatTypes"
 
 interface InputSectionProps {
@@ -52,11 +51,6 @@ export const InputSection: React.FC<InputSectionProps> = ({
 					/>
 				</div>
 			)}
-
-			<div className="flex items-center justify-between gap-2 px-1 pt-1">
-				<ModelSwitcher />
-			</div>
-
 			<ChatTextArea
 				activeQuote={activeQuote}
 				inputValue={inputValue}

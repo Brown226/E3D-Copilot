@@ -215,8 +215,9 @@ export const MessagesArea: React.FC<MessagesAreaProps> = ({
 				/>
 			</div>
 
-			<div className="grow flex" ref={scrollContainerRef}>
+			<div className="grow flex flex-col-reverse" ref={scrollContainerRef}>
 				<Virtuoso
+					alignToBottom
 					atBottomStateChange={(isAtBottom) => {
 						setIsAtBottom(isAtBottom)
 						if (isAtBottom) {

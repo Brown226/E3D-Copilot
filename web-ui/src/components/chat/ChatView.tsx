@@ -1,18 +1,13 @@
-import { combineApiRequests } from "@shared/combineApiRequests"
-import { combineCommandSequences } from "@shared/combineCommandSequences"
-import { combineErrorRetryMessages } from "@shared/combineErrorRetryMessages"
-import { combineHookSequences } from "@shared/combineHookSequences"
-import { getApiMetrics, getLastApiReqTotalTokens } from "@shared/getApiMetrics"
 import { BooleanRequest, StringRequest } from "@shared/proto/cline/common"
 import { useCallback, useEffect, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { useMount } from "react-use"
+import { ModelSwitcher } from "@/components/chat/ModelSwitcher"
 import { normalizeApiConfiguration } from "@/components/settings/utils/providerUtils"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { useShowNavbar } from "@/context/PlatformContext"
 import { FileServiceClient, UiServiceClient } from "@/services/grpc-client"
 import { Navbar } from "../menu/Navbar"
-import AutoApproveBar from "./auto-approve-menu/AutoApproveBar"
 // Import utilities and hooks from the new structure
 import {
 	ActionButtons,
@@ -24,7 +19,6 @@ import {
 	groupMessages,
 	InputSection,
 	MessagesArea,
-	TaskSection,
 	useChatState,
 	useMessageHandlers,
 	useScrollBehavior,
@@ -53,25 +47,18 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 		telemetrySetting,
 		mode,
 		userInfo,
-		currentFocusChainChecklist,
-		focusChainSettings,
 		hooksEnabled,
 	} = useExtensionState()
 	const isProdHostedApp = userInfo?.apiBaseUrl === "https://app.cline.bot"
 	const shouldShowQuickWins = isProdHostedApp && (!taskHistory || taskHistory.length < QUICK_WINS_HISTORY_THRESHOLD)
 
-	//const task = messages.length > 0 ? (messages[0].say === "task" ? messages[0] : undefined) : undefined) : undefined
-	const task = useMemo(() => messages.at(0), [messages]) // leaving this less safe version here since if the first message is not a task, then the extension is in a bad state and needs to be debugged (see Cline.abort)
+	const task = useMemo(() => messages.at(0), [messages])
 	const modifiedMessages = useMemo(() => {
 		const slicedMessages = messages.slice(1)
 		// Only combine hook sequences if hooks are enabled
 		const withHooks = hooksEnabled ? combineHookSequences(slicedMessages) : slicedMessages
 		return combineErrorRetryMessages(combineApiRequests(combineCommandSequences(withHooks)))
 	}, [messages, hooksEnabled])
-	// has to be after api_req_finished are all reduced into api_req_started messages
-	const apiMetrics = useMemo(() => getApiMetrics(modifiedMessages), [modifiedMessages])
-
-	const lastApiReqTotalTokens = useMemo(() => getLastApiReqTotalTokens(modifiedMessages) || undefined, [modifiedMessages])
 
 	// Use custom hooks for state management
 	const chatState = useChatState(messages)
@@ -125,9 +112,6 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 							computedStyle.whiteSpace === "pre-wrap" ||
 							computedStyle.whiteSpace === "pre-line"
 						) {
-							// If the element itself or an ancestor has pre-like white-space,
-							// and the selection is likely contained within it, prefer plain text.
-							// This helps with elements like the TaskHeader's text display.
 							preferPlainTextCopy = true
 							break
 						}
@@ -174,9 +158,6 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 			document.removeEventListener("copy", handleCopy)
 		}
 	}, [])
-	// Button state is now managed by useButtonState hook
-
-	// handleFocusChange is already provided by chatState
 
 	// Use message handlers hook
 	const messageHandlers = useMessageHandlers(messages, chatState)
@@ -294,26 +275,6 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 		return filterVisibleMessages(modifiedMessages)
 	}, [modifiedMessages])
 
-	const lastProgressMessageText = useMemo(() => {
-		if (!focusChainSettings.enabled) {
-			return undefined
-		}
-
-		// First check if we have a current focus chain list from the extension state
-		if (currentFocusChainChecklist) {
-			return currentFocusChainChecklist
-		}
-
-		// Fall back to the last task_progress message if no state focus chain list
-		const lastProgressMessage = [...modifiedMessages].reverse().find((message) => message.say === "task_progress")
-		return lastProgressMessage?.text
-	}, [focusChainSettings.enabled, modifiedMessages, currentFocusChainChecklist])
-
-	const showFocusChainPlaceholder = useMemo(() => {
-		// Show placeholder whenever focus chain is enabled and no checklist exists yet.
-		return focusChainSettings.enabled && !lastProgressMessageText
-	}, [focusChainSettings.enabled, lastProgressMessageText])
-
 	const groupedMessages = useMemo(() => {
 		return groupLowStakesTools(groupMessages(visibleMessages))
 	}, [visibleMessages])
@@ -326,24 +287,28 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 		return text
 	}, [task, t])
 
+	const isNewConversation = messages.length <= 1
+
 	return (
 		<ChatLayout isHidden={isHidden}>
-			<div className="flex flex-col flex-1 overflow-hidden">
-				{showNavbar && <Navbar />}
-				{task ? (
-					<TaskSection
-						apiMetrics={apiMetrics}
-						lastApiReqTotalTokens={lastApiReqTotalTokens}
-						lastProgressMessageText={lastProgressMessageText}
-						messageHandlers={messageHandlers}
-						selectedModelInfo={{
-							supportsPromptCache: selectedModelInfo.supportsPromptCache,
-							supportsImages: selectedModelInfo.supportsImages || false,
-						}}
-						showFocusChainPlaceholder={showFocusChainPlaceholder}
-						task={task}
-					/>
-				) : (
+			{showNavbar && <Navbar />}
+			{/* 顶部简洁标题栏：常见 AI 工具风格 */}
+			<header className="flex items-center justify-between px-4 py-3 border-b border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)]">
+				<div className="flex items-center gap-2">
+					<h1 className="text-sm font-semibold text-[var(--vscode-foreground)]">E小智</h1>
+					<span className="text-xs text-[var(--vscode-descriptionForeground)]">AI Copilot</span>
+				</div>
+				<div className="flex items-center gap-3">
+					{isNewConversation && (
+						<span className="text-xs text-[var(--vscode-descriptionForeground)]">{t("chat.newConversation")}</span>
+					)}
+					<ModelSwitcher />
+				</div>
+			</header>
+
+			{/* 消息区：新对话显示欢迎页，否则显示消息流 */}
+			<main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+				{isNewConversation ? (
 					<WelcomeSection
 						hideAnnouncement={hideAnnouncement}
 						shouldShowQuickWins={shouldShowQuickWins}
@@ -353,8 +318,7 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 						telemetrySetting={telemetrySetting}
 						version={version}
 					/>
-				)}
-				{task && (
+				) : (
 					<MessagesArea
 						chatState={chatState}
 						groupedMessages={groupedMessages}
@@ -364,9 +328,10 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 						task={task}
 					/>
 				)}
-			</div>
-			<footer className="bg-(--vscode-sidebar-background)" style={{ gridRow: "2" }}>
-				<AutoApproveBar />
+			</main>
+
+			{/* 底部输入区：固定在最底部 */}
+			<footer className="shrink-0 border-t border-[var(--vscode-panel-border)] bg-[var(--vscode-sidebar-background)]">
 				<ActionButtons
 					chatState={chatState}
 					messageHandlers={messageHandlers}
