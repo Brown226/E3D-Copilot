@@ -72,10 +72,29 @@ interface VSCodeTextFieldProps extends React.InputHTMLAttributes<HTMLInputElemen
 
 const VSCodeTextField = React.forwardRef<HTMLInputElement, VSCodeTextFieldProps>(
 	({ children, className, ...props }, ref) => {
+		// children 既可能是 label（在 input 上方），也可能是 slot 按钮
+		// 简单按元素类型分流：纯文本 span 视为 label，其他视为 slot
+		const arr = React.Children.toArray(children)
+		const labelChild = arr.find(
+			(c) => React.isValidElement(c) && (c.type === "span" || (c.props as any)?.role === "label"),
+		) as React.ReactElement | undefined
+		const slotChild = arr.filter((c) => c !== labelChild)
+
 		return (
-			<div className="relative w-full">
-				<Input ref={ref} className={`${children ? "pr-8" : ""} ${className ?? ""}`} {...props} />
-				{children && <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center">{children}</div>}
+			<div className="flex flex-col gap-1 w-full">
+				{labelChild && <div className="text-sm font-medium text-foreground">{labelChild}</div>}
+				<div className="relative w-full">
+					<Input
+						ref={ref}
+						className={`${slotChild.length > 0 ? "pr-8" : ""} ${className ?? ""}`}
+						{...props}
+					/>
+					{slotChild.length > 0 && (
+						<div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center pointer-events-auto">
+							{slotChild}
+						</div>
+					)}
+				</div>
 			</div>
 		)
 	},
