@@ -419,9 +419,23 @@ function createTaskServiceClient() {
       const files = req?.files || []
       console.log("[gRPC-Client] newTask:", text.substring(0, 50))
 
-      // 清空旧消息，发送新任务
+      // 修复：保留用户消息作为 task，不要清空 _clineMessages 后只放 AI 回复。
+      // 否则 messages.at(0) 会错误地变成 AI 回复，导致 TaskHeader 显示错乱。
       _clineMessages = []
       _currentStreamingMessage = null
+      _isTaskRunning = true
+
+      // 先把用户任务消息加入列表，作为 Cline 的 task 根消息
+      const userMessage: any = {
+        type: "ask",
+        ask: "task",
+        text: text,
+        images: images.length > 0 ? images : undefined,
+        files: files.length > 0 ? files : undefined,
+        ts: Date.now(),
+      }
+      _clineMessages.push(userMessage)
+
       // 使用类型安全的方法
       bridge.sendUserMessage(text, images, files)
       notifyStateChange()
