@@ -184,10 +184,10 @@ namespace E3DCopilot.Core.Providers
             
                     return; // 成功则退出
                 }
-                catch (HttpRequestException) when (attempt < maxRetries)
+                catch (Exception ex) when (attempt < maxRetries)
                 {
                     int delayMs = (int)Math.Pow(2, attempt) * 1000;
-                    onChunk(Chunk.FromText($"\n[重试 {attempt + 1}/{maxRetries} 在 {delayMs}ms 后...]"));
+                    onChunk(Chunk.FromText($"\n[LLM 连接失败 (第{attempt + 1}次), {delayMs}ms 后重试: {ex.GetType().Name}]"));
                     await Task.Delay(delayMs, ct);
                 }
             }

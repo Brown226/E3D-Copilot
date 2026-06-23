@@ -70,6 +70,8 @@ bridge.on((msg: { type: string; payload: any }) => {
           openAiBaseUrl: msg.payload.baseUrl || INITIAL_STATE.apiConfiguration.openAiBaseUrl,
           openAiApiKey: msg.payload.apiKey || INITIAL_STATE.apiConfiguration.openAiApiKey,
         }
+        // 通知状态订阅者更新配置
+        notifyStateChange()
       }
       break
 
@@ -361,6 +363,15 @@ function createStateServiceClient() {
 
     getAvailableTerminalProfiles: async () => {
       return { profiles: [] }
+    },
+
+    updateSettings: async (_req?: any) => {
+      console.log("[gRPC-Client] updateSettings (E3D stub):", _req)
+      return {}
+    },
+
+    getSettings: async () => {
+      return { settings: "{}" }
     },
   }
 }

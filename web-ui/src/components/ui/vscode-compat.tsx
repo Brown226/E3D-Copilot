@@ -74,7 +74,7 @@ const VSCodeTextField = React.forwardRef<HTMLInputElement, VSCodeTextFieldProps>
 	({ children, className, ...props }, ref) => {
 		return (
 			<div className="relative w-full">
-				<Input ref={ref} className={className} {...props} />
+				<Input ref={ref} className={`${children ? "pr-8" : ""} ${className ?? ""}`} {...props} />
 				{children && <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center">{children}</div>}
 			</div>
 		)

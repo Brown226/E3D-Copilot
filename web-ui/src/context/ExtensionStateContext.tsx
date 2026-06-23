@@ -385,8 +385,7 @@ export const ExtensionStateContextProvider: React.FC<{
 				onError: (e) => console.error("[E3D] State error:", e),
 			})
 
-			setDidHydrateState(true)
-			setShowWelcome(false)
+			// 不立即 setDidHydrateState(true)，让 subscribeToState 的回调负责——确保状态就绪后再渲染
 			return () => {
 				if (stateSubscriptionRef.current) {
 					stateSubscriptionRef.current()

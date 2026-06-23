@@ -110,10 +110,11 @@ namespace E3DCopilot.WebHost
                 try
                 {
                     await _controller.SendAsync(text);
+                    SendToFrontend(MessageTypes.Notice, new { text = "[Bridge] LLM 调用完成" });
                 }
                 catch (Exception ex)
                 {
-                    SendToFrontend(MessageTypes.Error, new { message = $"[Bridge] LLM 调用异常: {ex.GetType().Name}: {ex.Message}" });
+                    SendToFrontend(MessageTypes.Error, new { message = $"[Bridge] LLM 异常: {ex.GetType().Name}: {ex.Message}" });
                 }
             });
         }
