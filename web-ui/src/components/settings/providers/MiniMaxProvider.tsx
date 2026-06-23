@@ -1,6 +1,6 @@
 import { minimaxModels } from "@shared/api"
 import { Mode } from "@shared/storage/types"
-import { VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeDropdown, VSCodeOption } from "@/components/ui/vscode-compat"
 import { useTranslation } from "react-i18next"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { ApiKeyField } from "../common/ApiKeyField"

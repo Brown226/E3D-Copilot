@@ -48,7 +48,7 @@ vi.mock("@/components/ui/tooltip", () => ({
 	TooltipContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
-vi.mock("@vscode/webview-ui-toolkit/react", () => ({
+vi.mock("@/components/ui/vscode-compat", () => ({
 	VSCodeButton: ({ children, onClick, className }: any) => (
 		<button className={className} onClick={onClick} type="button">
 			{children}

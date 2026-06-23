@@ -7,7 +7,7 @@ import {
 	VSCodeRadio,
 	VSCodeRadioGroup,
 	VSCodeTextField,
-} from "@vscode/webview-ui-toolkit/react"
+} from "@/components/ui/vscode-compat"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useExtensionState } from "@/context/ExtensionStateContext"

@@ -1,5 +1,5 @@
 import { geminiModels, ModelInfo } from "@shared/api"
-import { VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeDropdown, VSCodeOption } from "@/components/ui/vscode-compat"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import styled from "styled-components"
@@ -237,7 +237,7 @@ export const ModelInfoView = ({
 
 			{/* Collapsible Advanced Section */}
 			<CollapsibleHeader onClick={() => setAdvancedExpanded(!advancedExpanded)}>
-				<CollapsibleArrow $isExpanded={advancedExpanded}>▶</CollapsibleArrow>
+				<CollapsibleArrow $isExpanded={advancedExpanded}>▼</CollapsibleArrow>
 				{t("commonFields.advanced")}
 			</CollapsibleHeader>
 			<CollapsibleContent $isExpanded={advancedExpanded}>

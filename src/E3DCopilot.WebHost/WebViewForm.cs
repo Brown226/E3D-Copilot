@@ -9,6 +9,7 @@ using E3DCopilot.Core;
 using E3DCopilot.Core.Events;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using E3DCopilot.Core.Messaging;
 
 namespace E3DCopilot.WebHost
 {
@@ -138,6 +139,22 @@ namespace E3DCopilot.WebHost
                             timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                         });
 
+                        // 推送实际配置到前端（同步设置界面）
+                        try
+                        {
+                            var config = _controller.Config;
+                            var (prov, model) = config.ResolveModel(config.DefaultModel);
+                            _bridge.SendToFrontend("config:sync", new
+                            {
+                                provider = config.DefaultProvider,
+                                model = model,
+                                baseUrl = prov?.BaseUrl ?? "",
+                                apiKey = prov?.ApiKey ?? "",
+                                mode = _controller.IsPlanMode ? "plan" : "act"
+                            });
+                        }
+                        catch { }
+
                         // 连接 Controller 事件（确保 WebView 已加载）
                         _eventDispatcher.ConnectTo(_controller);
                     }
@@ -188,73 +205,12 @@ namespace E3DCopilot.WebHost
 
         /// <summary>
         /// 接收 CopilotController 事件并转发到前端
+        /// 使用 Bridge.DispatchEvent 复用 MessageTypes 常量
         /// </summary>
         private void OnCopilotEvent(CopilotEvent evt)
         {
-            if (_bridge == null || _webView?.CoreWebView2 == null)
-                return;
-
-            switch (evt.Kind)
-            {
-                case EventKind.Text:
-                case EventKind.StreamDelta:
-                    _bridge.SendToFrontend("llm:stream:delta", new { delta = evt.Text });
-                    break;
-
-                case EventKind.StreamEnd:
-                    _bridge.SendToFrontend("llm:stream:end", new
-                    {
-                        usage = evt.Data // 可选的 token 使用统计
-                    });
-                    break;
-
-                case EventKind.Thinking:
-                    _bridge.SendToFrontend("llm:thinking", new { text = evt.Text });
-                    break;
-
-                case EventKind.ToolDispatch:
-                    _bridge.SendToFrontend("tool:dispatch", new
-                    {
-                        id = evt.ToolId,
-                        name = evt.Text,
-                        args = evt.Data
-                    });
-                    break;
-
-                case EventKind.ToolResult:
-                    _bridge.SendToFrontend("tool:result", new
-                    {
-                        id = evt.ToolId,
-                        result = evt.Data?.ToString()
-                    });
-                    break;
-
-                case EventKind.ToolError:
-                    _bridge.SendToFrontend("tool:result", new
-                    {
-                        id = evt.ToolId,
-                        error = evt.Text
-                    });
-                    break;
-
-                case EventKind.ApprovalRequest:
-                    _bridge.SendToFrontend("tool:approval", new
-                    {
-                        id = evt.ToolId,
-                        name = evt.Text,
-                        args = evt.Data?.ToString(),
-                        description = evt.Text
-                    });
-                    break;
-
-                case EventKind.Notice:
-                    _bridge.SendToFrontend("notice", new { text = evt.Text });
-                    break;
-
-                case EventKind.Error:
-                    _bridge.SendToFrontend("error", new { message = evt.Text });
-                    break;
-            }
+            if (_bridge == null) return;
+            _bridge.DispatchEvent(evt);
         }
     }
 }

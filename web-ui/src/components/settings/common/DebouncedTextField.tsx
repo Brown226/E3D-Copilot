@@ -1,4 +1,4 @@
-import { VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeTextField } from "@/components/ui/vscode-compat"
 import { useDebouncedInput } from "../utils/useDebouncedInput"
 
 /**

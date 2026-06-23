@@ -1,4 +1,4 @@
-import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton } from "@/components/ui/vscode-compat"
 import React from "react"
 import { useTranslation } from "react-i18next"
 import styled from "styled-components"

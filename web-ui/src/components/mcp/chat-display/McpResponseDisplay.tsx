@@ -1,5 +1,5 @@
 import { McpDisplayMode } from "@shared/McpDisplayMode"
-import { VSCodeProgressRing } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeProgressRing } from "@/components/ui/vscode-compat"
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 import React, { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"

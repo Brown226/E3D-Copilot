@@ -24,7 +24,8 @@ namespace E3DCopilot.Core.Events
         TurnDone,           // 轮次结束
         PlanModeChanged,    // Plan Mode 切换
         Error,              // 错误
-        Retry               // 重试
+        Retry,              // 重试
+        AskUser             // AI 向用户提问（等待回答）
     }
 
     /// <summary>

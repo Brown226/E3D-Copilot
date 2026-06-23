@@ -9,15 +9,15 @@ namespace E3DCopilot.Tests
     [TestFixture]
     public class DbQueryHandlerTests
     {
-        private DbQueryHandler _handler;
-        private E3DToolDispatcher _dispatcher;
+        private DispatcherBackedHandler _handler;
 
         [SetUp]
         public void SetUp()
         {
             var env = new SimulatedE3DEnvironment();
-            _dispatcher = new E3DToolDispatcher(env);
-            _handler = new DbQueryHandler(_dispatcher);
+            var dispatcher = new E3DToolDispatcher(env);
+            _handler = new DispatcherBackedHandler(dispatcher,
+                "query", "Query E3D elements", "{}", true);
         }
 
         [Test]
@@ -35,13 +35,8 @@ namespace E3DCopilot.Tests
         [Test]
         public async Task ExecuteAsync_WithValidArgs_ReturnsSuccess()
         {
-            // Arrange
             var args = "{\"type\": \"PIPE\"}";
-
-            // Act
             var result = await _handler.ExecuteAsync(args);
-
-            // Assert
             Assert.IsTrue(result.Success);
             Assert.IsNotNull(result.Text);
         }
@@ -49,13 +44,8 @@ namespace E3DCopilot.Tests
         [Test]
         public async Task ExecuteAsync_WithEmptyArgs_ReturnsSuccess()
         {
-            // Arrange
             var args = "{}";
-
-            // Act
             var result = await _handler.ExecuteAsync(args);
-
-            // Assert
             Assert.IsTrue(result.Success);
         }
     }

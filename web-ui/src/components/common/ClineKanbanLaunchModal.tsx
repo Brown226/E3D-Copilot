@@ -1,5 +1,5 @@
 import { StringRequest } from "@shared/proto/cline/common"
-import { VSCodeButton, VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton, VSCodeCheckbox } from "@/components/ui/vscode-compat"
 import React, { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import kanbanDemoVideoMp4 from "@/assets/cline_kanban_demo.mp4"

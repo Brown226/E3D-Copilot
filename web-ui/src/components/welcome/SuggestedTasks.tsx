@@ -16,9 +16,9 @@ export const SuggestedTasks: React.FC<{ shouldShowQuickWins: boolean }> = ({ sho
 		return (
 			<div className="px-4 pt-1 pb-3 select-none">
 				{" "}
-				<h2 className="text-sm font-medium mb-2.5 text-center text-gray">
+				<h2 className="text-sm font-medium mb-2.5 text-center text-muted-foreground">
 					{t("suggestedTasks.title")}
-					<span className="text-white">{t("suggestedTasks.titleHighlight")}</span>
+					<span className="text-foreground">{t("suggestedTasks.titleHighlight")}</span>
 					{t("suggestedTasks.titleSuffix")}
 				</h2>
 				<div className="flex flex-col space-y-1">

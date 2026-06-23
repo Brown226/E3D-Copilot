@@ -3,17 +3,18 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using E3DCopilot.Core;
 using E3DCopilot.Core.Events;
+using E3DCopilot.Core.Messaging;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace E3DCopilot.WebHost
 {
     /// <summary>
-    /// C# ↔ JavaScript 双向通信桥
-    ///
-    /// 接收 WebView2 前端消息 → 路由到 CopilotController
-    /// 推送 C# 后端事件 → 转发到前端
-    ///
-    /// 消息格式: JSON { type: string, payload: any }
+    /// C# ↔ JavaScript 双向通信桥（改进版）
+    /// 
+    /// 改进点：
+    /// 1. 使用 MessageTypes 常量替代硬编码字符串
+    /// 2. 使用强类型消息契约
+    /// 3. 更好的错误处理和日志
     /// </summary>
     public class Bridge
     {
@@ -50,24 +51,28 @@ namespace E3DCopilot.WebHost
 
                 switch (type)
                 {
-                    case "user:message":
+                    case MessageTypes.UserMessage:
                         HandleUserMessage(payload);
                         break;
 
-                    case "user:cancel":
+                    case MessageTypes.UserCancel:
                         _controller.Cancel();
                         break;
 
-                    case "user:new_session":
+                    case MessageTypes.UserNewSession:
                         _controller.NewSession();
                         break;
 
-                    case "user:approve":
+                    case MessageTypes.UserApprove:
                         HandleApproval(payload);
                         break;
 
-                    case "ping":
-                        SendToFrontend("pong", new { timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
+                    case MessageTypes.UserAskResponse:
+                        HandleAskResponse(payload);
+                        break;
+
+                    case MessageTypes.Ping:
+                        SendToFrontend(MessageTypes.Pong, new { timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
                         break;
 
                     default:
@@ -77,7 +82,7 @@ namespace E3DCopilot.WebHost
             }
             catch (JsonException ex)
             {
-                SendToFrontend("error", new { message = $"JSON 解析错误: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"JSON 解析错误: {ex.Message}" });
             }
         }
 
@@ -91,7 +96,13 @@ namespace E3DCopilot.WebHost
                 text = textProp.GetString();
 
             if (string.IsNullOrWhiteSpace(text))
+            {
+                SendToFrontend(MessageTypes.Notice, new { text = "[Bridge] 收到空消息，已忽略" });
                 return;
+            }
+
+            // 诊断：确认消息到达 Bridge
+            SendToFrontend(MessageTypes.Notice, new { text = $"[Bridge] 收到消息: {text.Substring(0, Math.Min(30, text.Length))}，正在调用 LLM..." });
 
             // 异步发送，不阻塞 UI 线程
             _ = Task.Run(async () =>
@@ -102,7 +113,7 @@ namespace E3DCopilot.WebHost
                 }
                 catch (Exception ex)
                 {
-                    SendToFrontend("error", new { message = ex.Message });
+                    SendToFrontend(MessageTypes.Error, new { message = $"[Bridge] LLM 调用异常: {ex.GetType().Name}: {ex.Message}" });
                 }
             });
         }
@@ -124,9 +135,26 @@ namespace E3DCopilot.WebHost
         }
 
         /// <summary>
-        /// 推送事件到前端（可从任意线程调用）
+        /// 处理用户对 ask_user 问题的回答
         /// </summary>
-        public void SendToFrontend(string type, object payload)
+        private void HandleAskResponse(JsonElement? payload)
+        {
+            if (!payload.HasValue) return;
+
+            var questionId = payload.Value.TryGetProperty("questionId", out var qidProp)
+                ? qidProp.GetString() : null;
+            var answer = payload.Value.TryGetProperty("answer", out var ansProp)
+                ? ansProp.GetString() : null;
+
+            if (!string.IsNullOrEmpty(questionId))
+                E3DCopilot.Core.Tools.Handlers.AskUserHandler.SubmitAnswer(questionId, answer ?? "");
+        }
+
+        /// <summary>
+        /// 推送事件到前端（可从任意线程调用）
+        /// 使用强类型消息契约
+        /// </summary>
+        public void SendToFrontend<T>(string type, T payload)
         {
             if (_webView?.CoreWebView2 == null) return;
 
@@ -142,6 +170,92 @@ namespace E3DCopilot.WebHost
                 _webView.Invoke((Action)post);
             else
                 post();
+        }
+
+        /// <summary>
+        /// 推送事件到前端（使用 object 类型，兼容旧代码）
+        /// </summary>
+        public void SendToFrontend(string type, object payload)
+        {
+            SendToFrontend<object>(type, payload);
+        }
+
+        /// <summary>
+        /// 从 CopilotEvent 分发到前端
+        /// 使用 MessageTypes 常量
+        /// </summary>
+        public void DispatchEvent(CopilotEvent evt)
+        {
+            switch (evt.Kind)
+            {
+                case EventKind.Text:
+                case EventKind.StreamDelta:
+                    SendToFrontend(MessageTypes.LlmStreamDelta, new { delta = evt.Text });
+                    break;
+
+                case EventKind.StreamEnd:
+                    SendToFrontend(MessageTypes.LlmStreamEnd, new { usage = evt.Data });
+                    break;
+
+                case EventKind.Thinking:
+                    SendToFrontend(MessageTypes.LlmThinking, new { text = evt.Text });
+                    break;
+
+                case EventKind.ToolDispatch:
+                    SendToFrontend(MessageTypes.ToolDispatch, new 
+                    { 
+                        id = evt.ToolId, 
+                        name = evt.Text, 
+                        args = evt.Data 
+                    });
+                    break;
+
+                case EventKind.ToolResult:
+                    SendToFrontend(MessageTypes.ToolResult, new 
+                    { 
+                        id = evt.ToolId, 
+                        result = evt.Data?.ToString() 
+                    });
+                    break;
+
+                case EventKind.ToolError:
+                    SendToFrontend(MessageTypes.ToolError, new 
+                    { 
+                        id = evt.ToolId, 
+                        error = evt.Text 
+                    });
+                    break;
+
+                case EventKind.ApprovalRequest:
+                    SendToFrontend(MessageTypes.ToolApproval, new 
+                    { 
+                        id = evt.ToolId, 
+                        name = evt.Text, 
+                        args = evt.Data?.ToString(),
+                        description = evt.Text
+                    });
+                    break;
+
+                case EventKind.AskUser:
+                    var question = evt.Data is System.Text.Json.JsonElement jo
+                        ? jo.GetProperty("question").GetString()
+                        : evt.Text;
+                    SendToFrontend(MessageTypes.AskUser, new 
+                    { 
+                        questionId = evt.ToolId, 
+                        question = question, 
+                        data = evt.Data 
+                    });
+                    break;
+
+                case EventKind.Notice:
+                    SendToFrontend(MessageTypes.Notice, new { text = evt.Text });
+                    break;
+
+                case EventKind.Error:
+                    SendToFrontend(MessageTypes.Error, new { message = evt.Text });
+                    break;
+            }
         }
     }
 }

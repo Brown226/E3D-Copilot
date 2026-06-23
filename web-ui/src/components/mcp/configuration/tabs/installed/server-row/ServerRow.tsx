@@ -14,7 +14,7 @@ import {
 	VSCodePanels,
 	VSCodePanelTab,
 	VSCodePanelView,
-} from "@vscode/webview-ui-toolkit/react"
+} from "@/components/ui/vscode-compat"
 import { RefreshCcwIcon, Trash2Icon } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"

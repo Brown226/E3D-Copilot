@@ -4,13 +4,16 @@ using System.Windows.Forms;
 using Aveva.ApplicationFramework;
 using Aveva.ApplicationFramework.Presentation;
 using E3DCopilot.Core;
+using E3DCopilot.Core.Tools;
 using E3DCopilot.Tools.Bridge;
+using E3DCopilot.Tools.Registry;
 
 namespace E3DCopilot.WebHost
 {
     /// <summary>
-    /// E小智 E3D AI Copilot — Addin 入口
-    /// 在 E3D 侧边栏创建 DockedWindow 并嵌入 WebView2
+    /// E小智 E3D AI Copilot — Addin 入口（WebHost 版）
+    /// 创建 WebView2 宿主面板（React 前端）
+    /// 注意：降级到 CopilotPanel 的逻辑在 E3DCopilot.Addin/CopilotAddinBoot 中实现
     /// </summary>
     public class CopilotAddinBoot : Aveva.ApplicationFramework.Addin
     {
@@ -31,12 +34,15 @@ namespace E3DCopilot.WebHost
             {
                 _isStarted = true;
 
-                // 1. 创建 E3D 环境（RealE3DEnvironment 调用真实 E3D API）
+                // 1. 创建 E3D 环境
                 var env = new RealE3DEnvironment();
                 var dispatcher = new E3DToolDispatcher(env);
 
-                // 2. 创建 Controller（传入 E3DToolDispatcher 作为 dispatcher）
-                _controller = CopilotController.CreateDefault(dispatcher);
+                // 1a. 创建 ToolRouter（路由 6 核心工具 → 41 专用工具）
+                var router = new ToolRouter();
+
+                // 2. 创建 Controller
+                _controller = CopilotController.CreateDefault(dispatcher, null, router);
 
                 // 3. 创建 WebView2 宿主面板
                 _webViewForm = new WebViewForm(_controller);
@@ -48,10 +54,11 @@ namespace E3DCopilot.WebHost
                     _webViewForm,
                     DockedPosition.Right
                 );
+                _dockedWindow.Width = 520;
+                _dockedWindow.Show();
 
-                // 5. 输出启动消息
                 var cmd = Aveva.Core.Utilities.CommandLine.Command
-                    .CreateCommand("$p E小智 Copilot v1.0 已启动");
+                    .CreateCommand("$p E小智 Copilot v1.0 已启动 (WebView2 + React)");
                 cmd.RunInPdms();
             }
             catch (Exception ex)
@@ -78,6 +85,12 @@ namespace E3DCopilot.WebHost
                 {
                     _dockedWindow.Close();
                     _dockedWindow = null;
+                }
+
+                if (_webViewForm != null)
+                {
+                    try { _webViewForm.Dispose(); } catch { }
+                    _webViewForm = null;
                 }
 
                 var cmd = Aveva.Core.Utilities.CommandLine.Command

@@ -1,8 +1,7 @@
 /// <reference types="vitest/config" />
 
 import { writeFileSync } from "node:fs"
-import tailwindcss from "@tailwindcss/vite"
-import react from "@vitejs/plugin-react-swc"
+import react from "@vitejs/plugin-react"
 import { resolve } from "path"
 import { defineConfig, type Plugin, ViteDevServer } from "vite"
 
@@ -42,7 +41,7 @@ export default defineConfig({
 	optimizeDeps: {
 		force: true, // Forces re-optimization
 	},
-	plugins: [react(), tailwindcss(), writePortToFile()],
+	plugins: [react(), writePortToFile()],
 	test: {
 		environment: "jsdom",
 		globals: true,
@@ -82,14 +81,12 @@ export default defineConfig({
 		minify: !isDevBuild,
 		// Enable inline source maps for dev build
 		sourcemap: isDevBuild ? "inline" : false,
+		codeSplitting: false,
 		rollupOptions: {
 			output: {
-				inlineDynamicImports: true,
 				entryFileNames: `assets/[name].js`,
 				chunkFileNames: `assets/[name].js`,
 				assetFileNames: `assets/[name].[ext]`,
-				// Disable compact output for dev build
-				compact: !isDevBuild,
 				// Add generous formatting for dev build
 				...(isDevBuild && {
 					generatedCode: {

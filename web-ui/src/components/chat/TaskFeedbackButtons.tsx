@@ -1,6 +1,6 @@
 import { StringRequest } from "@shared/proto/cline/common"
 import { TaskFeedbackType } from "@shared/WebviewMessage"
-import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton } from "@/components/ui/vscode-compat"
 import React, { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import styled from "styled-components"

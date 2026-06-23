@@ -1,4 +1,4 @@
-import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton } from "@/components/ui/vscode-compat"
 import React, { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { AccountServiceClient } from "@/services/grpc-client"

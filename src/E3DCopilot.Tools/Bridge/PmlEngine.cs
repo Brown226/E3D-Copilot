@@ -13,19 +13,29 @@ namespace E3DCopilot.Tools.Bridge
     {
         /// <summary>
         /// 执行 PML 脚本（自动包裹 handle 块）
+        /// 使用 Aveva.Core.Utilities.CommandLine.Command 真实 API
         /// </summary>
         public string Run(string pmlScript)
         {
             string wrapped = WrapWithHandle(pmlScript);
 
-            // 真实环境（%E3DPath% 已设置）：
-            // Aveva.Core.Utilities.CommandLine.Command cmd =
-            //     Aveva.Core.Utilities.CommandLine.Command.CreateCommand(wrapped);
-            // bool ok = cmd.RunInPdms();
-            // return ok ? cmd.Result : ("Error: " + cmd.Error.MessageText);
-
-            // 开发环境（无 E3D DLL）模拟返回
-            return SimulateRun(pmlScript);
+            // 真实环境：使用 E3D API 执行
+            try
+            {
+                var cmd = Aveva.Core.Utilities.CommandLine.Command.CreateCommand(wrapped);
+                bool ok = cmd.RunInPdms();
+                if (ok)
+                    return cmd.Result ?? "";
+                else
+                {
+                    return "Error: PML execution failed";
+                }
+            }
+            catch (Exception ex)
+            {
+                // 开发环境（无 E3D DLL）回退到模拟
+                return SimulateRun(pmlScript);
+            }
         }
 
         /// <summary>

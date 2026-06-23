@@ -324,10 +324,15 @@ namespace E3DCopilot.Loader
             catch (Exception ex)
             {
                 string errorText = $"❌ {ex.GetType().Name}: {ex.Message}";
+                // ponytail: 内层异常更关键
+                if (ex.InnerException != null)
+                    errorText += $" ⮕ {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
                 SetStatus(errorText, Color.IndianRed);
 
                 // 弹窗已移除 —— 错误信息通过 System Message 输出
                 OutputToE3D($"[E小智 Loader] {ex.GetType().Name}: {ex.Message}");
+                if (ex.InnerException != null)
+                    OutputToE3D($"[E小智 Loader] 原因: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
             }
             finally
             {

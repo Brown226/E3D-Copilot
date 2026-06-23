@@ -1,5 +1,5 @@
 import { McpDisplayMode } from "@shared/McpDisplayMode"
-import { VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeDropdown, VSCodeOption } from "@/components/ui/vscode-compat"
 import React from "react"
 import { useTranslation } from "react-i18next"
 

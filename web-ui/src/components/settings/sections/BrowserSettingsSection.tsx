@@ -1,5 +1,5 @@
 import { EmptyRequest, StringRequest } from "@shared/proto/cline/common"
-import { VSCodeButton, VSCodeCheckbox, VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton, VSCodeCheckbox, VSCodeDropdown, VSCodeOption } from "@/components/ui/vscode-compat"
 import React, { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import styled from "styled-components"

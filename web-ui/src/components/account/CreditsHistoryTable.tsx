@@ -1,5 +1,5 @@
 import type { PaymentTransaction, UsageTransaction } from "@shared/ClineAccount"
-import { VSCodeDataGrid, VSCodeDataGridCell, VSCodeDataGridRow } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeDataGrid, VSCodeDataGridCell, VSCodeDataGridRow } from "@/components/ui/vscode-compat"
 import { memo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { formatDollars, formatTimestamp } from "@/utils/format"
@@ -71,7 +71,7 @@ const CreditsHistoryTable = memo(({ isLoading, usageData, paymentsData, showPaym
 															? "Web Fetch (LLM)"
 															: row.aiModelName}
 											</VSCodeDataGridCell>
-											{/* <VSCodeDataGridCell grid-column="3">{`${row.promptTokens} → ${row.completionTokens}`}</VSCodeDataGridCell> */}
+											{/* <VSCodeDataGridCell grid-column="3">{`${row.promptTokens} 鈫?${row.completionTokens}`}</VSCodeDataGridCell> */}
 											<VSCodeDataGridCell grid-column="3">{`$${Number(row.creditsUsed / 1000000).toFixed(4)}`}</VSCodeDataGridCell>
 										</VSCodeDataGridRow>
 									))}

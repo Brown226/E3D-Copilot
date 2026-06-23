@@ -2,7 +2,7 @@ import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useExtensionState } from "@/context/ExtensionStateContext"
-import { getAsVar, VSC_TITLEBAR_INACTIVE_FOREGROUND } from "@/utils/vscStyles"
+
 import AutoApproveModal from "./AutoApproveModal"
 import { getActionMetadata } from "./constants"
 
@@ -64,9 +64,9 @@ const AutoApproveBar = ({ style }: AutoApproveBarProps) => {
 		)
 	}
 
-	const borderColor = `color-mix(in srgb, ${getAsVar(VSC_TITLEBAR_INACTIVE_FOREGROUND)} 20%, transparent)`
+	const borderColor = `color-mix(in srgb, var(--vscode-titlebar-inactiveForeground, var(--muted-foreground)) 20%, transparent)`
 	const borderGradient = `linear-gradient(to bottom, ${borderColor} 0%, transparent 50%)`
-	const bgGradient = `linear-gradient(to bottom, color-mix(in srgb, var(--vscode-sideBar-background) 96%, white) 0%, transparent 80%)`
+	const bgGradient = `linear-gradient(to bottom, color-mix(in srgb, var(--vscode-sideBar-background, var(--background)) 96%, var(--background)) 0%, transparent 80%)`
 
 	// If YOLO mode is enabled, show disabled message
 	if (yoloModeToggled) {

@@ -1,9 +1,38 @@
 ﻿export class McpServer {}
 export class McpTool {}
 export class McpServers {
-  servers: McpServer[] = []
-  static create(_data?: any): McpServers { return new McpServers() }
+	servers: McpServer[] = []
+	static create(data?: any): McpServers {
+		const r = new McpServers()
+		if (data) Object.assign(r, data)
+		return r
+	}
 }
-export class AddRemoteMcpServerRequest { static create(_data?: any): AddRemoteMcpServerRequest { return new AddRemoteMcpServerRequest() } }
-export class ToggleToolAutoApproveRequest { static create(_data?: any): ToggleToolAutoApproveRequest { return new ToggleToolAutoApproveRequest() } }
-export class ToggleMcpServerRequest { static create(_data?: any): ToggleMcpServerRequest { return new ToggleMcpServerRequest() } }
+export class AddRemoteMcpServerRequest {
+	static create(data?: any): AddRemoteMcpServerRequest {
+		const r = new AddRemoteMcpServerRequest()
+		if (data) Object.assign(r, data)
+		return r
+	}
+}
+export class ToggleToolAutoApproveRequest {
+	static create(data?: any): ToggleToolAutoApproveRequest {
+		const r = new ToggleToolAutoApproveRequest()
+		if (data) Object.assign(r, data)
+		return r
+	}
+}
+export class ToggleMcpServerRequest {
+	static create(data?: any): ToggleMcpServerRequest {
+		const r = new ToggleMcpServerRequest()
+		if (data) Object.assign(r, data)
+		return r
+	}
+}
+export class UpdateMcpTimeoutRequest {
+	static create(data?: any): UpdateMcpTimeoutRequest {
+		const r = new UpdateMcpTimeoutRequest()
+		if (data) Object.assign(r, data)
+		return r
+	}
+}

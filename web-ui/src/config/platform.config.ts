@@ -42,28 +42,17 @@ type PlatformConfigJson = {
 
 type PlatformConfigs = Record<string, PlatformConfigJson>
 
-// Global type declarations for postMessage and vscode API
+// Global type declarations for postMessage
 declare global {
 	interface Window {
-		// This is the post message handler injected by JetBrains.
-		// !! Do not change the name of the handler without updating it on
-		// the JetBrains side as well. !!
 		standalonePostMessage?: (message: string) => void
 	}
-	function acquireVsCodeApi(): any
 }
-
-// Initialize the vscode API if available
-const vsCodeApi = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null
 
 // Implementations for post message handling
 const postMessageStrategies: Record<string, PostMessageFunction> = {
 	vscode: (message: any) => {
-		if (vsCodeApi) {
-			vsCodeApi.postMessage(message)
-		} else {
-			console.log("postMessage fallback: ", message)
-		}
+		console.log("postMessage fallback: ", message)
 	},
 	standalone: (message: any) => {
 		if (!window.standalonePostMessage) {
@@ -73,6 +62,14 @@ const postMessageStrategies: Record<string, PostMessageFunction> = {
 		const json = JSON.stringify(message)
 		console.log("Standalone postMessage: " + json.slice(0, 200))
 		window.standalonePostMessage(json)
+	},
+	e3d: (message: any) => {
+		const wv = (window as any).chrome?.webview
+		if (wv) {
+			wv.postMessage(JSON.stringify(message))
+		} else {
+			console.log("[E3D Bridge -> C#]", JSON.stringify(message).slice(0, 200))
+		}
 	},
 }
 

@@ -1,0 +1,1924 @@
+{
+  "version": "1.4.0",
+  "description": "E小智知识库关键词索引 v1.1 — 新增 Graphics/Shared/Geometry 补充 + 10 个黄金范式 + PML Forms",
+  "files": {
+    "domain/element_types.md": {
+      "title": "E3D 元素类型对照表",
+      "tags": [
+        "element",
+        "type",
+        "PIPE",
+        "EQUI",
+        "STRU",
+        "ZONE",
+        "NOZZ",
+        "VALV",
+        "BRAN",
+        "FTUB",
+        "BEND",
+        "TEE",
+        "COMP",
+        "CABLE",
+        "TRAY",
+        "HOLE",
+        "SUPP",
+        "SITE",
+        "element_type"
+      ],
+      "summary": "所有 E3D 元素类型的中英文对照和用途说明"
+    },
+    "domain/attribute_map.md": {
+      "title": "E3D 属性映射表",
+      "tags": [
+        "attribute",
+        "property",
+        "WTHK",
+        "DIA",
+        "SPEC",
+        "FLUID",
+        "PSPEC",
+        "DESC",
+        "ROOM",
+        "ELVN",
+        "PRES",
+        "TEMP",
+        "PEAST",
+        "PNORT",
+        "PUP",
+        "ORIE",
+        "NAME",
+        "TYPE",
+        "INSU",
+        "CRED",
+        "CHST",
+        "wthk",
+        "壁厚",
+        "spec",
+        "属性"
+      ],
+      "summary": "所有常用属性的 PML 和 C# 访问方式对照"
+    },
+    "domain/coordinate_systems.md": {
+      "title": "E3D 坐标系统说明",
+      "tags": [
+        "coordinate",
+        "position",
+        "geometry",
+        "E",
+        "N",
+        "U",
+        "East",
+        "North",
+        "Up",
+        "WORPOS",
+        "PEAST",
+        "PNORT",
+        "PUP",
+        "Position",
+        "Direction",
+        "Orientation",
+        "D2Angle",
+        "distance",
+        "坐标"
+      ],
+      "summary": "WCS 坐标系、位置读取、几何计算类的使用说明"
+    },
+    "domain/error_codes.md": {
+      "title": "E3D 常见错误码和原因",
+      "tags": [
+        "error",
+        "exception",
+        "PdmsException",
+        "debug",
+        "错误",
+        "异常",
+        "handle",
+        "troubleshoot"
+      ],
+      "summary": "常见 E3D 错误信息和调试技巧"
+    },
+    "api/API-corrections.md": {
+      "title": "⚠️ API 修正清单",
+      "tags": [
+        "correction",
+        "fix",
+        "mistake",
+        "hallucination",
+        "DockedWindow",
+        "CommandLine",
+        "Messaging",
+        "ButtonTool",
+        "命名空间",
+        "Aveva.Core",
+        "GetAttribute",
+        "GetAsString",
+        "修正"
+      ],
+      "summary": "API核实报告提取的关键修正，生成代码前必须查阅"
+    },
+    "api/ApplicationFramework/Addin.md": {
+      "title": "Addin 插件基类",
+      "tags": [
+        "Addin",
+        "plugin",
+        "IAddin",
+        "Start",
+        "Stop",
+        "ApplicationFramework",
+        "插件"
+      ],
+      "summary": "E3D 插件基类"
+    },
+    "api/ApplicationFramework/WindowManager.md": {
+      "title": "WindowManager 窗口管理器",
+      "tags": [
+        "WindowManager",
+        "DockedWindow",
+        "CreateDockedWindow",
+        "DockedPosition",
+        "窗口",
+        "面板"
+      ],
+      "summary": "创建和管理 E3D 停靠窗口"
+    },
+    "api/ApplicationFramework/Command.md": {
+      "title": "Command 命令系统",
+      "tags": [
+        "Command",
+        "CommandExecutor",
+        "CommandManager",
+        "ButtonTool",
+        "CommandBar",
+        "Toolbar",
+        "按钮",
+        "命令"
+      ],
+      "summary": "E3D 命令模式"
+    },
+    "api/ApplicationFramework/ServiceManager.md": {
+      "title": "ServiceManager 服务定位器",
+      "tags": [
+        "ServiceManager",
+        "GetService",
+        "服务",
+        "单例"
+      ],
+      "summary": "获取 E3D 系统服务的统一入口"
+    },
+    "api/ApplicationFramework/SettingsManager.md": {
+      "title": "SettingsManager 设置管理器",
+      "tags": [
+        "SettingsManager",
+        "设置",
+        "配置",
+        "GetValue",
+        "SetValue",
+        "Save"
+      ],
+      "summary": "插件和应用设置持久化管理"
+    },
+    "api/ApplicationFramework/DockedWindow.md": {
+      "title": "DockedWindow 停靠窗口",
+      "tags": [
+        "DockedWindow",
+        "CreateDockedWindow",
+        "停靠",
+        "面板",
+        "DockedPosition",
+        "Show"
+      ],
+      "summary": "E3D 内嵌的停靠面板"
+    },
+    "api/ApplicationFramework/CommandBarManager.md": {
+      "title": "CommandBarManager 工具栏管理器",
+      "tags": [
+        "CommandBar",
+        "CommandBarManager",
+        "Toolbar",
+        "StatusBar",
+        "ResourceManager",
+        "工具栏",
+        "状态栏"
+      ],
+      "summary": "工具栏、状态栏、资源管理"
+    },
+    "api/Database/DbElement.md": {
+      "title": "DbElement 数据库元素类",
+      "tags": [
+        "DbElement",
+        "GetElement",
+        "GetAsString",
+        "GetAsDouble",
+        "SetAttribute",
+        "FirstMember",
+        "NextMember",
+        "Owner",
+        "AddNew",
+        "Delete",
+        "IsValid",
+        "element",
+        "数据库",
+        "元素"
+      ],
+      "summary": "E3D 所有模型对象的基类"
+    },
+    "api/Database/Db.md": {
+      "title": "Db 数据库会话类",
+      "tags": [
+        "Db",
+        "CurrentSession",
+        "SaveWork",
+        "Undo",
+        "Redo",
+        "会话"
+      ],
+      "summary": "当前数据库会话"
+    },
+    "api/Database/DbAttribute.md": {
+      "title": "DbAttribute / DbAttributeInstance 属性类",
+      "tags": [
+        "DbAttribute",
+        "DbAttributeInstance",
+        "GetDbAttribute",
+        "属性",
+        "attribute"
+      ],
+      "summary": "属性定义和预定义属性实例"
+    },
+    "api/Database/DbTransaction.md": {
+      "title": "DbTransaction 事务管理",
+      "tags": [
+        "DbTransaction",
+        "Begin",
+        "Commit",
+        "Rollback",
+        "事务",
+        "transaction"
+      ],
+      "summary": "批量操作的原子性事务管理"
+    },
+    "api/Database/DbFilter.md": {
+      "title": "DbFilter 过滤器",
+      "tags": [
+        "DbFilter",
+        "AndFilter",
+        "OrFilter",
+        "NotFilter",
+        "AttributeFilter",
+        "TypeFilter",
+        "过滤"
+      ],
+      "summary": "创建复杂过滤条件"
+    },
+    "api/Shared/CurrentElement.md": {
+      "title": "CurrentElement 当前元素",
+      "tags": [
+        "CurrentElement",
+        "CurrentElementChanged",
+        "CE",
+        "当前元素",
+        "!!ce"
+      ],
+      "summary": "获取和监听 E3D 当前选中元素"
+    },
+    "api/Shared/Clipboard.md": {
+      "title": "Clipboard 剪贴板",
+      "tags": [
+        "Clipboard",
+        "Copy",
+        "Cut",
+        "Paste",
+        "复制",
+        "粘贴",
+        "剪贴"
+      ],
+      "summary": "复制/粘贴 E3D 元素"
+    },
+    "api/Geometry/Position.md": {
+      "title": "Position 位置类",
+      "tags": [
+        "Position",
+        "geometry",
+        "DistanceTo",
+        "Midpoint",
+        "WorldPosition",
+        "East",
+        "North",
+        "Up",
+        "几何",
+        "位置"
+      ],
+      "summary": "三维坐标点"
+    },
+    "api/Geometry/Direction.md": {
+      "title": "Direction 方向向量类",
+      "tags": [
+        "Direction",
+        "geometry",
+        "Dot",
+        "Cross",
+        "Normalize",
+        "向量",
+        "direction"
+      ],
+      "summary": "三维方向向量"
+    },
+    "api/Geometry/Orientation.md": {
+      "title": "Orientation 朝向类",
+      "tags": [
+        "Orientation",
+        "geometry",
+        "RotateVector",
+        "EulerAngles",
+        "朝向",
+        "旋转"
+      ],
+      "summary": "三维空间朝向/旋转"
+    },
+    "api/Geometry/D2Angle.md": {
+      "title": "D2Angle 角度类",
+      "tags": [
+        "D2Angle",
+        "angle",
+        "Degrees",
+        "Radians",
+        "Sin",
+        "Cos",
+        "角度",
+        "三角函数"
+      ],
+      "summary": "角度计算"
+    },
+    "api/Geometry/D2Arc.md": {
+      "title": "D2Arc 二维弧线类",
+      "tags": [
+        "D2Arc",
+        "arc",
+        "circle",
+        "From3Points",
+        "弧线",
+        "圆弧"
+      ],
+      "summary": "二维平面圆弧"
+    },
+    "api/Graphics/Colour.md": {
+      "title": "Colour 颜色类",
+      "tags": [
+        "Colour",
+        "Colours",
+        "RGB",
+        "颜色",
+        "highLight",
+        "Red",
+        "Green",
+        "Blue"
+      ],
+      "summary": "RGB 颜色值和颜色表"
+    },
+    "api/Graphics/DrawList.md": {
+      "title": "DrawList 绘图列表",
+      "tags": [
+        "DrawList",
+        "graphics",
+        "Add",
+        "Refresh",
+        "Clear",
+        "Highlight",
+        "高亮",
+        "绘图"
+      ],
+      "summary": "管理绘图元素列表和刷新显示"
+    },
+    "api/Design/Aid.md": {
+      "title": "Design 模块 Aid 类",
+      "tags": [
+        "Aid",
+        "ClearPipeProductionTags",
+        "UnenhanceAll",
+        "Design",
+        "EQUI",
+        "NOZZ",
+        "STRU",
+        "设计"
+      ],
+      "summary": "设计辅助功能和元素创建"
+    },
+    "api/Piping/Piping.md": {
+      "title": "Piping 管道专业模块",
+      "tags": [
+        "Piping",
+        "PipePieceManager",
+        "PipeSpoolManager",
+        "FabricationMachineManager",
+        "管道",
+        "fabrication"
+      ],
+      "summary": "管道 Fabrication 加工制造 API"
+    },
+    "api/Utilities/Command.md": {
+      "title": "Command PML 命令执行器",
+      "tags": [
+        "Command",
+        "CreateCommand",
+        "RunInPdms",
+        "PdmsMessage",
+        "PdmsException",
+        "PML执行",
+        "消息"
+      ],
+      "summary": "执行 PML 脚本、显示消息对话框"
+    },
+    "pml/commands.md": {
+      "title": "PML 命令速查",
+      "tags": [
+        "coll",
+        "DO",
+        "values",
+        "Eval",
+        "EXIST",
+        "IF",
+        "FOR",
+        "CE",
+        "Matchwild",
+        "MATCH",
+        "collection",
+        "循环",
+        "条件",
+        "函数定义",
+        "PML"
+      ],
+      "summary": "集合查询、遍历循环、属性读写等 PML 常用命令"
+    },
+    "pml/functions.md": {
+      "title": "PML 内置函数速查",
+      "tags": [
+        "Matchwild",
+        "MATCH",
+        "DISTANCE",
+        "EXIST",
+        "SQR",
+        "INT",
+        "ABS",
+        "String",
+        "Split",
+        "Replace",
+        "Trim",
+        "函数"
+      ],
+      "summary": "字符串匹配、距离计算等 PML 内置函数"
+    },
+    "pml/expressions.md": {
+      "title": "PML 表达式与语法速查",
+      "tags": [
+        "variable",
+        "STRING",
+        "REAL",
+        "BOOLEAN",
+        "EQ",
+        "NE",
+        "LT",
+        "LE",
+        "GT",
+        "GE",
+        "运算符",
+        "Dbref",
+        "!!CE",
+        "$P",
+        "表达式"
+      ],
+      "summary": "变量规则、数据类型、运算符语法"
+    },
+    "pml/forms.md": {
+      "title": "PML Forms 完整参考",
+      "tags": [
+        "FORM",
+        "pmlfrm",
+        "BUTTON",
+        "TEXT",
+        "LIST",
+        "TOGGLE",
+        "FRAME",
+        "TABSET",
+        "dialog",
+        "窗体",
+        "SHOW",
+        "PmlNetControl"
+      ],
+      "summary": "PML 窗体控件、布局、.NET 控件嵌入完整参考"
+    },
+    "patterns/query_elements.md": {
+      "title": "黄金范式：查询元素",
+      "tags": [
+        "query",
+        "coll",
+        "collect",
+        "Matchwild",
+        "MATCH",
+        "select",
+        "filter",
+        "查询",
+        "集合",
+        "263次"
+      ],
+      "summary": "按类型+名称查询 E3D 元素（263次命中）"
+    },
+    "patterns/modify_attributes.md": {
+      "title": "黄金范式：修改属性",
+      "tags": [
+        "modify",
+        "update",
+        "set",
+        "attribute",
+        "batch",
+        "批量修改",
+        "修改",
+        "198次"
+      ],
+      "summary": "批量修改 E3D 元素属性（198次命中）"
+    },
+    "patterns/check_exists.md": {
+      "title": "黄金范式：存在检查",
+      "tags": [
+        "exists",
+        "EXIST",
+        "check",
+        "存在",
+        "检查",
+        "24次"
+      ],
+      "summary": "检查元素是否存在（24次命中）"
+    },
+    "patterns/check_distance.md": {
+      "title": "黄金范式：距离计算",
+      "tags": [
+        "distance",
+        "DISTANCE",
+        "position",
+        "WorldPosition",
+        "距离",
+        "间距",
+        "碰撞"
+      ],
+      "summary": "计算两个元素之间的距离"
+    },
+    "patterns/check_bore_consistency.md": {
+      "title": "黄金范式：管径一致性检查",
+      "tags": [
+        "bore",
+        "DIA",
+        "consistency",
+        "pipe",
+        "fitment",
+        "管径",
+        "一致性"
+      ],
+      "summary": "检查管道内管件管径一致性"
+    },
+    "patterns/check_attribute_complete.md": {
+      "title": "黄金范式：属性完整性检查",
+      "tags": [
+        "attribute",
+        "complete",
+        "missing",
+        "check",
+        "完整性",
+        "缺属性"
+      ],
+      "summary": "检查元素是否缺少必要属性"
+    },
+    "patterns/export_report.md": {
+      "title": "黄金范式：导出报表",
+      "tags": [
+        "export",
+        "report",
+        "REPORT",
+        "csv",
+        "file",
+        "导出",
+        "报表"
+      ],
+      "summary": "导出为报表或 CSV 文件"
+    },
+    "patterns/rename_elements.md": {
+      "title": "黄金范式：批量重命名",
+      "tags": [
+        "rename",
+        "NAME",
+        "batch",
+        "重命名",
+        "改名"
+      ],
+      "summary": "批量修改元素名称"
+    },
+    "patterns/virtual_conn.md": {
+      "title": "黄金范式：虚拟管嘴连接检查",
+      "tags": [
+        "virtual",
+        "conn",
+        "conntray",
+        "hole",
+        "connection",
+        "虚拟管嘴"
+      ],
+      "summary": "检查虚拟管嘴连接状态"
+    },
+    "patterns/net_integration.md": {
+      "title": "黄金范式：.NET 集成",
+      "tags": [
+        "PmlNetCall",
+        "PmlNetAddin",
+        "import",
+        "using namespace",
+        "DLL",
+        "C#集成",
+        "启动器"
+      ],
+      "summary": "从 PML 调用 .NET DLL 启动窗口或嵌入式插件"
+    },
+    "patterns/geometry_operations.md": {
+      "title": "黄金范式：几何操作",
+      "tags": [
+        "geometry",
+        "pos",
+        "poss",
+        "pose",
+        "Offset",
+        "Distance",
+        "move",
+        "rotate",
+        "Line",
+        "PLANE",
+        "旋转",
+        "偏移",
+        "绘制"
+      ],
+      "summary": "位置读写、端口点、坐标偏移、旋转和绘制"
+    },
+    "patterns/collection_query.md": {
+      "title": "黄金范式：Collection 对象式查询",
+      "tags": [
+        "collection",
+        "COLLECTION",
+        "type",
+        "scope",
+        "results",
+        "first",
+        "导航",
+        "对象式查询"
+      ],
+      "summary": "使用 Collection 对象替代 coll all 语法"
+    },
+    "patterns/element_type_dispatch.md": {
+      "title": "黄金范式：元素类型判断与分派",
+      "tags": [
+        "type",
+        "inset",
+        "dispatch",
+        "EQUI",
+        "FTUB",
+        "TEE",
+        "BEND",
+        "CROS",
+        "判断",
+        "分派"
+      ],
+      "summary": "根据元素类型进行不同处理逻辑"
+    },
+    "patterns/error_handling.md": {
+      "title": "黄金范式：错误处理策略",
+      "tags": [
+        "handle",
+        "error",
+        "exception",
+        "skip",
+        "return",
+        "错误处理",
+        "错误码",
+        "HANDLE ANY"
+      ],
+      "summary": "PML 错误处理各种模式（5 种策略）"
+    },
+    "api/Standalone/PdmsStandalone.md": {
+      "title": "PdmsStandalone 独立运行环境",
+      "tags": [
+        "Standalone",
+        "PdmsStandalone",
+        "Start",
+        "Open",
+        "Close",
+        "Finish",
+        "ExitError",
+        "MDB",
+        "Project",
+        "独立运行",
+        "控制台"
+      ],
+      "summary": "E3D 独立模式访问数据库（无需 GUI）"
+    },
+    "patterns/file_io.md": {
+      "title": "黄金范式：文件浏览器与 CSV 导入导出",
+      "tags": [
+        "file",
+        "CSV",
+        "Excel",
+        "import",
+        "export",
+        "PMLFileBrowser",
+        "NetGridControl",
+        "文件",
+        "导入",
+        "导出"
+      ],
+      "summary": "文件浏览器对话框、CSV/Excel 读写"
+    },
+    "patterns/custom_attributes.md": {
+      "title": "黄金范式：自定义属性读写",
+      "tags": [
+        "custom",
+        "attribute",
+        "ROOM_NO",
+        "conntray",
+        "descr",
+        "自定义",
+        "属性读写",
+        "Dbref"
+      ],
+      "summary": "读取和写入 E3D 自定义属性"
+    },
+    "patterns/element_navigation.md": {
+      "title": "黄金范式：元素导航与选择操作",
+      "tags": [
+        "navigation",
+        "navigate",
+        "select",
+        "EXISTS",
+        "reorder",
+        "pre",
+        "next",
+        "导航",
+        "选择",
+        "排序",
+        "元素树"
+      ],
+      "summary": "切换到元素、存在性检查、树遍历、重新排序"
+    },
+    "patterns/list_grid_operations.md": {
+      "title": "黄金范式：List/Grid 控件 UI 操作",
+      "tags": [
+        "list",
+        "grid",
+        "setHeadings",
+        "setRows",
+        "selection",
+        "TEXTPANE",
+        "列表",
+        "控件",
+        "UI"
+      ],
+      "summary": "PML Form 列表控件的多列填充、选中操作"
+    },
+    "pml/type_conversion.md": {
+      "title": "C# ↔ PML 类型与转换速查",
+      "tags": [
+        "conversion",
+        "type",
+        "C#",
+        "PML",
+        "string",
+        "double",
+        "bool",
+        "Position",
+        "DbAttributeInstance",
+        "转换",
+        "类型"
+      ],
+      "summary": "C# 与 PML 之间的类型对应关系和常用转换"
+    },
+    "pml/tools_index.md": {
+      "title": "PML 工具索引表",
+      "tags": [
+        "tool",
+        "index",
+        "reference",
+        "cable",
+        "tray",
+        "equipment",
+        "virtual",
+        "connection",
+        "export",
+        "conntray",
+        "drawConn",
+        "VirtualConn",
+        "SearchDif",
+        "EquiCheck",
+        "CheckName",
+        "RoomCheck",
+        "PsecRefresh",
+        "ReWriteElecWidth",
+        "TrayClassifyAdd",
+        "CableLayTools",
+        "RiserChange",
+        "mrename",
+        "ExploreTreeOrder",
+        "MdsMgbChange",
+        "DrawDisplace",
+        "ddzcablewaysupporteditor",
+        "AttributeExport",
+        "ExclMerge",
+        "tools_index"
+      ],
+      "summary": "33 个真实 PML 工具的功能/元素类型/属性/黄金范式交叉索引"
+    },
+    "pml/objects_core.md": {
+      "title": "PML 核心对象完整参考",
+      "tags": [
+        "STRING",
+        "REAL",
+        "BOOLEAN",
+        "ARRAY",
+        "FILE",
+        "DBREF",
+        "DB",
+        "DBSESS",
+        "MDB",
+        "ALERT",
+        "Confirm",
+        "Input",
+        "Split",
+        "Replace",
+        "Sort",
+        "Unique",
+        "ReadFile",
+        "WriteFile",
+        "Sqrt",
+        "Power"
+      ],
+      "summary": "STRING/REAL/BOOLEAN/ARRAY/FILE/DBREF/ALERT 全部方法签名"
+    },
+    "pml/objects_geometry.md": {
+      "title": "PML 几何对象完整参考",
+      "tags": [
+        "POSITION",
+        "DIRECTION",
+        "ORIENTATION",
+        "ARC",
+        "LINE",
+        "PLANE",
+        "POINTVECTOR",
+        "BORE",
+        "LOCATION",
+        "XYPosition",
+        "FORMAT",
+        "Distance",
+        "Offset",
+        "Cross",
+        "Dot",
+        "Intersection",
+        "Normalise"
+      ],
+      "summary": "POSITION/DIRECTION/ORIENTATION/ARC/LINE/PLANE 等几何对象全部方法"
+    },
+    "pml/objects_ui.md": {
+      "title": "PML UI 控件对象完整参考",
+      "tags": [
+        "FORM",
+        "BUTTON",
+        "TEXT",
+        "LIST",
+        "TOGGLE",
+        "FRAME",
+        "PARAGRAPH",
+        "TEXTPANE",
+        "OPTION",
+        "COMBOBOX",
+        "RTOGGLE",
+        "SELECTOR",
+        "SLIDER",
+        "CONTAINER",
+        "BAR",
+        "MENU",
+        "VIEW",
+        "ALPHA",
+        "AREA",
+        "PLOT",
+        "VOLUME",
+        "SetHeadings",
+        "SetRows"
+      ],
+      "summary": "FORM/BUTTON/LIST/TOGGLE/FRAME/MENU/VIEW 等全部 UI 控件方法"
+    },
+    "pml/objects_system.md": {
+      "title": "PML 系统对象完整参考",
+      "tags": [
+        "FMSYS",
+        "COLLECTION",
+        "REPORT",
+        "UNDOABLE",
+        "PROJECT",
+        "SESSION",
+        "USER",
+        "MACRO",
+        "POSTEVENTS",
+        "BANNER",
+        "TEAM",
+        "EXPRESSION",
+        "NUMERICINPUT",
+        "DATEFORMAT",
+        "DATETIME",
+        "Fminfo",
+        "SetProgress",
+        "Collection",
+        "Undoable"
+      ],
+      "summary": "FMSYS/COLLECTION/REPORT/UNDOABLE/DATETIME 等系统对象全部方法"
+    },
+    "pml/objects_grid.md": {
+      "title": "PML Grid/Table 对象参考",
+      "tags": [
+        "LINEARGRID",
+        "PLANTGRID",
+        "PLATFORMGRID",
+        "RADIALGRID",
+        "COLUMN",
+        "COLUMNFORMAT",
+        "TABLE",
+        "PROFILE",
+        "BLOCK"
+      ],
+      "summary": "LINEARGRID/PLANTGRID/COLUMN/TABLE/PROFILE/BLOCK 等网格对象"
+    }
+  },
+  "keywords": {
+    "query": [
+      "patterns/query_elements.md",
+      "pml/commands.md",
+      "api/Database/DbElement.md"
+    ],
+    "coll": [
+      "patterns/query_elements.md",
+      "pml/commands.md",
+      "patterns/collection_query.md"
+    ],
+    "collect": [
+      "patterns/query_elements.md"
+    ],
+    "collection": [
+      "patterns/query_elements.md",
+      "pml/commands.md",
+      "patterns/collection_query.md"
+    ],
+    "coll all": [
+      "patterns/query_elements.md",
+      "pml/commands.md"
+    ],
+    "modify": [
+      "patterns/modify_attributes.md",
+      "api/Database/DbElement.md",
+      "domain/attribute_map.md"
+    ],
+    "batch": [
+      "patterns/modify_attributes.md"
+    ],
+    "rename": [
+      "patterns/rename_elements.md"
+    ],
+    "check": [
+      "patterns/check_exists.md",
+      "patterns/check_distance.md",
+      "patterns/check_bore_consistency.md",
+      "patterns/check_attribute_complete.md"
+    ],
+    "exists": [
+      "patterns/check_exists.md"
+    ],
+    "exist": [
+      "patterns/check_exists.md"
+    ],
+    "distance": [
+      "patterns/check_distance.md",
+      "domain/coordinate_systems.md",
+      "api/Geometry/Position.md",
+      "patterns/geometry_operations.md"
+    ],
+    "bore": [
+      "pml/objects_geometry.md"
+    ],
+    "管径": [
+      "patterns/check_bore_consistency.md"
+    ],
+    "export": [
+      "patterns/export_report.md"
+    ],
+    "report": [
+      "pml/objects_system.md",
+      "patterns/export_report.md"
+    ],
+    "导出": [
+      "patterns/file_io.md"
+    ],
+    "报表": [
+      "pml/objects_system.md",
+      "patterns/export_report.md"
+    ],
+    "virtual": [
+      "patterns/virtual_conn.md"
+    ],
+    "conntray": [
+      "pml/tools_index.md"
+    ],
+    "hole": [
+      "patterns/virtual_conn.md"
+    ],
+    "连接": [
+      "patterns/virtual_conn.md"
+    ],
+    "重命名": [
+      "patterns/rename_elements.md"
+    ],
+    "net": [
+      "patterns/net_integration.md"
+    ],
+    "PmlNetCall": [
+      "patterns/net_integration.md"
+    ],
+    "PmlNetAddin": [
+      "patterns/net_integration.md"
+    ],
+    "dll": [
+      "patterns/net_integration.md"
+    ],
+    ".net": [
+      "patterns/net_integration.md"
+    ],
+    "import": [
+      "patterns/net_integration.md"
+    ],
+    "geometry": [
+      "patterns/geometry_operations.md",
+      "api/Geometry/Position.md",
+      "api/Geometry/Direction.md",
+      "api/Geometry/Orientation.md"
+    ],
+    "几何": [
+      "patterns/geometry_operations.md",
+      "api/Geometry/Position.md",
+      "api/Geometry/Direction.md"
+    ],
+    "pos": [
+      "patterns/geometry_operations.md",
+      "domain/coordinate_systems.md"
+    ],
+    "poss": [
+      "patterns/geometry_operations.md"
+    ],
+    "pose": [
+      "patterns/geometry_operations.md"
+    ],
+    "p1 pos": [
+      "patterns/geometry_operations.md",
+      "patterns/element_type_dispatch.md"
+    ],
+    "port": [
+      "patterns/geometry_operations.md",
+      "patterns/element_type_dispatch.md"
+    ],
+    "Offset": [
+      "patterns/geometry_operations.md"
+    ],
+    "move": [
+      "patterns/geometry_operations.md"
+    ],
+    "rotate": [
+      "patterns/geometry_operations.md"
+    ],
+    "旋转": [
+      "patterns/geometry_operations.md"
+    ],
+    "collection对象": [
+      "pml/objects_system.md"
+    ],
+    "first": [
+      "patterns/collection_query.md"
+    ],
+    "导航": [
+      "patterns/element_navigation.md"
+    ],
+    "type": [
+      "patterns/element_type_dispatch.md",
+      "domain/element_types.md",
+      "api/Database/DbElement.md"
+    ],
+    "inset": [
+      "patterns/element_type_dispatch.md"
+    ],
+    "判断": [
+      "patterns/element_type_dispatch.md"
+    ],
+    "分派": [
+      "patterns/element_type_dispatch.md"
+    ],
+    "handle": [
+      "patterns/error_handling.md",
+      "pml/commands.md"
+    ],
+    "error": [
+      "patterns/error_handling.md",
+      "domain/error_codes.md"
+    ],
+    "错误": [
+      "patterns/error_handling.md",
+      "domain/error_codes.md"
+    ],
+    "错误处理": [
+      "patterns/error_handling.md"
+    ],
+    "handle any": [
+      "patterns/error_handling.md"
+    ],
+    "form": [
+      "pml/forms.md"
+    ],
+    "窗体": [
+      "pml/forms.md"
+    ],
+    "pmlfrm": [
+      "pml/forms.md",
+      "pml/commands.md"
+    ],
+    "button": [
+      "pml/objects_ui.md",
+      "pml/forms.md"
+    ],
+    "text": [
+      "pml/forms.md"
+    ],
+    "list": [
+      "patterns/list_grid_operations.md",
+      "pml/forms.md"
+    ],
+    "toggle": [
+      "pml/objects_ui.md"
+    ],
+    "frame": [
+      "pml/forms.md"
+    ],
+    "tabset": [
+      "pml/forms.md"
+    ],
+    "PmlNetControl": [
+      "pml/forms.md",
+      "patterns/net_integration.md"
+    ],
+    "element type": [
+      "domain/element_types.md"
+    ],
+    "元素类型": [
+      "domain/element_types.md"
+    ],
+    "PIPE": [
+      "domain/element_types.md",
+      "api/Database/DbElement.md"
+    ],
+    "EQUI": [
+      "domain/element_types.md",
+      "api/Design/Aid.md"
+    ],
+    "STRU": [
+      "domain/element_types.md"
+    ],
+    "ZONE": [
+      "domain/element_types.md"
+    ],
+    "NOZZ": [
+      "domain/element_types.md",
+      "api/Design/Aid.md"
+    ],
+    "VALV": [
+      "domain/element_types.md"
+    ],
+    "BRAN": [
+      "domain/element_types.md"
+    ],
+    "FTUB": [
+      "domain/element_types.md"
+    ],
+    "BEND": [
+      "domain/element_types.md"
+    ],
+    "TEE": [
+      "domain/element_types.md"
+    ],
+    "attribute": [
+      "domain/attribute_map.md",
+      "api/Database/DbAttribute.md",
+      "api/Database/DbElement.md"
+    ],
+    "属性": [
+      "domain/attribute_map.md",
+      "api/Database/DbAttribute.md"
+    ],
+    "壁厚": [
+      "domain/attribute_map.md"
+    ],
+    "WTHK": [
+      "domain/attribute_map.md",
+      "api/Database/DbAttribute.md"
+    ],
+    "DIA": [
+      "domain/attribute_map.md",
+      "domain/coordinate_systems.md"
+    ],
+    "SPEC": [
+      "domain/attribute_map.md"
+    ],
+    "FLUID": [
+      "domain/attribute_map.md"
+    ],
+    "NAME": [
+      "domain/attribute_map.md"
+    ],
+    "ROOM": [
+      "domain/attribute_map.md"
+    ],
+    "Position": [
+      "domain/coordinate_systems.md",
+      "api/Geometry/Position.md"
+    ],
+    "coordinate": [
+      "domain/coordinate_systems.md"
+    ],
+    "坐标": [
+      "domain/coordinate_systems.md"
+    ],
+    "world position": [
+      "domain/coordinate_systems.md",
+      "api/Geometry/Position.md"
+    ],
+    "WORPOS": [
+      "domain/coordinate_systems.md"
+    ],
+    "D2Angle": [
+      "api/Geometry/D2Angle.md"
+    ],
+    "angle": [
+      "api/Geometry/D2Angle.md"
+    ],
+    "角度": [
+      "api/Geometry/D2Angle.md"
+    ],
+    "D2Arc": [
+      "api/Geometry/D2Arc.md"
+    ],
+    "arc": [
+      "pml/objects_geometry.md"
+    ],
+    "弧线": [
+      "api/Geometry/D2Arc.md"
+    ],
+    "Direction": [
+      "api/Geometry/Direction.md"
+    ],
+    "Orientation": [
+      "api/Geometry/Orientation.md"
+    ],
+    "向量": [
+      "api/Geometry/Direction.md"
+    ],
+    "朝向": [
+      "api/Geometry/Orientation.md"
+    ],
+    "colour": [
+      "api/Graphics/Colour.md"
+    ],
+    "color": [
+      "api/Graphics/Colour.md"
+    ],
+    "颜色": [
+      "api/Graphics/Colour.md"
+    ],
+    "Colour": [
+      "api/Graphics/Colour.md"
+    ],
+    "DrawList": [
+      "api/Graphics/DrawList.md"
+    ],
+    "highLight": [
+      "api/Graphics/DrawList.md",
+      "api/Graphics/Colour.md"
+    ],
+    "高亮": [
+      "api/Graphics/DrawList.md"
+    ],
+    "Addin": [
+      "api/ApplicationFramework/Addin.md"
+    ],
+    "插件": [
+      "api/ApplicationFramework/Addin.md"
+    ],
+    "DockedWindow": [
+      "api/ApplicationFramework/DockedWindow.md",
+      "api/ApplicationFramework/WindowManager.md",
+      "api/API-corrections.md"
+    ],
+    "窗口": [
+      "api/ApplicationFramework/WindowManager.md",
+      "api/ApplicationFramework/DockedWindow.md"
+    ],
+    "面板": [
+      "api/ApplicationFramework/WindowManager.md",
+      "api/ApplicationFramework/DockedWindow.md"
+    ],
+    "CreateDockedWindow": [
+      "api/ApplicationFramework/WindowManager.md",
+      "api/API-corrections.md",
+      "api/ApplicationFramework/DockedWindow.md"
+    ],
+    "Command": [
+      "api/ApplicationFramework/Command.md",
+      "api/Utilities/Command.md"
+    ],
+    "ButtonTool": [
+      "api/ApplicationFramework/Command.md",
+      "api/API-corrections.md"
+    ],
+    "Toolbar": [
+      "api/ApplicationFramework/Command.md",
+      "api/ApplicationFramework/CommandBarManager.md"
+    ],
+    "工具栏": [
+      "api/ApplicationFramework/CommandBarManager.md"
+    ],
+    "CommandBarManager": [
+      "api/ApplicationFramework/CommandBarManager.md"
+    ],
+    "SettingsManager": [
+      "api/ApplicationFramework/SettingsManager.md"
+    ],
+    "StatusBar": [
+      "api/ApplicationFramework/CommandBarManager.md"
+    ],
+    "状态栏": [
+      "api/ApplicationFramework/CommandBarManager.md"
+    ],
+    "ResourceManager": [
+      "api/ApplicationFramework/CommandBarManager.md"
+    ],
+    "DbElement": [
+      "api/Database/DbElement.md",
+      "api/Database/DbAttribute.md"
+    ],
+    "GetElement": [
+      "api/Database/DbElement.md"
+    ],
+    "GetAsString": [
+      "api/Database/DbElement.md",
+      "api/Database/DbAttribute.md",
+      "api/API-corrections.md"
+    ],
+    "GetAsDouble": [
+      "api/Database/DbElement.md"
+    ],
+    "SetAttribute": [
+      "api/Database/DbElement.md",
+      "api/Database/DbAttribute.md"
+    ],
+    "GetAttribute": [
+      "api/Database/DbElement.md",
+      "api/Database/DbAttribute.md",
+      "api/API-corrections.md"
+    ],
+    "CurrentElement": [
+      "api/Shared/CurrentElement.md",
+      "api/API-corrections.md"
+    ],
+    "CE": [
+      "api/Shared/CurrentElement.md",
+      "pml/commands.md"
+    ],
+    "!!ce": [
+      "api/Shared/CurrentElement.md",
+      "pml/expressions.md"
+    ],
+    "Clipboard": [
+      "api/Shared/Clipboard.md"
+    ],
+    "复制": [
+      "api/Shared/Clipboard.md"
+    ],
+    "粘贴": [
+      "api/Shared/Clipboard.md"
+    ],
+    "剪贴": [
+      "api/Shared/Clipboard.md"
+    ],
+    "FirstMember": [
+      "api/Database/DbElement.md"
+    ],
+    "NextMember": [
+      "api/Database/DbElement.md"
+    ],
+    "AddNew": [
+      "api/Database/DbElement.md",
+      "api/Design/Aid.md"
+    ],
+    "SaveWork": [
+      "api/Database/Db.md"
+    ],
+    "Undo": [
+      "api/Database/Db.md"
+    ],
+    "Redo": [
+      "api/Database/Db.md"
+    ],
+    "DbTransaction": [
+      "api/Database/DbTransaction.md"
+    ],
+    "数据库": [
+      "api/Database/Db.md",
+      "api/Database/DbElement.md"
+    ],
+    "元素": [
+      "api/Database/DbElement.md",
+      "domain/element_types.md"
+    ],
+    "transaction": [
+      "api/Database/DbTransaction.md"
+    ],
+    "事务": [
+      "api/Database/DbTransaction.md"
+    ],
+    "filter": [
+      "api/Database/DbFilter.md"
+    ],
+    "过滤": [
+      "api/Database/DbFilter.md"
+    ],
+    "PML执行": [
+      "api/Utilities/Command.md",
+      "pml/commands.md"
+    ],
+    "RunInPdms": [
+      "api/Utilities/Command.md",
+      "api/API-corrections.md"
+    ],
+    "CommandLine": [
+      "api/Utilities/Command.md",
+      "api/API-corrections.md"
+    ],
+    "PdmsMessage": [
+      "api/Utilities/Command.md"
+    ],
+    "PdmsException": [
+      "api/Utilities/Command.md",
+      "domain/error_codes.md"
+    ],
+    "PML": [
+      "pml/commands.md",
+      "pml/functions.md",
+      "pml/expressions.md",
+      "pml/forms.md"
+    ],
+    "Matchwild": [
+      "pml/functions.md",
+      "patterns/query_elements.md"
+    ],
+    "MATCH": [
+      "pml/functions.md",
+      "patterns/query_elements.md"
+    ],
+    "DISTANCE": [
+      "pml/functions.md"
+    ],
+    "SQR": [
+      "pml/functions.md"
+    ],
+    "Dbref": [
+      "pml/expressions.md"
+    ],
+    "$P": [
+      "pml/expressions.md"
+    ],
+    "变量": [
+      "pml/expressions.md"
+    ],
+    "运算符": [
+      "pml/expressions.md"
+    ],
+    "数据类型": [
+      "pml/expressions.md"
+    ],
+    "黄金范式": [
+      "patterns/query_elements.md",
+      "patterns/modify_attributes.md"
+    ],
+    "pml语法": [
+      "pml/commands.md",
+      "pml/functions.md",
+      "pml/expressions.md",
+      "pml/forms.md"
+    ],
+    "c# api": [
+      "api/Database/DbElement.md",
+      "api/API-corrections.md"
+    ],
+    "修正": [
+      "api/API-corrections.md"
+    ],
+    "命名空间": [
+      "api/API-corrections.md"
+    ],
+    "Aveva.Core": [
+      "api/API-corrections.md"
+    ],
+    "all": [
+      "domain/element_types.md",
+      "domain/attribute_map.md",
+      "domain/coordinate_systems.md",
+      "domain/error_codes.md",
+      "api/API-corrections.md",
+      "api/ApplicationFramework/Addin.md",
+      "api/ApplicationFramework/WindowManager.md",
+      "api/ApplicationFramework/Command.md",
+      "api/ApplicationFramework/ServiceManager.md",
+      "api/ApplicationFramework/SettingsManager.md",
+      "api/ApplicationFramework/DockedWindow.md",
+      "api/ApplicationFramework/CommandBarManager.md",
+      "api/Database/DbElement.md",
+      "api/Database/Db.md",
+      "api/Database/DbAttribute.md",
+      "api/Database/DbTransaction.md",
+      "api/Database/DbFilter.md",
+      "api/Shared/CurrentElement.md",
+      "api/Shared/Clipboard.md",
+      "api/Geometry/Position.md",
+      "api/Geometry/Direction.md",
+      "api/Geometry/Orientation.md",
+      "api/Geometry/D2Angle.md",
+      "api/Geometry/D2Arc.md",
+      "api/Graphics/Colour.md",
+      "api/Graphics/DrawList.md",
+      "api/Design/Aid.md",
+      "api/Piping/Piping.md",
+      "api/Utilities/Command.md",
+      "pml/commands.md",
+      "pml/functions.md",
+      "pml/expressions.md",
+      "pml/forms.md",
+      "patterns/query_elements.md",
+      "patterns/modify_attributes.md",
+      "patterns/check_exists.md",
+      "patterns/check_distance.md",
+      "patterns/check_bore_consistency.md",
+      "patterns/check_attribute_complete.md",
+      "patterns/export_report.md",
+      "patterns/rename_elements.md",
+      "patterns/virtual_conn.md",
+      "patterns/net_integration.md",
+      "patterns/geometry_operations.md",
+      "patterns/collection_query.md",
+      "patterns/element_type_dispatch.md",
+      "patterns/error_handling.md"
+    ],
+    "file browser": [
+      "patterns/file_io.md"
+    ],
+    "PMLFileBrowser": [
+      "patterns/file_io.md"
+    ],
+    "csv": [
+      "patterns/file_io.md"
+    ],
+    "文件": [
+      "patterns/file_io.md"
+    ],
+    "导入": [
+      "patterns/file_io.md"
+    ],
+    "custom attribute": [
+      "patterns/custom_attributes.md"
+    ],
+    "自定义属性": [
+      "patterns/custom_attributes.md"
+    ],
+    "navigate": [
+      "patterns/element_navigation.md"
+    ],
+    "reorder": [
+      "patterns/element_navigation.md"
+    ],
+    "排序": [
+      "patterns/element_navigation.md"
+    ],
+    "选择": [
+      "patterns/element_navigation.md",
+      "patterns/list_grid_operations.md"
+    ],
+    "setHeadings": [
+      "patterns/list_grid_operations.md"
+    ],
+    "setRows": [
+      "patterns/list_grid_operations.md"
+    ],
+    "selection": [
+      "patterns/list_grid_operations.md"
+    ],
+    "TEXTPANE": [
+      "patterns/list_grid_operations.md"
+    ],
+    "Standalone": [
+      "api/Standalone/PdmsStandalone.md"
+    ],
+    "PdmsStandalone": [
+      "api/Standalone/PdmsStandalone.md"
+    ],
+    "独立运行": [
+      "api/Standalone/PdmsStandalone.md"
+    ],
+    "控制台": [
+      "api/Standalone/PdmsStandalone.md"
+    ],
+    "转换": [
+      "pml/type_conversion.md"
+    ],
+    "conversion": [
+      "pml/type_conversion.md"
+    ],
+    "type conversion": [
+      "pml/type_conversion.md"
+    ],
+    "cablelaytools": [
+      "pml/tools_index.md"
+    ],
+    "ddzcablewaysupporteditor": [
+      "pml/tools_index.md"
+    ],
+    "rotateelecsuppo": [
+      "pml/tools_index.md"
+    ],
+    "rewriteelecwidth": [
+      "pml/tools_index.md"
+    ],
+    "trayclassifyadd": [
+      "pml/tools_index.md"
+    ],
+    "riserchange": [
+      "pml/tools_index.md"
+    ],
+    "psecrefresh": [
+      "pml/tools_index.md"
+    ],
+    "equicheck": [
+      "pml/tools_index.md"
+    ],
+    "equiinfo": [
+      "pml/tools_index.md"
+    ],
+    "cnpedrawlist": [
+      "pml/tools_index.md"
+    ],
+    "mdsmgbchange": [
+      "pml/tools_index.md"
+    ],
+    "mrename": [
+      "pml/tools_index.md"
+    ],
+    "drawdisplace": [
+      "pml/tools_index.md"
+    ],
+    "roomcheck": [
+      "pml/tools_index.md"
+    ],
+    "checkname": [
+      "pml/tools_index.md"
+    ],
+    "modelcheck": [
+      "pml/tools_index.md"
+    ],
+    "elecinfo": [
+      "pml/tools_index.md"
+    ],
+    "virtualconn": [
+      "pml/tools_index.md"
+    ],
+    "checkconn": [
+      "pml/tools_index.md"
+    ],
+    "drawconn": [
+      "pml/tools_index.md"
+    ],
+    "deletebyhole": [
+      "pml/tools_index.md"
+    ],
+    "searchdif": [
+      "pml/tools_index.md"
+    ],
+    "holeexport": [
+      "pml/tools_index.md"
+    ],
+    "attributeexport": [
+      "pml/tools_index.md"
+    ],
+    "exclmerge": [
+      "pml/tools_index.md"
+    ],
+    "equipmentdrawlist": [
+      "pml/tools_index.md"
+    ],
+    "exploretreeorder": [
+      "pml/tools_index.md"
+    ],
+    "ddzdistancecheck": [
+      "pml/tools_index.md"
+    ],
+    "virtualequipmentform": [
+      "pml/tools_index.md"
+    ],
+    "工具索引": [
+      "pml/tools_index.md"
+    ],
+    "tool index": [
+      "pml/tools_index.md"
+    ],
+    "33个工具": [
+      "pml/tools_index.md"
+    ],
+    "tool name": [
+      "pml/tools_index.md"
+    ],
+    "虚拟连接": [
+      "pml/tools_index.md",
+      "patterns/virtual_conn.md"
+    ],
+    "桥架": [
+      "pml/tools_index.md"
+    ],
+    "电缆": [
+      "pml/tools_index.md"
+    ],
+    "设备检查": [
+      "pml/tools_index.md"
+    ],
+    "房间号": [
+      "pml/tools_index.md",
+      "domain/attribute_map.md"
+    ],
+    "fmsys": [
+      "pml/objects_system.md"
+    ],
+    "!!fmsys": [
+      "pml/objects_system.md"
+    ],
+    "setProgress": [
+      "pml/objects_system.md"
+    ],
+    "progress": [
+      "pml/objects_system.md",
+      "pml/objects_system.md"
+    ],
+    "fminfo": [
+      "pml/objects_system.md"
+    ],
+    "undo": [
+      "pml/objects_system.md"
+    ],
+    "undoable": [
+      "pml/objects_system.md"
+    ],
+    "撤销": [
+      "pml/objects_system.md"
+    ],
+    "datetime": [
+      "pml/objects_system.md"
+    ],
+    "dateformat": [
+      "pml/objects_system.md"
+    ],
+    "string对象": [
+      "pml/objects_core.md"
+    ],
+    "Split": [
+      "pml/objects_core.md",
+      "pml/functions.md"
+    ],
+    "Replace": [
+      "pml/objects_core.md",
+      "pml/functions.md"
+    ],
+    "Trim": [
+      "pml/objects_core.md",
+      "pml/functions.md"
+    ],
+    "array对象": [
+      "pml/objects_core.md"
+    ],
+    "Sort": [
+      "pml/objects_core.md"
+    ],
+    "Unique": [
+      "pml/objects_core.md"
+    ],
+    "file对象": [
+      "pml/objects_core.md"
+    ],
+    "ReadFile": [
+      "pml/objects_core.md"
+    ],
+    "WriteFile": [
+      "pml/objects_core.md"
+    ],
+    "dbref": [
+      "pml/objects_core.md"
+    ],
+    "DBREF": [
+      "pml/objects_core.md"
+    ],
+    "position": [
+      "pml/objects_geometry.md",
+      "api/Geometry/Position.md"
+    ],
+    "direction": [
+      "pml/objects_geometry.md"
+    ],
+    "orientation": [
+      "pml/objects_geometry.md"
+    ],
+    "line几何": [
+      "pml/objects_geometry.md"
+    ],
+    "plane": [
+      "pml/objects_geometry.md"
+    ],
+    "Intersection": [
+      "pml/objects_geometry.md"
+    ],
+    "form对象": [
+      "pml/objects_ui.md"
+    ],
+    "list控件": [
+      "pml/objects_ui.md"
+    ],
+    "text控件": [
+      "pml/objects_ui.md"
+    ],
+    "textpane": [
+      "pml/objects_ui.md"
+    ],
+    "combobox": [
+      "pml/objects_ui.md"
+    ],
+    "selector": [
+      "pml/objects_ui.md"
+    ],
+    "slider": [
+      "pml/objects_ui.md"
+    ],
+    "menu": [
+      "pml/objects_ui.md",
+      "pml/forms.md"
+    ],
+    "bar": [
+      "pml/objects_ui.md"
+    ],
+    "view控件": [
+      "pml/objects_ui.md"
+    ],
+    "volume view": [
+      "pml/objects_ui.md"
+    ],
+    "3d view": [
+      "pml/objects_ui.md"
+    ],
+    "linearGrid": [
+      "pml/objects_grid.md"
+    ],
+    "plantgrid": [
+      "pml/objects_grid.md"
+    ],
+    "column": [
+      "pml/objects_grid.md"
+    ],
+    "table": [
+      "pml/objects_grid.md"
+    ],
+    "profile": [
+      "pml/objects_grid.md"
+    ],
+    "block": [
+      "pml/objects_grid.md"
+    ],
+    "pml对象": [
+      "pml/objects_core.md",
+      "pml/objects_geometry.md",
+      "pml/objects_ui.md",
+      "pml/objects_system.md",
+      "pml/objects_grid.md"
+    ],
+    "object reference": [
+      "pml/objects_core.md",
+      "pml/objects_geometry.md",
+      "pml/objects_ui.md",
+      "pml/objects_system.md",
+      "pml/objects_grid.md"
+    ]
+  }
+}

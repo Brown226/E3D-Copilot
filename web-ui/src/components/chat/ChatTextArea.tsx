@@ -4,7 +4,7 @@ import { FileSearchRequest, FileSearchType, RelativePathsRequest } from "@shared
 import { PlanActMode, TogglePlanActModeRequest } from "@shared/proto/cline/state"
 import { type SlashCommand } from "@shared/slashCommands"
 import { Mode } from "@shared/storage/types"
-import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton } from "@/components/ui/vscode-compat"
 import { AtSignIcon, PlusIcon } from "lucide-react"
 import type React from "react"
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
@@ -92,8 +92,8 @@ interface GitCommit {
 	description: string
 }
 
-const PLAN_MODE_COLOR = "var(--vscode-activityWarningBadge-background)"
-const ACT_MODE_COLOR = "var(--vscode-focusBorder)"
+const PLAN_MODE_COLOR = "var(--vscode-activityWarningBadge-background, oklch(0.75 0.15 80))"
+const ACT_MODE_COLOR = "var(--vscode-focusBorder, oklch(0.55 0.15 260))"
 
 const SwitchContainer = styled.div<{ disabled: boolean }>`
 	display: flex;
@@ -365,7 +365,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							)
 								.then((results) => {
 									if (myToken !== latestSearchTokenRef.current) {
-										// Stale response â€?a newer search has been issued.
+										// Stale response ?a newer search has been issued.
 										return
 									}
 									setFileSearchResults((results.results || []) as SearchResult[])
@@ -795,7 +795,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							)
 								.then((results) => {
 									if (myToken !== latestSearchTokenRef.current) {
-										// Stale response â€?a newer search has been issued.
+										// Stale response ?a newer search has been issued.
 										return
 									}
 									setFileSearchResults((results.results || []) as SearchResult[])
@@ -1508,9 +1508,9 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							zIndex: 1,
 							outline:
 								isDraggingOver && !showUnsupportedFileError // Only show drag outline if not showing error
-									? "2px dashed var(--vscode-focusBorder)"
+									? "2px dashed var(--vscode-focusBorder, oklch(0.55 0.15 260))"
 									: isTextAreaFocused
-										? `1px solid ${mode === "plan" ? PLAN_MODE_COLOR : "var(--vscode-focusBorder)"}`
+										? `1px solid ${mode === "plan" ? PLAN_MODE_COLOR : "var(--vscode-focusBorder, oklch(0.55 0.15 260))"}`
 										: "none",
 							outlineOffset: isDraggingOver && !showUnsupportedFileError ? "1px" : "0px", // Add offset for drag-over outline
 						}}

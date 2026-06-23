@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Tools.Handlers;
+using Newtonsoft.Json.Linq;
 
 namespace E3DCopilot.Core.Tools
 {
@@ -18,6 +19,11 @@ namespace E3DCopilot.Core.Tools
         private readonly Dictionary<string, IToolHandler> _handlers;
         private readonly IEventSink _sink;
         private IToolDispatcher _dispatcher;
+
+        /// <summary>
+        /// 可选工具路由器 — 将核心工具路由到专用工具
+        /// </summary>
+        public IToolRouter Router { get; set; }
 
         public ToolExecutor(IEventSink sink)
         {
@@ -82,21 +88,39 @@ namespace E3DCopilot.Core.Tools
         public bool HasHandler(string name) => _handlers.ContainsKey(name);
 
         /// <summary>
-        /// 执行工具（完整流程：校验 → 分派 → 执行 → 结果）
+        /// 执行工具（完整流程：路由 → 校验 → 分派 → 执行 → 结果）
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(string toolName, string args,
             CancellationToken ct = default)
         {
-            if (!_handlers.TryGetValue(toolName, out var handler))
+            // 第一步：尝试路由 — 将核心工具名映射到专用工具
+            string effectiveName = toolName;
+            string effectiveArgs = args;
+            if (Router != null)
+            {
+                var (routedName, routedArgs) = await Router.RouteAsync(toolName, args);
+                if (!string.IsNullOrEmpty(routedName) && routedName != toolName)
+                {
+                    // 有专用工具匹配，尝试查找对应 Handler
+                    if (_handlers.TryGetValue(routedName, out var _))
+                    {
+                        effectiveName = routedName;
+                        effectiveArgs = routedArgs ?? args;
+                    }
+                    // 专用工具没有注册 Handler，用回核心工具
+                }
+            }
+
+            if (!_handlers.TryGetValue(effectiveName, out var handler))
             {
                 return ToolResult.Fail($"未知工具: {toolName}");
             }
 
-            // 参数校验
-            var validation = ToolValidator.Validate(toolName, args, null);
-            if (!validation.IsValid)
+            // ponytail: inline JSON parse check (replaced ToolValidator which always got null requiredParams)
+            if (!string.IsNullOrWhiteSpace(args))
             {
-                return ToolResult.Fail(validation.Error);
+                try { JObject.Parse(args); }
+                catch { return ToolResult.Fail($"Invalid JSON args for {toolName}"); }
             }
 
             // 分派事件
@@ -136,25 +160,60 @@ namespace E3DCopilot.Core.Tools
         }
 
         /// <summary>
-        /// 初始化工具集（接受 IToolDispatcher 而非 ToolRegistry）
+        /// 初始化工具集
         /// </summary>
-        public static ToolExecutor CreateDefault(IToolDispatcher dispatcher, IEventSink sink)
+        /// <param name="dispatcher">E3D 工具调度器</param>
+        /// <param name="sink">事件接收器</param>
+        /// <param name="router">可选工具路由器（由上层传入，避免 Core→Tools 反向依赖）</param>
+        public static ToolExecutor CreateDefault(IToolDispatcher dispatcher, IEventSink sink,
+            IToolRouter router = null)
         {
             var executor = new ToolExecutor(sink);
             executor._dispatcher = dispatcher;
 
-            executor.Register(new DbQueryHandler(dispatcher));
-            executor.Register(new ModifyHandler(dispatcher));
-            executor.Register(new PmlCommandHandler(dispatcher));
-            executor.Register(new CheckHandler(dispatcher));
-            executor.Register(new CalculateHandler());
-            executor.Register(new ExportHandler(dispatcher));
-            executor.Register(new GetAttributesHandler(dispatcher));
+            // 7 个透传 Handler：直接转发到 IToolDispatcher，零业务逻辑
+            executor.Register(new DispatcherBackedHandler(dispatcher,
+                "query", "Query E3D elements by type (PIPE/EQUI/STRU), name pattern, scope",
+                @"{""type"":""object"",""properties"":{""type"":{""type"":""string"",""description"":""Element type like PIPE/EQUI/STRU/BRAN""},""name"":{""type"":""string"",""description"":""Name pattern, supports *""},""scope"":{""type"":""string"",""description"":""Scope DBURI""},""limit"":{""type"":""integer"",""description"":""Max results""}},""required"":[""type""]}",
+                true));
+            executor.Register(new DispatcherBackedHandler(dispatcher,
+                "modify", "Modify E3D element attribute values (single or batch). Query first.",
+                @"{""type"":""object"",""properties"":{""dburi"":{""type"":""string"",""description"":""Target element DBURI""},""attributes"":{""type"":""object"",""description"":""Key-value pairs to modify""},""preview"":{""type"":""boolean"",""description"":""Preview only""}},""required"":[""dburi"",""attributes""]}",
+                false));
+            executor.Register(new DispatcherBackedHandler(dispatcher,
+                "check", "Check and validate: existence, attribute, naming, clearance",
+                @"{""type"":""object"",""properties"":{""type"":{""type"":""string"",""enum"":[""exists"",""attribute"",""naming"",""clearance""],""description"":""Check type""},""element"":{""type"":""string"",""description"":""Target element name or DBURI""},""attribute"":{""type"":""string"",""description"":""Attribute name""},""expected"":{""type"":""string"",""description"":""Expected value""},""pattern"":{""type"":""string"",""description"":""Naming regex""}},""required"":[""type"",""element""]}",
+                true));
+            executor.Register(new DispatcherBackedHandler(dispatcher,
+                "export", "Import/Export: export element list to Excel/CSV, generate PML script",
+                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""export"",""import"",""generate_pml""]},""format"":{""type"":""string"",""enum"":[""csv"",""excel"",""pml""]},""filePath"":{""type"":""string"",""description"":""File path""}},""required"":[""action"",""format""]}",
+                false));
+            executor.Register(new DispatcherBackedHandler(dispatcher,
+                "design", "Create/modify equipment and structural elements",
+                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""create"",""modify"",""delete""],""description"":""Operation type""},""type"":{""type"":""string"",""description"":""Element type like EQUI/STRU""},""name"":{""type"":""string"",""description"":""Element name""},""attributes"":{""type"":""object"",""description"":""Attributes to set""}},""required"":[""action"",""type""]}",
+                false));
+            executor.Register(new DispatcherBackedHandler(dispatcher,
+                "piping", "Create/modify piping elements (PIPE/BRAN/FTUB/BEND/TEE)",
+                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""create"",""modify""],""description"":""Operation type""},""name"":{""type"":""string"",""description"":""Pipe/Branch name""},""attributes"":{""type"":""object"",""description"":""Attributes to set""}},""required"":[""action""]}",
+                false));
+            executor.Register(new DispatcherBackedHandler(dispatcher,
+                "geometry", "Spatial geometry queries: position, orientation, bounding box",
+                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""position"",""orientation"",""bbox""],""description"":""Query type""},""element"":{""type"":""string"",""description"":""Element name""}},""required"":[""action"",""element""]}",
+                true));
 
-            // 新增 Handler
-            executor.Register(new DesignHandler(dispatcher));
-            executor.Register(new PipingHandler(dispatcher));
-            executor.Register(new GeometryHandler(dispatcher));
+            // 有实质逻辑的 Handler
+            executor.Register(new PmlCommandHandler(dispatcher));
+            executor.Register(new GetAttributesHandler(dispatcher));
+            executor.Register(new CalculateHandler());
+
+            // 元能力工具（不依赖 IToolDispatcher）
+            executor.Register(new AskUserHandler(sink));
+            executor.Register(new TaskHandler(sink));
+            executor.Register(new ReadFileHandler(sink));
+            executor.Register(new SearchKnowledgeHandler(sink));
+
+            // 接入可选路由器
+            executor.Router = router;
 
             return executor;
         }

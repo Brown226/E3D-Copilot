@@ -1,5 +1,5 @@
 import { EmptyRequest } from "@shared/proto/index.cline"
-import { VSCodeButton, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton, VSCodeLink } from "@/components/ui/vscode-compat"
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { RemoteConfigToggle } from "@/components/account/RemoteConfigToggle"
@@ -84,7 +84,7 @@ function SettingRow({ label, value, isSecret }: SettingRowProps) {
 			)
 		}
 		if (isSecret && typeof value === "string" && value.length > 0) {
-			return <span className="font-mono text-xs">{"•".repeat(Math.min(value.length, 20))}</span>
+			return <span className="font-mono text-xs">{"?.repeat(Math.min(value.length, 20))}</span>
 		}
 		return <span className="font-mono text-xs break-all">{String(value)}</span>
 	})()

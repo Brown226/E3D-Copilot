@@ -1,5 +1,5 @@
 import { ModelInfo } from "@shared/api"
-import { VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeTextField } from "@/components/ui/vscode-compat"
 import Fuse from "fuse.js"
 import { KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"

@@ -18,7 +18,7 @@ import {
 	VSCodeTag,
 	VSCodeTextArea,
 	VSCodeTextField,
-} from "@vscode/webview-ui-toolkit/react"
+} from "@/components/ui/vscode-compat"
 import { useTranslation } from "react-i18next"
 
 function Demo() {

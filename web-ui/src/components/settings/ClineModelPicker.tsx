@@ -4,7 +4,7 @@ import { EmptyRequest, StringRequest } from "@shared/proto/cline/common"
 import { type ClineRecommendedModel, ClineRecommendedModelsResponse } from "@shared/proto/cline/models"
 import type { Mode } from "@shared/storage/types"
 import { isClaudeOpusAdaptiveThinkingModel, resolveClaudeOpusAdaptiveThinking } from "@shared/utils/reasoning-support"
-import { VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeTextField } from "@/components/ui/vscode-compat"
 import Fuse from "fuse.js"
 import i18next from "i18next"
 import type React from "react"
@@ -44,7 +44,7 @@ const StarIcon = ({ isFavorite, onClick }: { isFavorite: boolean; onClick: (e: R
 				userSelect: "none",
 				WebkitUserSelect: "none",
 			}}>
-			{isFavorite ? "★" : "☆"}
+			{isFavorite ? "" : ""}
 		</div>
 	)
 }

@@ -1,7 +1,7 @@
 import { ModelInfo } from "@shared/api"
 import { UpdateApiConfigurationRequestNew } from "@shared/proto/index.cline"
 import { Mode } from "@shared/storage/types"
-import { VSCodeButton, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton, VSCodeLink } from "@/components/ui/vscode-compat"
 import { RefreshCwIcon } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"

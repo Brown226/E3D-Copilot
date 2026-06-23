@@ -7,7 +7,7 @@ import {
 	MergeWorktreeRequest,
 	SwitchWorktreeRequest,
 } from "@shared/proto/cline/worktree"
-import { VSCodeButton, VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton, VSCodeCheckbox } from "@/components/ui/vscode-compat"
 import { AlertCircle, Check, ExternalLink, FolderOpen, GitBranch, GitMerge, Loader2, Plus, Trash2, X } from "lucide-react"
 import { memo, useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"

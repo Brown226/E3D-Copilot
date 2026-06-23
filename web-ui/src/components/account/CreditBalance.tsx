@@ -1,4 +1,4 @@
-import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton } from "@/components/ui/vscode-compat"
 import { useTranslation } from "react-i18next"
 import VSCodeButtonLink from "../common/VSCodeButtonLink"
 import { StyledCreditDisplay } from "./StyledCreditDisplay"

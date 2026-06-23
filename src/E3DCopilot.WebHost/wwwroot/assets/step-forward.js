@@ -1,0 +1,1 @@
+import{g as e}from"./index.js";var t=[[`line`,{x1:`6`,x2:`6`,y1:`4`,y2:`20`,key:`fy8qot`}],[`polygon`,{points:`10,4 20,12 10,20`,key:`1mc1pf`}]],n=e(`step-forward`,t);export{t as __iconNode,n as default};

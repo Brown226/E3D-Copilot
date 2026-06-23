@@ -1,6 +1,6 @@
 import { xaiModels } from "@shared/api"
 import { Mode } from "@shared/storage/types"
-import { VSCodeCheckbox, VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeCheckbox, VSCodeDropdown, VSCodeOption } from "@/components/ui/vscode-compat"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useExtensionState } from "@/context/ExtensionStateContext"

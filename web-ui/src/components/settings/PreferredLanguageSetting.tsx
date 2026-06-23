@@ -1,4 +1,4 @@
-import { VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeDropdown, VSCodeOption } from "@/components/ui/vscode-compat"
 import React from "react"
 import { useTranslation } from "react-i18next"
 import { useExtensionState } from "@/context/ExtensionStateContext"
@@ -18,30 +18,30 @@ const PreferredLanguageSetting: React.FC = () => {
 				{t("settings.preferredLanguage")}
 			</label>
 			<VSCodeDropdown
-				currentValue={preferredLanguage || "Simplified Chinese - 简体中文"}
+				currentValue={preferredLanguage || "Simplified Chinese - "}
 				id="preferred-language-dropdown"
 				onChange={(e: any) => {
 					handleLanguageChange(e.target.value)
 				}}
 				style={{ width: "100%" }}>
 				<VSCodeOption value="English">English</VSCodeOption>
-				<VSCodeOption value="Arabic - العربية">Arabic - العربية</VSCodeOption>
-				<VSCodeOption value="Portuguese - Português (Brasil)">Portuguese - Português (Brasil)</VSCodeOption>
-				<VSCodeOption value="Czech - Čeština">Czech - Čeština</VSCodeOption>
-				<VSCodeOption value="French - Français">French - Français</VSCodeOption>
+				<VSCodeOption value="Arabic - 19181719101411">Arabic - 19181719101411</VSCodeOption>
+				<VSCodeOption value="Portuguese - Portugus (Brasil)">Portuguese - Portugus (Brasil)</VSCodeOption>
+				<VSCodeOption value="Czech - 09e08tina">Czech - 09e08tina</VSCodeOption>
+				<VSCodeOption value="French - Fran04ais">French - Fran04ais</VSCodeOption>
 				<VSCodeOption value="German - Deutsch">German - Deutsch</VSCodeOption>
-				<VSCodeOption value="Hindi - हिन्दी">Hindi - हिन्दी</VSCodeOption>
+				<VSCodeOption value="Hindi - 151118151612">Hindi - 151118151612</VSCodeOption>
 				<VSCodeOption value="Hungarian - Magyar">Hungarian - Magyar</VSCodeOption>
 				<VSCodeOption value="Italian - Italiano">Italian - Italiano</VSCodeOption>
-				<VSCodeOption value="Japanese - 日本語">Japanese - 日本語</VSCodeOption>
-				<VSCodeOption value="Korean - 한국어">Korean - 한국어</VSCodeOption>
+				<VSCodeOption value="Japanese - ձZ">Japanese - ձZ</VSCodeOption>
+				<VSCodeOption value="Korean - 637025">Korean - 637025</VSCodeOption>
 				<VSCodeOption value="Polish - Polski">Polish - Polski</VSCodeOption>
-				<VSCodeOption value="Portuguese - Português (Portugal)">Portuguese - Português (Portugal)</VSCodeOption>
-				<VSCodeOption value="Russian - Русский">Russian - Русский</VSCodeOption>
-				<VSCodeOption value="Simplified Chinese - 简体中文">Simplified Chinese - 简体中文</VSCodeOption>
-				<VSCodeOption value="Spanish - Español">Spanish - Español</VSCodeOption>
-				<VSCodeOption value="Traditional Chinese - 繁體中文">Traditional Chinese - 繁體中文</VSCodeOption>
-				<VSCodeOption value="Turkish - Türkçe">Turkish - Türkçe</VSCodeOption>
+				<VSCodeOption value="Portuguese - Portugus (Portugal)">Portuguese - Portugus (Portugal)</VSCodeOption>
+				<VSCodeOption value="Russian - ܧڧ">Russian - ܧڧ</VSCodeOption>
+				<VSCodeOption value="Simplified Chinese - ">Simplified Chinese - </VSCodeOption>
+				<VSCodeOption value="Spanish - Espa09ol">Spanish - Espa09ol</VSCodeOption>
+				<VSCodeOption value="Traditional Chinese - w">Traditional Chinese - w</VSCodeOption>
+				<VSCodeOption value="Turkish - Trk04e">Turkish - Trk04e</VSCodeOption>
 			</VSCodeDropdown>
 			<p className="text-sm text-description mt-1">{t("settings.preferredLanguageDescription")}</p>
 		</div>

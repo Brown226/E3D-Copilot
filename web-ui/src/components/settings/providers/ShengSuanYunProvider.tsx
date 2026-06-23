@@ -1,6 +1,6 @@
 import { EmptyRequest } from "@shared/proto/cline/common"
 import { Mode } from "@shared/storage/types"
-import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton } from "@/components/ui/vscode-compat"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { AccountServiceClient } from "@/services/grpc-client"
 import { ApiKeyField } from "../common/ApiKeyField"
@@ -21,7 +21,7 @@ export const ShengSuanYunProvider = ({ showModelOptions, isPopup, currentMode }:
 			<ApiKeyField
 				initialValue={apiConfiguration?.shengSuanYunApiKey || ""}
 				onChange={(value) => handleFieldChange("shengSuanYunApiKey", value)}
-				providerName="胜算云"
+				providerName="ʤ"
 				signupUrl="https://console.shengsuanyun.com/user/keys"
 			/>
 			{!apiConfiguration?.shengSuanYunApiKey && (
@@ -35,7 +35,7 @@ export const ShengSuanYunProvider = ({ showModelOptions, isPopup, currentMode }:
 						}
 					}}
 					style={{ margin: "5px 0 0 0" }}>
-					登录胜算云
+					¼ʤ
 				</VSCodeButton>
 			)}
 			{showModelOptions && <ShengSuanYunModelPicker currentMode={currentMode} isPopup={isPopup} />}

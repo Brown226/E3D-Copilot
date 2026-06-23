@@ -1,4 +1,4 @@
-import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeCheckbox } from "@/components/ui/vscode-compat"
 import styled from "styled-components"
 import { ActionMetadata } from "./types"
 

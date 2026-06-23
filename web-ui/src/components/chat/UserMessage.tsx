@@ -91,12 +91,10 @@ const UserMessage: React.FC<UserMessageProps> = ({ text, images, files, messageT
 
 	return (
 		<div
-			className="p-2.5 pr-1 my-1 text-badge-foreground rounded-xs"
+			className="p-2.5 pr-1 my-1 text-badge-foreground rounded-xs whitespace-pre-line break-words"
 			onClick={handleClick}
 			style={{
-				backgroundColor: isEditing ? "unset" : "var(--vscode-badge-background)",
-				whiteSpace: "pre-line",
-				wordWrap: "break-word",
+				backgroundColor: isEditing ? "unset" : "var(--vscode-badge-background, var(--badge-background))",
 			}}>
 			{isEditing ? (
 				<>
@@ -108,9 +106,9 @@ const UserMessage: React.FC<UserMessageProps> = ({ text, images, files, messageT
 						ref={textAreaRef}
 						style={{
 							width: "100%",
-							backgroundColor: "var(--vscode-input-background)",
-							color: "var(--vscode-input-foreground)",
-							borderColor: "var(--vscode-input-border)",
+							backgroundColor: "var(--vscode-input-background, var(--input))",
+							color: "var(--vscode-input-foreground, var(--foreground))",
+							borderColor: "var(--vscode-input-border, var(--border))",
 							border: "1px solid",
 							borderRadius: "2px",
 							padding: "6px",
@@ -179,11 +177,11 @@ const RestoreButton = forwardRef<HTMLButtonElement, RestoreButtonProps>(({ type,
 			ref={ref}
 			style={{
 				backgroundColor: isPrimary
-					? "var(--vscode-button-background)"
-					: "var(--vscode-button-secondaryBackground, var(--vscode-descriptionForeground))",
+					? "var(--vscode-button-background, var(--button-background))"
+					: "var(--vscode-button-secondaryBackground, var(--button-secondary-background, var(--description-foreground)))",
 				color: isPrimary
-					? "var(--vscode-button-foreground)"
-					: "var(--vscode-button-secondaryForeground, var(--vscode-foreground))",
+					? "var(--vscode-button-foreground, var(--button-foreground))"
+					: "var(--vscode-button-secondaryForeground, var(--button-secondary-foreground, var(--foreground)))",
 				border: "none",
 				padding: "4px 8px",
 				borderRadius: "2px",

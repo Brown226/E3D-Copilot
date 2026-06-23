@@ -1,5 +1,6 @@
 ﻿/* Import external CSS files */
-/* VSCode codicons — removed for E3D */
+/* Codicons icon font for VS Code icon classes */
+@import url("../node_modules/@vscode/codicons/dist/codicon.css");
 @import url("../node_modules/@fontsource/azeret-mono/index.css");
 
 /* Tailwind CSS */

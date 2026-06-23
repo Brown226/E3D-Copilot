@@ -81,7 +81,8 @@ namespace E3DCopilot.Core
         /// </summary>
         public static CopilotController CreateDefault(
             IToolDispatcher dispatcher = null,
-            IEventSink sink = null)
+            IEventSink sink = null,
+            IToolRouter router = null)
         {
             var config = CopilotConfig.Load();
             
@@ -105,7 +106,7 @@ namespace E3DCopilot.Core
                 );
             }
             
-            var executor = ToolExecutor.CreateDefault(dispatcher, sink);
+            var executor = ToolExecutor.CreateDefault(dispatcher, sink, router);
             var permission = CommandPermissionController.CreateDefault();
 
             return new CopilotController(provider, executor, permission, config, sink);

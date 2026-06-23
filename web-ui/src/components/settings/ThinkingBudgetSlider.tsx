@@ -1,6 +1,6 @@
 import { ANTHROPIC_MAX_THINKING_BUDGET, ANTHROPIC_MIN_THINKING_BUDGET } from "@shared/api"
 import { Mode } from "@shared/storage/types"
-import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeCheckbox } from "@/components/ui/vscode-compat"
 import { memo, useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import styled from "styled-components"

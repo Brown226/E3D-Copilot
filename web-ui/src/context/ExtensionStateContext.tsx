@@ -26,7 +26,11 @@ import {
 } from "../../../src/shared/api"
 import { Environment } from "../../../src/shared/config-types"
 import type { McpMarketplaceCatalog, McpServer, McpViewTab } from "../../../src/shared/mcp"
-import { McpServiceClient, ModelsServiceClient, StateServiceClient, UiServiceClient } from "../services/grpc-client"
+import { McpServiceClient, ModelsServiceClient, StateServiceClient, TaskServiceClient, UiServiceClient } from "../services/grpc-client"
+import { PLATFORM_CONFIG, PlatformType } from "../config/platform.config"
+
+// ponytail: E3D 平台没有 gRPC 后端，跳过所有订阅
+const IS_E3D = PLATFORM_CONFIG.type === PlatformType.E3D
 
 export interface ExtensionStateContextType extends ExtensionState {
 	didHydrateState: boolean
@@ -356,6 +360,41 @@ export const ExtensionStateContextProvider: React.FC<{
 
 	// Subscribe to state updates and UI events using the gRPC streaming API
 	useEffect(() => {
+		// ponytail: E3D 无 gRPC 后端，但通过 Bridge 接收事件
+		if (IS_E3D) {
+			// 订阅 TaskServiceClient（Bridge 适配层，不需要 gRPC）
+			stateSubscriptionRef.current = TaskServiceClient.subscribeToState({}, {
+				onResponse: (response) => {
+					if (response.stateJson) {
+						try {
+							const stateData = JSON.parse(response.stateJson) as ExtensionState
+							setState((prevState) => {
+								if (stateData.currentTaskItem?.id === prevState.currentTaskItem?.id) {
+									stateData.clineMessages = stateData.clineMessages?.length
+										? stateData.clineMessages
+										: prevState.clineMessages
+								}
+								return { ...prevState, ...stateData }
+							})
+							setDidHydrateState(true)
+						} catch (e) {
+							console.error("[E3D] Failed to parse state:", e)
+						}
+					}
+				},
+				onError: (e) => console.error("[E3D] State error:", e),
+			})
+
+			setDidHydrateState(true)
+			setShowWelcome(false)
+			return () => {
+				if (stateSubscriptionRef.current) {
+					stateSubscriptionRef.current()
+					stateSubscriptionRef.current = null
+				}
+			}
+		}
+
 		// Set up state subscription
 		stateSubscriptionRef.current = StateServiceClient.subscribeToState(EmptyRequest.create({}), {
 			onResponse: (response) => {

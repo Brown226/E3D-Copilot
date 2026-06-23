@@ -43,7 +43,7 @@ export const InputSection: React.FC<InputSectionProps> = ({
 	return (
 		<>
 			{activeQuote && (
-				<div style={{ marginBottom: "-12px", marginTop: "10px" }}>
+				<div className="mb-[-12px] mt-2.5">
 					<QuotedMessagePreview
 						isFocused={isTextAreaFocused}
 						onDismiss={() => setActiveQuote(null)}

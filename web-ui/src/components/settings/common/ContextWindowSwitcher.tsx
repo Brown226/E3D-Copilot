@@ -1,4 +1,4 @@
-import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeLink } from "@/components/ui/vscode-compat"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 

@@ -10,6 +10,7 @@ using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Providers;
 using E3DCopilot.Core.Security;
 using E3DCopilot.Core.Tools;
+using static E3DCopilot.Core.Security.CommandPermissionController;
 
 namespace E3DCopilot.Core
 {
@@ -24,6 +25,7 @@ namespace E3DCopilot.Core
         private readonly IEventSink _sink;
         private readonly ToolExecutor _executor;
         private readonly CommandPermissionController _permission;
+        private readonly ToolPolicy _toolPolicy;
         private readonly CopilotConfig _config;
         private readonly CopilotController _controller;
 
@@ -31,14 +33,38 @@ namespace E3DCopilot.Core
 
         public AgentLoop(ICopilotProvider provider, IEventSink sink,
             ToolExecutor executor, CommandPermissionController permission,
-            CopilotConfig config, CopilotController controller = null)
+            CopilotConfig config, CopilotController controller = null,
+            ToolPolicy toolPolicy = null)
         {
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
             _sink = sink;
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
             _permission = permission ?? CommandPermissionController.CreateDefault();
+            _toolPolicy = toolPolicy ?? CreateDefaultToolPolicy();
             _config = config ?? CopilotConfig.Load();
             _controller = controller;
+        }
+
+        /// <summary>
+        /// 创建默认工具策略（匹配 CommandPermissionController.CreateDefault 的规则）
+        /// </summary>
+        private static ToolPolicy CreateDefaultToolPolicy()
+        {
+            var policy = new ToolPolicy();
+            policy.ApplyPreset(ToolPreset.Confirm);
+            // 只读工具自动执行
+            policy.Set("query", ApprovalMode.Auto);
+            policy.Set("check", ApprovalMode.Auto);
+            policy.Set("calculate", ApprovalMode.Auto);
+            policy.Set("export", ApprovalMode.Auto);
+            policy.Set("ask_user", ApprovalMode.Auto);
+            policy.Set("task", ApprovalMode.Auto);
+            policy.Set("read_file", ApprovalMode.Auto);
+            policy.Set("search_knowledge", ApprovalMode.Auto);
+            // 写工具需确认
+            policy.Set("modify", ApprovalMode.Ask);
+            policy.Set("execute_pml", ApprovalMode.Ask);
+            return policy;
         }
 
         /// <summary>
@@ -89,7 +115,7 @@ namespace E3DCopilot.Core
                             continue;
                         }
 
-                        // 5a. Permission check (CommandPermissionController)
+                        // 5a. Permission check (CommandPermissionController + ToolPolicy)
                         var access = _permission.CheckTool(call.Name, call.Arguments);
                         if (access == CommandPermissionController.AccessMode.Block)
                         {
@@ -99,11 +125,27 @@ namespace E3DCopilot.Core
                             continue;
                         }
 
-                        // 5b. Batch operation detection (>5 elements need extra confirmation)
+                        // 5b. ToolPolicy 检查：PlanOnly 模式下写工具被阻止
+                        bool isPlanMode = session?.IsPlanMode ?? false;
+                        if (!_toolPolicy.IsAllowed(call.Name, isPlanMode))
+                        {
+                            string msg = isPlanMode
+                                ? $"Tool {call.Name} blocked: write operations disabled in Plan Mode"
+                                : $"Tool {call.Name} blocked by tool policy";
+                            session.AddToolResult(call.Id, msg);
+                            _sink.Emit(CopilotEvent.Error(msg));
+                            continue;
+                        }
+
+                        // 5c. Batch operation detection (>5 elements need extra confirmation)
                         bool isBatch = _permission.IsBatchOperation(call.Arguments);
 
-                        // 5c. Needs approval?
-                        if (access == CommandPermissionController.AccessMode.Ask || isBatch)
+                        // 5d. Needs approval? (ToolPolicy Ask mode + batch detection)
+                        bool needsApproval = access == CommandPermissionController.AccessMode.Ask
+                            || _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask
+                            || isBatch;
+
+                        if (needsApproval)
                         {
                             var approval = new PendingApproval
                             {
@@ -338,16 +380,26 @@ namespace E3DCopilot.Core
             request.Messages.Add(new ChatMessage(MessageRole.System,
                 SystemPrompt.Build(currentElement, null, selectedElements)));
 
-            // Tool definitions (from ToolExecutor)
+            // Tool definitions (from ToolExecutor) — only expose 10 core tools to LLM
+            // Internal/deprecated tools (design, piping, geometry, get_attributes) are still
+            // registered for backward compat but hidden from AI to simplify decision-making.
             var toolSchemas = new List<ToolSchema>();
+            var exposedToolNames = new HashSet<string>
+            {
+                "query", "modify", "check", "calculate", "export", "execute_pml",
+                "ask_user", "task", "read_file", "search_knowledge"
+            };
             foreach (var handler in _executor.GetAllHandlers())
             {
-                toolSchemas.Add(new ToolSchema
+                if (exposedToolNames.Contains(handler.Name))
                 {
-                    Name = handler.Name,
-                    Description = handler.Description,
-                    ParametersJson = handler.ParameterSchema
-                });
+                    toolSchemas.Add(new ToolSchema
+                    {
+                        Name = handler.Name,
+                        Description = handler.Description,
+                        ParametersJson = handler.ParameterSchema
+                    });
+                }
             }
             request.Tools = toolSchemas;
 

@@ -1,7 +1,7 @@
 import { shengSuanYunDefaultModelId, shengSuanYunDefaultModelInfo } from "@shared/api"
 import { EmptyRequest } from "@shared/proto/cline/common"
 import { Mode } from "@shared/storage/types"
-import { VSCodeLink, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeLink, VSCodeTextField } from "@/components/ui/vscode-compat"
 import Fuse from "fuse.js"
 import React, { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import { useMount } from "react-use"
@@ -33,7 +33,7 @@ const StarIcon = ({ isFavorite, onClick }: { isFavorite: boolean; onClick: (e: R
 				userSelect: "none",
 				WebkitUserSelect: "none",
 			}}>
-			{isFavorite ? "★" : "☆"}
+			{isFavorite ? "" : ""}
 		</div>
 	)
 }
@@ -301,18 +301,16 @@ const ShengSuanYunModelPicker: React.FC<ShengSuanYunModelPickerProps> = ({ isPop
 						marginTop: 0,
 						color: "var(--vscode-descriptionForeground)",
 					}}>
-					该扩展会自动获取胜算云上可用的最新模型列表{" "}
+					该扩展会臄17获取胜算云上叄17的最新模型列表{" "}
 					<VSCodeLink href="https://router.shengsuanyun.com/model" style={{ display: "inline", fontSize: "inherit" }}>
-						胜算云
-					</VSCodeLink>
-					如果你不确定使用哪个模型, Cline 可以和{" "}
+						胜算?					</VSCodeLink>
+					如果你不硄17使用哄17模型, Cline 叄17和{" "}
 					<VSCodeLink
 						onClick={() => handleModelChange("anthropic/claude-sonnet-4")}
 						style={{ display: "inline", fontSize: "inherit" }}>
 						anthropic/claude-sonnet-4
 					</VSCodeLink>
-					很好的工作
-				</p>
+					很好的工?				</p>
 			)}
 		</div>
 	)

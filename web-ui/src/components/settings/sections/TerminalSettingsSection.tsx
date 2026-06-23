@@ -1,5 +1,5 @@
 import { UpdateTerminalConnectionTimeoutResponse } from "@shared/proto/index.cline"
-import { VSCodeCheckbox, VSCodeDropdown, VSCodeOption, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeCheckbox, VSCodeDropdown, VSCodeOption, VSCodeTextField } from "@/components/ui/vscode-compat"
 import React, { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { PlatformType } from "@/config/platform.config"
