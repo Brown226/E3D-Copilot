@@ -1,12 +1,16 @@
 import { ClineMessage } from "@shared/ExtensionMessage"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useExtensionState } from "@/context/ExtensionStateContext"
 import { ChatState } from "../types/chatTypes"
 
 /**
  * Custom hook for managing chat state
  * Handles input values, selection states, and UI state
+ *
+ * E3D 修复：监听 isTaskRunning 状态，任务结束时自动重置 sendingDisabled/enableButtons
  */
 export function useChatState(messages: ClineMessage[]): ChatState {
+	const { isTaskRunning } = useExtensionState()
 	// Input and selection state
 	const [inputValue, setInputValue] = useState("")
 	const [activeQuote, setActiveQuote] = useState<string | null>(null)
@@ -52,6 +56,15 @@ export function useChatState(messages: ClineMessage[]): ChatState {
 	useEffect(() => {
 		clearExpandedRows()
 	}, [clearExpandedRows])
+
+	// 修复：任务结束（isTaskRunning: true → false）时自动重置 UI 状态
+	// 解决"sendingDisabled 永不重置导致输入框永久禁用"问题
+	useEffect(() => {
+		if (isTaskRunning === false) {
+			setSendingDisabled(false)
+			setEnableButtons(true)
+		}
+	}, [isTaskRunning])
 
 	return {
 		// State values

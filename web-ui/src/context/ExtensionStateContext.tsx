@@ -35,6 +35,10 @@ const IS_E3D = PLATFORM_CONFIG.type === PlatformType.E3D
 export interface ExtensionStateContextType extends ExtensionState {
 	didHydrateState: boolean
 	showWelcome: boolean
+	// E3D 任务状态：true 表示 LLM/工具正在运行，false 时 UI 输入框解锁
+	isTaskRunning: boolean
+	// E3D Plan Mode 状态
+	isPlanMode: boolean
 	onboardingModels: OnboardingModelGroup | undefined
 	clineModels: Record<string, ModelInfo> | null
 	openRouterModels: Record<string, ModelInfo>
@@ -301,6 +305,10 @@ export const ExtensionStateContextProvider: React.FC<{
 	const [expandTaskHeader, setExpandTaskHeader] = useState(true)
 	const [didHydrateState, setDidHydrateState] = useState(false)
 
+	// E3D 任务运行状态（由 grpc-client 通过 stateJson 推送）
+	const [isTaskRunning, setIsTaskRunning] = useState(false)
+	const [isPlanMode, setIsPlanMode] = useState(false)
+
 	const [showWelcome, setShowWelcome] = useState(false)
 	const [onboardingModels, setOnboardingModels] = useState<OnboardingModelGroup | undefined>(undefined)
 
@@ -367,7 +375,7 @@ export const ExtensionStateContextProvider: React.FC<{
 				onResponse: (response) => {
 					if (response.stateJson) {
 						try {
-							const stateData = JSON.parse(response.stateJson) as ExtensionState
+							const stateData = JSON.parse(response.stateJson) as ExtensionState & { isTaskRunning?: boolean; isPlanMode?: boolean }
 							setState((prevState) => {
 								if (stateData.currentTaskItem?.id === prevState.currentTaskItem?.id) {
 									stateData.clineMessages = stateData.clineMessages?.length
@@ -376,6 +384,13 @@ export const ExtensionStateContextProvider: React.FC<{
 								}
 								return { ...prevState, ...stateData }
 							})
+							// 同步 E3D 任务状态到独立 state（驱动 useChatState 的 useEffect）
+							if (typeof stateData.isTaskRunning === "boolean") {
+								setIsTaskRunning(stateData.isTaskRunning)
+							}
+							if (typeof stateData.isPlanMode === "boolean") {
+								setIsPlanMode(stateData.isPlanMode)
+							}
 							setDidHydrateState(true)
 						} catch (e) {
 							console.error("[E3D] Failed to parse state:", e)
@@ -842,6 +857,8 @@ export const ExtensionStateContextProvider: React.FC<{
 	const contextValue: ExtensionStateContextType = {
 		...state,
 		didHydrateState,
+		isTaskRunning,
+		isPlanMode,
 		showWelcome,
 		onboardingModels,
 		clineModels,

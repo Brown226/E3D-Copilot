@@ -193,6 +193,8 @@ namespace E3DCopilot.Core
                 catch (OperationCanceledException)
                 {
                     _sink.Emit(CopilotEvent.Notice("Cancelled"));
+                    // 取消也要发 TurnDone，让前端解锁 UI
+                    _sink.Emit(CopilotEvent.TurnDone());
                     return;
                 }
                 catch (Exception ex)
@@ -201,9 +203,12 @@ namespace E3DCopilot.Core
                     try { CopilotLogger.Error(ex, "AgentLoop step {0} failed", step); } catch { }
                     
                     string msg = "Error encountered";
-                    try { msg = $"Error: {ex.GetType().Name}"; } catch { }
+                    try { msg = $"Error: {ex.GetType().Name}: {ex.Message}"; } catch { }
                     
                     _sink?.Emit(CopilotEvent.Error(msg));
+                    // 出错也要发 TurnDone，让前端解锁 UI（避免输入框永久禁用）
+                    _sink?.Emit(CopilotEvent.TurnDone());
+                    return;
                 }
             }
 
@@ -263,6 +268,10 @@ namespace E3DCopilot.Core
                         $"Parsed {xmlCalls.Count} XML format tool calls from text (fallback mode)"));
                 }
             }
+
+            // 流式结束：通知前端 _currentStreamingMessage.partial = false
+            // 前端据此完成最后一条消息的渲染（但 UI 解锁等 TurnDone）
+            _sink.Emit(CopilotEvent.StreamEnd());
 
             return (text, toolCalls);
         }

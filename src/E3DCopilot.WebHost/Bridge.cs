@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -12,17 +13,26 @@ using Microsoft.Web.WebView2.WinForms;
 namespace E3DCopilot.WebHost
 {
     /// <summary>
-    /// C# ↔ JavaScript 双向通信桥（改进版）
-    /// 
-    /// 改进点：
-    /// 1. 使用 MessageTypes 常量替代硬编码字符串
-    /// 2. 使用强类型消息契约
-    /// 3. 更好的错误处理和日志
+    /// C# ↔ JavaScript 双向通信桥（v2 修复版）
+    ///
+    /// 关键修复：
+    /// 1. 读取前端 _requestId 并在响应中回带，修复 sendAndWait 协议
+    /// 2. 移除 HandleUserMessage 中的诊断 Notice，避免污染消息流
+    /// 3. 新增 TurnDone 分发，驱动前端 UI 状态机重置
+    /// 4. 新增 UserSetPlanMode 处理，修复 Plan/Act 模式切换
+    /// 5. HandleModelSwitch 成功后发 ModelsListResult 而非 ModelSwitch
     /// </summary>
     public class Bridge
     {
         private readonly WebView2 _webView;
         private readonly CopilotController _controller;
+
+        /// <summary>
+        /// 当前请求的 _requestId（按消息类型暂存，响应时回带）
+        /// 同一时刻同一类型只会有一个 pending 请求（前端 UI 串行调用）
+        /// </summary>
+        private readonly ConcurrentDictionary<string, string> _pendingRequestIds
+            = new ConcurrentDictionary<string, string>();
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -41,6 +51,7 @@ namespace E3DCopilot.WebHost
         /// </summary>
         public void HandleMessage(string raw)
         {
+            string requestId = null;
             try
             {
                 using var doc = JsonDocument.Parse(raw);
@@ -50,7 +61,16 @@ namespace E3DCopilot.WebHost
                     return;
 
                 var type = typeProp.GetString();
-                var payload = root.TryGetProperty("payload", out var p) ? p : default;
+
+                // 读取 _requestId（sendAndWait 协议）
+                if (root.TryGetProperty("_requestId", out var ridProp))
+                    requestId = ridProp.GetString();
+
+                // 暂存 requestId，供后续 SendToFrontend 响应时回带
+                if (!string.IsNullOrEmpty(requestId))
+                    _pendingRequestIds[type] = requestId;
+
+                var payload = root.TryGetProperty("payload", out var p) ? p : (JsonElement?)null;
 
                 switch (type)
                 {
@@ -74,8 +94,12 @@ namespace E3DCopilot.WebHost
                         HandleAskResponse(payload);
                         break;
 
+                    case MessageTypes.UserSetPlanMode:
+                        HandleSetPlanMode(payload);
+                        break;
+
                     case MessageTypes.Ping:
-                        SendToFrontend(MessageTypes.Pong, new { timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
+                        SendToFrontend(MessageTypes.Pong, new { timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }, MessageTypes.Ping);
                         break;
 
                     // === Provider / Model 管理 ===
@@ -114,12 +138,13 @@ namespace E3DCopilot.WebHost
             }
             catch (JsonException ex)
             {
-                SendToFrontend(MessageTypes.Error, new { message = $"JSON 解析错误: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"JSON 解析错误: {ex.Message}" }, requestId);
             }
         }
 
         /// <summary>
         /// 处理用户文本消息
+        /// 修复：移除两行诊断 Notice（避免污染 _clineMessages，破坏 messages.length===0 判断）
         /// </summary>
         private void HandleUserMessage(JsonElement? payload)
         {
@@ -129,20 +154,19 @@ namespace E3DCopilot.WebHost
 
             if (string.IsNullOrWhiteSpace(text))
             {
-                SendToFrontend(MessageTypes.Notice, new { text = "[Bridge] 收到空消息，已忽略" });
+                // 空消息只发 Error，不发 Notice（Notice 会污染消息流）
+                SendToFrontend(MessageTypes.Error, new { message = "[Bridge] 收到空消息，已忽略" });
                 return;
             }
 
-            // 诊断：确认消息到达 Bridge
-            SendToFrontend(MessageTypes.Notice, new { text = $"[Bridge] 收到消息: {text.Substring(0, Math.Min(30, text.Length))}，正在调用 LLM..." });
-
-            // 异步发送，不阻塞 UI 线程
+            // 异步发送，不阻塞 UI 线程；不再发诊断 Notice
             _ = Task.Run(async () =>
             {
                 try
                 {
                     await _controller.SendAsync(text);
-                    SendToFrontend(MessageTypes.Notice, new { text = "[Bridge] LLM 调用完成" });
+                    // LLM 调用完成后会通过 AgentLoop 的 TurnDone 事件通知前端
+                    // 这里不再发"[Bridge] LLM 调用完成"Notice
                 }
                 catch (Exception ex)
                 {
@@ -184,14 +208,39 @@ namespace E3DCopilot.WebHost
         }
 
         /// <summary>
+        /// 处理 Plan/Act 模式切换
+        /// </summary>
+        private void HandleSetPlanMode(JsonElement? payload)
+        {
+            string mode = "act";
+            if (payload.HasValue && payload.Value.TryGetProperty("mode", out var modeProp))
+                mode = modeProp.GetString() ?? "act";
+
+            bool enabled = string.Equals(mode, "plan", StringComparison.OrdinalIgnoreCase);
+            _controller.SetPlanMode(enabled);
+
+            // 通知前端模式已切换
+            SendToFrontend(MessageTypes.UserSetPlanMode, new { enabled, mode });
+        }
+
+        /// <summary>
         /// 推送事件到前端（可从任意线程调用）
         /// 使用强类型消息契约
         /// </summary>
-        public void SendToFrontend<T>(string type, T payload)
+        public void SendToFrontend<T>(string type, T payload, string requestId = null)
         {
             if (_webView?.CoreWebView2 == null) return;
 
-            var msg = JsonSerializer.Serialize(new { type, payload }, JsonOpts);
+            string msg;
+            if (!string.IsNullOrEmpty(requestId))
+            {
+                // 响应 sendAndWait 请求：带上 _requestId 让前端 resolve promise
+                msg = JsonSerializer.Serialize(new { type, payload, _requestId = requestId }, JsonOpts);
+            }
+            else
+            {
+                msg = JsonSerializer.Serialize(new { type, payload }, JsonOpts);
+            }
 
             void post()
             {
@@ -208,9 +257,20 @@ namespace E3DCopilot.WebHost
         /// <summary>
         /// 推送事件到前端（使用 object 类型，兼容旧代码）
         /// </summary>
-        public void SendToFrontend(string type, object payload)
+        public void SendToFrontend(string type, object payload, string requestId = null)
         {
-            SendToFrontend<object>(type, payload);
+            SendToFrontend<object>(type, payload, requestId);
+        }
+
+        /// <summary>
+        /// 尝试取出并清除某消息类型对应的 _requestId（响应后即清）
+        /// </summary>
+        private string TakeRequestId(string type)
+        {
+            if (string.IsNullOrEmpty(type)) return null;
+            if (_pendingRequestIds.TryRemove(type, out var rid))
+                return rid;
+            return null;
         }
 
         /// <summary>
@@ -228,6 +288,12 @@ namespace E3DCopilot.WebHost
 
                 case EventKind.StreamEnd:
                     SendToFrontend(MessageTypes.LlmStreamEnd, new { usage = evt.Data });
+                    break;
+
+                case EventKind.TurnDone:
+                    // 整个轮次结束（LLM 完成 + 所有工具执行完毕）
+                    // 前端据此重置 sendingDisabled/enableButtons
+                    SendToFrontend(MessageTypes.TurnDone, new { });
                     break;
 
                 case EventKind.Thinking:
@@ -281,7 +347,12 @@ namespace E3DCopilot.WebHost
                     });
                     break;
 
+                case EventKind.PlanModeChanged:
+                    SendToFrontend(MessageTypes.UserSetPlanMode, new { enabled = evt.Text?.IndexOf("enabled", StringComparison.OrdinalIgnoreCase) >= 0 });
+                    break;
+
                 case EventKind.Notice:
+                    // Notice 仍可发送，但前端不再把它加入 _clineMessages（改为 console.log）
                     SendToFrontend(MessageTypes.Notice, new { text = evt.Text });
                     break;
 
@@ -292,24 +363,27 @@ namespace E3DCopilot.WebHost
         }
 
         // ════════════════════════════════════════════════
-        //  Provider / Model 管理（参考 Reasonix）
+        //  Provider / Model 管理
+        //  修复：所有响应方法在 SendToFrontend 时传入 TakeRequestId(type) 回带 _requestId
         // ════════════════════════════════════════════════
 
         private void HandleModelsList()
         {
+            string rid = TakeRequestId(MessageTypes.ModelsList);
             try
             {
                 var result = ProvidersService.ListModels(_controller.Config);
-                SendToFrontend(MessageTypes.ModelsListResult, result);
+                SendToFrontend(MessageTypes.ModelsListResult, result, rid);
             }
             catch (Exception ex)
             {
-                SendToFrontend(MessageTypes.Error, new { message = $"列出模型失败: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"列出模型失败: {ex.Message}" }, rid);
             }
         }
 
         private void HandleModelSwitch(JsonElement? payload)
         {
+            string rid = TakeRequestId(MessageTypes.ModelSwitch);
             try
             {
                 string ref_ = null;
@@ -320,83 +394,96 @@ namespace E3DCopilot.WebHost
                 if (ok)
                 {
                     // 重建 provider 指向新模型
-                    _controller.SwitchProvider(BuildProviderFromConfig(_controller.Config));
-                    SendToFrontend(MessageTypes.Notice, new { text = $"已切换到: {ref_}" });
+                    _controller.SwitchProvider(BuildProviderFromConfig(_controller.Config), ref_);
                 }
-                SendToFrontend(MessageTypes.ModelSwitch, new Dictionary<string, object> { ["success"] = ok, ["ref"] = ref_ ?? "" });
+
+                // 修复：回带 _requestId 让 sendAndWait resolve；
+                // 同时发 ModelsListResult 让前端 onModelsListResult 监听器更新 UI
+                // 注意：C# 匿名对象字段名不能用 ref 关键字，改用 @ref 让 JSON 序列化为 "ref"
+                var switchResult = new { success = ok, @ref = ref_ ?? "" };
+                SendToFrontend(MessageTypes.ModelSwitch, switchResult, rid);
+
+                // 推送最新模型列表（不带 _requestId，给监听器用）
+                var listResult = ProvidersService.ListModels(_controller.Config);
+                SendToFrontend(MessageTypes.ModelsListResult, listResult);
             }
             catch (Exception ex)
             {
-                SendToFrontend(MessageTypes.Error, new { message = $"切换模型失败: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"切换模型失败: {ex.Message}" }, rid);
             }
         }
 
         private void HandleProvidersList()
         {
+            string rid = TakeRequestId(MessageTypes.ProvidersList);
             try
             {
                 var result = ProvidersService.ListProviders(_controller.Config);
-                SendToFrontend(MessageTypes.ProvidersListResult, result);
+                SendToFrontend(MessageTypes.ProvidersListResult, result, rid);
             }
             catch (Exception ex)
             {
-                SendToFrontend(MessageTypes.Error, new { message = $"列出 Provider 失败: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"列出 Provider 失败: {ex.Message}" }, rid);
             }
         }
 
         private void HandleProviderSave(JsonElement? payload)
         {
+            string rid = TakeRequestId(MessageTypes.ProviderSave);
             try
             {
                 if (!payload.HasValue)
                 {
-                    SendToFrontend(MessageTypes.Error, new { message = "缺少 payload" });
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少 payload" }, rid);
                     return;
                 }
                 var savePayload = JsonSerializer.Deserialize<ProviderSavePayload>(payload.Value.GetRawText(), JsonOpts);
                 bool ok = ProvidersService.SaveProvider(_controller.Config, savePayload);
-                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config));
+                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config), rid);
             }
             catch (Exception ex)
             {
-                SendToFrontend(MessageTypes.Error, new { message = $"保存 Provider 失败: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"保存 Provider 失败: {ex.Message}" }, rid);
             }
         }
 
         private void HandleProviderDelete(JsonElement? payload)
         {
+            string rid = TakeRequestId(MessageTypes.ProviderDelete);
             try
             {
                 string name = null;
                 if (payload.HasValue && payload.Value.TryGetProperty("name", out var prop))
                     name = prop.GetString();
                 bool ok = ProvidersService.DeleteProvider(_controller.Config, name ?? "");
-                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config));
+                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config), rid);
             }
             catch (Exception ex)
             {
-                SendToFrontend(MessageTypes.Error, new { message = $"删除 Provider 失败: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"删除 Provider 失败: {ex.Message}" }, rid);
             }
         }
 
         private void HandleProviderFetchModels(JsonElement? payload)
         {
+            string rid = TakeRequestId(MessageTypes.ProviderFetchModels);
             try
             {
                 string name = null;
                 if (payload.HasValue && payload.Value.TryGetProperty("name", out var prop))
                     name = prop.GetString();
                 var result = ProvidersService.FetchProviderModels(_controller.Config, name ?? "");
-                SendToFrontend(MessageTypes.ProviderFetchResult, result);
+                SendToFrontend(MessageTypes.ProviderFetchResult, result, rid);
             }
             catch (Exception ex)
             {
-                SendToFrontend(MessageTypes.Error, new { message = $"拉取模型失败: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"拉取模型失败: {ex.Message}" }, rid);
             }
         }
 
         private void HandleProviderSetKey(JsonElement? payload)
         {
+            string rid = TakeRequestId(MessageTypes.ProviderSetKey);
             try
             {
                 if (!payload.HasValue) return;
@@ -404,11 +491,11 @@ namespace E3DCopilot.WebHost
                 if (payload.Value.TryGetProperty("name", out var n)) name = n.GetString();
                 if (payload.Value.TryGetProperty("apiKey", out var k)) key = k.GetString();
                 ProvidersService.SetProviderKey(_controller.Config, name ?? "", key ?? "");
-                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config));
+                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config), rid);
             }
             catch (Exception ex)
             {
-                SendToFrontend(MessageTypes.Error, new { message = $"设置 Key 失败: {ex.Message}" });
+                SendToFrontend(MessageTypes.Error, new { message = $"设置 Key 失败: {ex.Message}" }, rid);
             }
         }
 

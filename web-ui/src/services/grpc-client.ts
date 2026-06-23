@@ -84,6 +84,12 @@ const INITIAL_STATE = {
   userInfo: null,
   currentFocusChainChecklist: null,
   hooksEnabled: false,
+  // === E3D 任务状态机 ===
+  // isTaskRunning: true 表示 LLM 正在处理或工具正在执行
+  // false 时前端 UI 解锁（sendingDisabled=false, enableButtons=true）
+  isTaskRunning: false,
+  // Plan Mode 状态（由后端 UserSetPlanMode 事件驱动）
+  isPlanMode: false,
 }
 
 // ── Bridge 事件 → 状态更新 ──
@@ -92,6 +98,15 @@ let _clineMessages: any[] = []
 let _stateListeners: Set<Cb> = new Set()
 let _taskListeners: Set<Cb> = new Set()
 let _uiListeners: Set<Cb> = new Set()
+
+// 当前待审批的工具调用 id（用于 askResponse yes/no 时转发为 user:approve）
+let _currentApprovalId: string | null = null
+// 当前 ask_user 的 questionId（用于 askResponse messageResponse 时转发为 user:ask_response）
+let _currentAskQuestionId: string | null = null
+// 任务是否正在运行（驱动前端 UI 状态机）
+let _isTaskRunning = false
+// Plan Mode 状态
+let _isPlanMode = false
 
 // 监听 C# 后端推送的事件（使用 MessageTypes 常量）
 bridge.on((msg: { type: string; payload: any }) => {
@@ -152,6 +167,12 @@ bridge.on((msg: { type: string; payload: any }) => {
       handleStreamEnd(msg.payload)
       break
 
+    case MessageTypes.TurnDone:
+      // 整个轮次结束：LLM 完成 + 所有工具执行完毕
+      // 重置 UI 状态机，让输入框重新可用
+      handleTurnDone()
+      break
+
     case MessageTypes.LlmThinking:
       handleThinking(msg.payload)
       break
@@ -174,12 +195,26 @@ bridge.on((msg: { type: string; payload: any }) => {
       handleAskUser(msg.payload)
       break
 
+    // ── Plan/Act 模式切换通知（后端 → 前端） ──
+    case MessageTypes.UserSetPlanMode:
+      if (msg.payload) {
+        _isPlanMode = !!msg.payload.enabled
+        INITIAL_STATE.isPlanMode = _isPlanMode
+        INITIAL_STATE.mode = _isPlanMode ? "plan" : "act"
+        notifyStateChange()
+      }
+      break
+
     // ── 通用事件 ──
     case MessageTypes.Notice:
-      addMessage({ type: "say", say: "text", text: msg.payload?.text || "" })
+      // 修复：Notice 不再加入 _clineMessages（避免污染消息流，破坏 messages.length===0 判断）
+      // 只在控制台打印，作为诊断信息
+      console.log("[Bridge Notice]", msg.payload?.text || "")
       break
 
     case MessageTypes.Error:
+      // 错误也结束任务运行状态
+      handleTurnDone()
       addMessage({ type: "say", say: "error", text: msg.payload?.message || "Unknown error" })
       break
 
@@ -228,6 +263,11 @@ function getOrCreateStreamingMessage() {
 }
 
 function handleStreamDelta(payload: any) {
+  // 第一个 delta 到达 → 标记任务运行中
+  if (!_isTaskRunning) {
+    _isTaskRunning = true
+    INITIAL_STATE.isTaskRunning = true
+  }
   const msg = getOrCreateStreamingMessage()
   msg.text += payload?.delta || ""
   notifyStateChange()
@@ -238,10 +278,34 @@ function handleStreamEnd(_payload: any) {
     _currentStreamingMessage.partial = false
     _currentStreamingMessage = null
   }
+  // 注意：流式结束 ≠ 任务结束；如果有工具调用，工具还在跑
+  // 真正的 UI 解锁等 TurnDone 事件
   notifyStateChange()
 }
 
+/**
+ * 整个轮次结束：LLM 完成 + 所有工具执行完毕
+ * 修复"输入框永久禁用"问题：重置 UI 状态机
+ */
+function handleTurnDone() {
+  _isTaskRunning = false
+  INITIAL_STATE.isTaskRunning = false
+  // 清理当前审批/提问上下文
+  _currentApprovalId = null
+  _currentAskQuestionId = null
+  // 推送状态变更，让 React 重新渲染并解锁输入框
+  notifyStateChange()
+  // 兜底：直接通知 UI 监听器（ExtensionStateContext 可监听此事件）
+  _uiListeners.forEach(cb => {
+    try { cb.onResponse?.({ event: "turn_done" }) } catch (e) { cb.onError?.(e) }
+  })
+}
+
 function handleThinking(payload: any) {
+  if (!_isTaskRunning) {
+    _isTaskRunning = true
+    INITIAL_STATE.isTaskRunning = true
+  }
   const msg = {
     type: "say",
     say: "reasoning",
@@ -254,6 +318,10 @@ function handleThinking(payload: any) {
 }
 
 function handleToolDispatch(payload: any) {
+  if (!_isTaskRunning) {
+    _isTaskRunning = true
+    INITIAL_STATE.isTaskRunning = true
+  }
   const msg = {
     type: "say",
     say: "tool",
@@ -275,18 +343,36 @@ function handleToolResult(payload: any) {
   notifyStateChange()
 }
 
+/**
+ * 工具审批请求
+ * 修复：不再自动批准，而是推 ask:"tool" 消息让 Cline 原生审批 UI 渲染
+ * 用户点 Approve/Reject 后 useMessageHandlers.executeButtonAction 会调 askResponse
+ * askResponse 再把响应转发为 bridge.sendApproval(id, allow)
+ */
 function handleToolApproval(payload: any) {
-  // 工具审批请求 — 在自动审批模式下自动批准
-  // 使用类型安全的方法
-  bridge.sendApproval(payload?.id, true)
+  _currentApprovalId = payload?.id || null
+  const msg = {
+    type: "ask",
+    ask: "tool",
+    text: payload?.name || "",
+    ts: Date.now(),
+    // 额外字段：approve/reject 时回传给后端用
+    _approvalId: payload?.id,
+    _toolName: payload?.name,
+    _args: payload?.args,
+  }
+  _clineMessages.push(msg)
+  notifyStateChange()
 }
 
 function handleAskUser(payload: any) {
+  _currentAskQuestionId = payload?.questionId || null
   const msg = {
     type: "ask",
     ask: "followup",
     text: JSON.stringify({ question: payload?.question || payload?.data }),
     ts: Date.now(),
+    _questionId: payload?.questionId,
   }
   _clineMessages.push(msg)
   notifyStateChange()
@@ -359,8 +445,30 @@ function createTaskServiceClient() {
       const text = req?.text || ""
       const responseType = req?.responseType || "messageResponse"
       console.log("[gRPC-Client] askResponse:", responseType, text.substring(0, 50))
-      // 使用类型安全的方法
-      bridge.sendAskResponse("current", text)
+
+      // 修复：根据 responseType 转发到对应的后端通道
+      // - yesButtonClicked / noButtonClicked → 工具审批（user:approve）
+      // - messageResponse → ask_user 回答（user:ask_response）
+      if (responseType === "yesButtonClicked") {
+        if (_currentApprovalId) {
+          bridge.sendApproval(_currentApprovalId, true)
+          _currentApprovalId = null
+        }
+      } else if (responseType === "noButtonClicked") {
+        if (_currentApprovalId) {
+          bridge.sendApproval(_currentApprovalId, false)
+          _currentApprovalId = null
+        }
+      } else if (responseType === "messageResponse") {
+        // ask_user 的回答，或者任务运行中的反馈
+        if (_currentAskQuestionId) {
+          bridge.sendAskResponse(_currentAskQuestionId, text)
+          _currentAskQuestionId = null
+        } else {
+          // 没有待回答的 ask_user，作为反馈消息发给后端
+          bridge.sendUserMessage(text, [], [])
+        }
+      }
       return {}
     },
 
@@ -415,17 +523,15 @@ function createStateServiceClient() {
 
     setPlanActMode: async (req: any) => {
       const mode = req?.mode || "act"
-      // 使用常量
-      bridge.send(MessageTypes.UserMessage, { mode })
+      // 修复：使用专门的 UserSetPlanMode 类型，不再借用 UserMessage
+      bridge.send(MessageTypes.UserSetPlanMode, { mode })
       return {}
     },
 
     togglePlanActModeProto: async (req: any) => {
-      const mode = req?.mode || "act"
-      const chatContent = req?.chatContent
-      console.log("[gRPC-Client] togglePlanActModeProto:", mode, chatContent?.message?.substring(0, 30))
-      // 使用常量
-      bridge.send("togglePlanActMode", { mode, chatContent })
+      // 修复：切换到相反模式
+      const newMode = _isPlanMode ? "act" : "plan"
+      bridge.send(MessageTypes.UserSetPlanMode, { mode: newMode })
       return { value: true }
     },
 
@@ -464,7 +570,7 @@ function createUiServiceClient() {
 }
 
 function createFileServiceClient() {
-  return {
+  const methods = {
     copyToClipboard: async (req: any) => {
       if (req?.value) {
         try { await navigator.clipboard.writeText(req.value) } catch {}
@@ -483,7 +589,119 @@ function createFileServiceClient() {
     searchCommits: async () => {
       return { commits: [] }
     },
+
+    // ── Rules/Skills/Hooks 管理（桩实现） ──
+    refreshRules: async (_req?: any) => {
+      console.log("[FileServiceClient] refreshRules stub")
+      return {
+        globalClineRulesToggles: { toggles: {} },
+        localClineRulesToggles: { toggles: {} },
+        localCursorRulesToggles: { toggles: {} },
+        localWindsurfRulesToggles: { toggles: {} },
+        localAgentsRulesToggles: { toggles: {} },
+        localWorkflowToggles: { toggles: {} },
+        globalWorkflowToggles: { toggles: {} },
+        globalSkillsToggles: { toggles: {} },
+        localSkillsToggles: { toggles: {} },
+        remoteRulesToggles: { toggles: {} },
+        remoteWorkflowToggles: { toggles: {} },
+      }
+    },
+
+    toggleClineRule: async (_req?: any) => {
+      console.log("[FileServiceClient] toggleClineRule stub")
+      return {}
+    },
+
+    toggleCursorRule: async (_req?: any) => {
+      console.log("[FileServiceClient] toggleCursorRule stub")
+      return {}
+    },
+
+    toggleWindsurfRule: async (_req?: any) => {
+      console.log("[FileServiceClient] toggleWindsurfRule stub")
+      return {}
+    },
+
+    toggleAgentsRule: async (_req?: any) => {
+      console.log("[FileServiceClient] toggleAgentsRule stub")
+      return {}
+    },
+
+    toggleWorkflow: async (_req?: any) => {
+      console.log("[FileServiceClient] toggleWorkflow stub")
+      return {}
+    },
+
+    toggleSkill: async (_req?: any) => {
+      console.log("[FileServiceClient] toggleSkill stub")
+      return {}
+    },
+
+    toggleHook: async (_req?: any) => {
+      console.log("[FileServiceClient] toggleHook stub")
+      return {}
+    },
+
+    refreshHooks: async (_req?: any) => {
+      console.log("[FileServiceClient] refreshHooks stub")
+      return { globalHooks: [], workspaceHooks: [] }
+    },
+
+    refreshSkills: async (_req?: any) => {
+      console.log("[FileServiceClient] refreshSkills stub")
+      return { globalSkills: [], localSkills: [] }
+    },
+
+    createRuleFile: async (_req?: any) => {
+      console.log("[FileServiceClient] createRuleFile stub")
+      return {}
+    },
+
+    createHook: async (_req?: any) => {
+      console.log("[FileServiceClient] createHook stub")
+      return {}
+    },
+
+    createSkillFile: async (_req?: any) => {
+      console.log("[FileServiceClient] createSkillFile stub")
+      return {}
+    },
+
+    deleteRuleFile: async (_req?: any) => {
+      console.log("[FileServiceClient] deleteRuleFile stub")
+      return {}
+    },
+
+    deleteHook: async (_req?: any) => {
+      console.log("[FileServiceClient] deleteHook stub")
+      return {}
+    },
+
+    deleteSkillFile: async (_req?: any) => {
+      console.log("[FileServiceClient] deleteSkillFile stub")
+      return {}
+    },
+
+    getRelativePaths: async (_req?: any) => {
+      return { paths: [] }
+    },
+
+    openFile: async (_req?: any) => {
+      console.log("[FileServiceClient] openFile stub")
+      return {}
+    },
   }
+
+  // Proxy 包装：已知方法走真实实现，未知方法 fallback 到 stub
+  return new Proxy(methods, {
+    get: (target, p: string | symbol) => {
+      if (typeof p !== "string") return undefined
+      if (p in target) return (target as any)[p]
+      console.log("[FileServiceClient] stub:", p)
+      return async (..._a: any[]) => ({})
+    },
+  })
 }
 
 function createStubClient(name: string) {
@@ -498,9 +716,9 @@ function createStubClient(name: string) {
   }})
 }
 
-// ── ModelsServiceClient 真实实现（基于 bridge） ──
+// ── ModelsServiceClient 真实实现（基于 bridge，兼容 cline 旧接口） ──
 function createModelsServiceClient() {
-  return {
+  const methods = {
     // 列出所有可用模型（含当前激活标记）
     listModels: async (_req?: any) => {
       const result = await bridge.sendAndWait(MessageTypes.ModelsList, {}, 10000)
@@ -578,6 +796,16 @@ function createModelsServiceClient() {
       }, 10000)
     },
   }
+
+  // Proxy 包装：已知方法走真实实现，未知方法 fallback 到 stub（兼容 cline 旧接口）
+  return new Proxy(methods, {
+    get: (target, p: string | symbol) => {
+      if (typeof p !== "string") return undefined
+      if (p in target) return (target as any)[p]
+      console.log("[gRPC-Client] Models stub:", p)
+      return async (..._a: any[]) => ({})
+    },
+  })
 }
 
 // ── 导出 ──

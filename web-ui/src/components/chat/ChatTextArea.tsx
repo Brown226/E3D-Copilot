@@ -1597,6 +1597,9 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								</TooltipTrigger>
 							</Tooltip>
 
+							<ServersToggleModal />
+							<ClineRulesToggleModal />
+
 							<ModelContainer>
 								<ModelButtonWrapper>
 									<ModelDisplayButton

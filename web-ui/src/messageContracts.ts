@@ -17,6 +17,7 @@ export const MessageTypes = {
   UserNewSession: 'user:new_session',
   UserApprove: 'user:approve',
   UserAskResponse: 'user:ask_response',
+  UserSetPlanMode: 'user:set_plan_mode',
   Ping: 'ping',
   ModelsList: 'models:list',
   ModelSwitch: 'model:switch',
@@ -43,6 +44,7 @@ export const MessageTypes = {
   ModelsListResult: 'models:list:result',
   ProvidersListResult: 'providers:list:result',
   ProviderFetchResult: 'provider:fetch_models:result',
+  TurnDone: 'turn:done',
 } as const;
 
 export type MessageType = typeof MessageTypes[keyof typeof MessageTypes];
@@ -65,6 +67,14 @@ export interface ApprovalPayload {
 export interface AskResponsePayload {
   questionId: string;
   answer: string;
+}
+
+export interface SetPlanModePayload {
+  mode: 'plan' | 'act';
+}
+
+export interface PlanModeChangedPayload {
+  enabled: boolean;
 }
 
 // ============================================

@@ -17,6 +17,7 @@ namespace E3DCopilot.Core.Messaging
         public const string UserNewSession = "user:new_session";
         public const string UserApprove = "user:approve";
         public const string UserAskResponse = "user:ask_response";
+        public const string UserSetPlanMode = "user:set_plan_mode";
         public const string Ping = "ping";
 
         // === Provider / Model 管理（参考 Reasonix） ===
@@ -45,6 +46,7 @@ namespace E3DCopilot.Core.Messaging
         public const string ModelsListResult = "models:list:result";
         public const string ProvidersListResult = "providers:list:result";
         public const string ProviderFetchResult = "provider:fetch_models:result";
+        public const string TurnDone = "turn:done";
     }
     
     #endregion
@@ -88,6 +90,24 @@ namespace E3DCopilot.Core.Messaging
         
         [JsonProperty("answer")]
         public string Answer { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Plan/Act 模式切换请求
+    /// </summary>
+    public class SetPlanModePayload
+    {
+        [JsonProperty("mode")]
+        public string Mode { get; set; } = "act"; // "plan" | "act"
+    }
+
+    /// <summary>
+    /// Plan Mode 状态变更通知
+    /// </summary>
+    public class PlanModeChangedPayload
+    {
+        [JsonProperty("enabled")]
+        public bool Enabled { get; set; }
     }
     
     #endregion
