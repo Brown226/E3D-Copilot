@@ -66,8 +66,6 @@ export interface ExtensionStateContextType extends ExtensionState {
 	settingsTargetSection?: string
 	settingsInitialModelTab?: "recommended" | "free"
 	showHistory: boolean
-	showAccount: boolean
-	showWorktrees: boolean
 	showAnnouncement: boolean
 	expandTaskHeader: boolean
 
@@ -115,15 +113,11 @@ export interface ExtensionStateContextType extends ExtensionState {
 	navigateToSettings: (targetSection?: string) => void
 	navigateToSettingsModelPicker: (opts: { targetSection?: string; initialModelTab?: "recommended" | "free" }) => void
 	navigateToHistory: () => void
-	navigateToAccount: () => void
-	navigateToWorktrees: () => void
 	navigateToChat: () => void
 
 	// Hide functions
 	hideSettings: () => void
 	hideHistory: () => void
-	hideAccount: () => void
-	hideWorktrees: () => void
 	hideAnnouncement: () => void
 	closeMcpView: () => void
 
@@ -143,8 +137,6 @@ export const ExtensionStateContextProvider: React.FC<{
 	const [settingsTargetSection, setSettingsTargetSection] = useState<string | undefined>(undefined)
 	const [settingsInitialModelTab, setSettingsInitialModelTab] = useState<"recommended" | "free" | undefined>(undefined)
 	const [showHistory, setShowHistory] = useState(false)
-	const [showAccount, setShowAccount] = useState(false)
-	const [showWorktrees, setShowWorktrees] = useState(false)
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 
 	// Helper for MCP view
@@ -160,8 +152,6 @@ export const ExtensionStateContextProvider: React.FC<{
 		setSettingsInitialModelTab(undefined)
 	}, [])
 	const hideHistory = useCallback(() => setShowHistory(false), [setShowHistory])
-	const hideAccount = useCallback(() => setShowAccount(false), [setShowAccount])
-	const hideWorktrees = useCallback(() => setShowWorktrees(false), [setShowWorktrees])
 	const hideAnnouncement = useCallback(() => setShowAnnouncement(false), [setShowAnnouncement])
 
 	// Navigation functions
@@ -219,23 +209,15 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowHistory(false)
 		setShowWorktrees(false)
 		setShowAccount(true)
-	}, [setShowSettings, closeMcpView, setShowHistory, setShowWorktrees, setShowAccount])
+	}, [setShowSettings, closeMcpView, setShowHistory])
 
-	const navigateToWorktrees = useCallback(() => {
-		setShowSettings(false)
-		closeMcpView()
-		setShowHistory(false)
-		setShowAccount(false)
-		setShowWorktrees(true)
-	}, [setShowSettings, closeMcpView, setShowHistory, setShowAccount, setShowWorktrees])
+	// navigateToWorktrees/navigateToAccount removed (E3D has no worktree/account)
 
 	const navigateToChat = useCallback(() => {
 		setShowSettings(false)
 		closeMcpView()
 		setShowHistory(false)
-		setShowAccount(false)
-		setShowWorktrees(false)
-	}, [setShowSettings, closeMcpView, setShowHistory, setShowAccount, setShowWorktrees])
+	}, [setShowSettings, closeMcpView, setShowHistory])
 
 	const [state, setState] = useState<ExtensionState>({
 		version: "",
@@ -400,7 +382,8 @@ export const ExtensionStateContextProvider: React.FC<{
 				onError: (e) => console.error("[E3D] State error:", e),
 			})
 
-			// 不立即 setDidHydrateState(true)，让 subscribeToState 的回调负责——确保状态就绪后再渲染
+			// E3D 模式：跳过所有不相关的 gRPC 订阅
+			// MCP、OpenRouter、LiteLLM、partialMessage、UI button 等订阅在 E3D 下无后端支持
 			return () => {
 				if (stateSubscriptionRef.current) {
 					stateSubscriptionRef.current()
@@ -882,8 +865,6 @@ export const ExtensionStateContextProvider: React.FC<{
 		settingsTargetSection,
 		settingsInitialModelTab,
 		showHistory,
-		showAccount,
-		showWorktrees,
 		showAnnouncement,
 		globalClineRulesToggles: state.globalClineRulesToggles || {},
 		localClineRulesToggles: state.localClineRulesToggles || {},
@@ -902,15 +883,11 @@ export const ExtensionStateContextProvider: React.FC<{
 		navigateToSettings,
 		navigateToSettingsModelPicker,
 		navigateToHistory,
-		navigateToAccount,
-		navigateToWorktrees,
 		navigateToChat,
 
 		// Hide functions
 		hideSettings,
 		hideHistory,
-		hideAccount,
-		hideWorktrees,
 		hideAnnouncement,
 		setShowAnnouncement,
 		setShowWelcome,

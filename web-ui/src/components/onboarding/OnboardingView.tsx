@@ -10,8 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Item, ItemContent, ItemDescription, ItemHeader, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { cn } from "@/lib/utils"
-import { AccountServiceClient, StateServiceClient } from "@/services/grpc-client"
-import ApiConfigurationSection from "../settings/sections/ApiConfigurationSection"
+import { StateServiceClient } from "@/services/grpc-client"
 import { useApiConfigurationHandlers } from "../settings/utils/useApiConfigurationHandlers"
 import WelcomeView from "../welcome/WelcomeView"
 import {
@@ -268,8 +267,13 @@ const OnboardingStepContent = ({
 			/>
 		)
 	}
-	// userType === NEW_USER_TYPE.BYOK
-	return <ApiConfigurationSection />
+	// userType === NEW_USER_TYPE.BYOK — E3D 简化：提示用户到设置页配置 Provider
+	return (
+		<div className="text-center py-6">
+			<p className="text-sm mb-3">请到设置页的「Provider 管理」中添加您的 Provider 配置。</p>
+			<p className="text-xs opacity-60">支持 OpenAI 兼容 API 和 Anthropic 协议。</p>
+		</div>
+	)
 }
 
 const OnboardingViewContent = ({ onboardingModels }: { onboardingModels: OnboardingModelGroup }) => {
@@ -339,16 +343,14 @@ const OnboardingViewContent = ({ onboardingModels }: { onboardingModels: Onboard
 				case "signup":
 					setStepNumber(stepNumber + 1)
 					setIsActionLoading(true)
-					await AccountServiceClient.accountLoginClicked({})
-						.catch(() => {})
-						.finally(() => setIsActionLoading(false))
+					// E3D: no account
+					setIsActionLoading(false)
 					await finishOnboarding(true, stepNumber + 1)
 					break
 				case "signin":
 					setIsActionLoading(true)
-					await AccountServiceClient.accountLoginClicked({})
-						.catch(() => {})
-						.finally(() => setIsActionLoading(false))
+					// E3D: no account
+					setIsActionLoading(false)
 					await finishOnboarding(true, stepNumber + 1)
 					break
 				case "next":

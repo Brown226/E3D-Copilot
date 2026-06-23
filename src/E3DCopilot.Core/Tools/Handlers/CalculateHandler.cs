@@ -58,23 +58,35 @@ namespace E3DCopilot.Core.Tools.Handlers
                 if (string.IsNullOrEmpty(operation))
                     return ToolResult.Fail("Missing 'operation' parameter");
 
+                ToolResult calcResult;
                 switch (operation.ToLower())
                 {
                     case "distance":
-                        return CalculateDistance(json);
+                        calcResult = CalculateDistance(json); break;
                     case "angle":
-                        return CalculateAngle(json);
+                        calcResult = CalculateAngle(json); break;
                     case "vector":
-                        return CalculateVector(json);
+                        calcResult = CalculateVector(json); break;
                     case "magnitude":
-                        return CalculateMagnitude(json);
+                        calcResult = CalculateMagnitude(json); break;
                     case "dot_product":
-                        return CalculateDotProduct(json);
+                        calcResult = CalculateDotProduct(json); break;
                     case "cross_product":
-                        return CalculateCrossProduct(json);
+                        calcResult = CalculateCrossProduct(json); break;
                     default:
                         return ToolResult.Fail($"Unknown operation: {operation}. Supported: distance, angle, vector, magnitude, dot_product, cross_product");
                 }
+                // 最小安全方案：Text 不变，Data 放结构化 meta 供前端渲染
+                if (calcResult.Success)
+                {
+                    calcResult.Data = new JObject
+                    {
+                        ["tool"] = "calculate",
+                        ["coreTool"] = "calculate",
+                        ["summary"] = $"{operation} 计算完成",
+                    };
+                }
+                return calcResult;
             }
             catch (Exception ex)
             {

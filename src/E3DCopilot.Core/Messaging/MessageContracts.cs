@@ -47,6 +47,12 @@ namespace E3DCopilot.Core.Messaging
         public const string ProvidersListResult = "providers:list:result";
         public const string ProviderFetchResult = "provider:fetch_models:result";
         public const string TurnDone = "turn:done";
+
+        // === 新增事件类型（补全前后端事件覆盖） ===
+        public const string LlmTurnStarted = "llm:turn_started";
+        public const string LlmUsage = "llm:usage";
+        public const string LlmRetry = "llm:retry";
+        public const string ToolProgress = "tool:progress";
     }
     
     #endregion

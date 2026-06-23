@@ -208,6 +208,49 @@ export interface ClineSayTool {
 		| "webSearch"
 		| "summarizeTask"
 		| "useSkill"
+		// === E3D 专用工具 ===
+		| "execute_pml"
+		| "query_model"
+		| "modify_equipment"
+		| "check"
+		| "calculate"
+		| "export"
+		| "ask_user"
+		| "task"
+		| "read_file"
+		| "search_knowledge"
+		| "e3d_generic"
+		// === E3D Router 路由后的专用工具 ===
+		| "get_current_element"
+		| "get_element_info"
+		| "get_position"
+		| "get_nozzle_info"
+		| "get_pipe_branches"
+		| "query_elements"
+		| "get_attributes"
+		| "query_pipes"
+		| "query_equipment"
+		| "get_hierarchy"
+		| "set_attribute"
+		| "batch_set_attribute"
+		| "batch_rename"
+		| "modify_pipe_spec"
+		| "create_equipment"
+		| "check_exists"
+		| "check_attribute_complete"
+		| "check_room_number"
+		| "check_name_consistency"
+		| "check_distance"
+		| "check_bore_consistency"
+		| "get_change_status"
+		| "calculate_distance"
+		| "get_orientation_wrt"
+		| "get_ppoint_info"
+		| "get_route_info"
+		| "export_to_excel"
+		| "import_excel"
+		| "merge_excel"
+		| "generate_report"
 	path?: string
 	diff?: string
 	content?: string
@@ -219,6 +262,19 @@ export interface ClineSayTool {
 	/** Inclusive line range actually returned by read_file (for UI summaries). */
 	readLineStart?: number
 	readLineEnd?: number
+	// === E3D 特有字段 ===
+	/** PML 脚本内容（execute_pml 工具） */
+	pmlScript?: string
+	/** E3D 工具执行结果摘要 */
+	e3dResult?: string
+	/** E3D 工具参数（JSON string） */
+	args?: any
+	/** E3D 工具执行结果 */
+	result?: string
+	/** 原始核心工具名（路由前），供 ChatRow 渲染分组 */
+	coreTool?: string
+	/** 结构化摘要（由后端 meta 传过来，供 ChatRow 标题显示） */
+	summary?: string
 }
 
 export interface ClineSayHook {

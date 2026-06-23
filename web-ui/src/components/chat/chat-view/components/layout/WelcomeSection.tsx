@@ -1,8 +1,4 @@
 import { BANNER_DATA, BannerAction, BannerActionType, BannerCardData } from "@shared/cline/banner"
-import { EmptyRequest } from "@shared/proto/cline/common"
-import type { Worktree } from "@shared/proto/cline/worktree"
-import { TrackWorktreeViewOpenedRequest } from "@shared/proto/cline/worktree"
-import { GitBranch } from "lucide-react"
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import BannerCarousel from "@/components/common/BannerCarousel"
@@ -12,10 +8,8 @@ import { useApiConfigurationHandlers } from "@/components/settings/utils/useApiC
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import HomeHeader from "@/components/welcome/HomeHeader"
 import { SuggestedTasks } from "@/components/welcome/SuggestedTasks"
-import CreateWorktreeModal from "@/components/worktrees/CreateWorktreeModal"
-import { useClineAuth } from "@/context/ClineAuthContext"
 import { useExtensionState } from "@/context/ExtensionStateContext"
-import { AccountServiceClient, StateServiceClient, UiServiceClient, WorktreeServiceClient } from "@/services/grpc-client"
+import { StateServiceClient, UiServiceClient } from "@/services/grpc-client"
 import { convertBannerData } from "@/utils/bannerUtils"
 import { getCurrentPlatform } from "@/utils/platformUtils"
 import { WelcomeSectionProps } from "../../types/chatTypes"
@@ -40,32 +34,13 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 	const [hasShownWhatsNewModal, setHasShownWhatsNewModal] = useState(false)
 	const [showWhatsNewModal, setShowWhatsNewModal] = useState(false)
 
-	// Quick launch worktree modal
-	const [showCreateWorktreeModal, setShowCreateWorktreeModal] = useState(false)
-	const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
-	const [currentWorktree, setCurrentWorktree] = useState<Worktree | null>(null)
+	// E3D: no worktree support
+	const [showCreateWorktreeModal] = useState(false)
 
-	// Check if we're in a git repo and get current worktree info on mount
-	useEffect(() => {
-		WorktreeServiceClient.listWorktrees(EmptyRequest.create({}))
-			.then((result) => {
-				const canUseWorktrees = result.isGitRepo && !result.isMultiRoot && !result.isSubfolder
-				setIsGitRepo(canUseWorktrees)
-				if (canUseWorktrees) {
-					const current = result.worktrees.find((w) => w.isCurrent)
-					setCurrentWorktree(current || null)
-				}
-			})
-			.catch(() => setIsGitRepo(false))
-	}, [])
-
-	const { clineUser } = useClineAuth()
 	const {
 		openRouterModels,
 		navigateToSettings,
 		navigateToSettingsModelPicker,
-		navigateToWorktrees,
-		worktreesEnabled,
 		banners,
 		welcomeBanners,
 	} = useExtensionState()
@@ -90,13 +65,7 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 		}
 	}, [hideAnnouncement, welcomeBanners])
 
-	// Handle click on home page worktree element with telemetry
-	const handleWorktreeClick = useCallback(() => {
-		WorktreeServiceClient.trackWorktreeViewOpened(TrackWorktreeViewOpenedRequest.create({ source: "home_page" })).catch(
-			console.error,
-		)
-		navigateToWorktrees()
-	}, [navigateToWorktrees])
+	// E3D: worktree not supported
 
 	/**
 	 * Check if a banner has been dismissed based on its ID or legacy version
@@ -131,14 +100,13 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 	 * For now, using EXAMPLE_BANNER_DATA with version-based filtering
 	 */
 	const bannerConfig = useMemo((): BannerCardData[] => {
-		// Filter banners based on version tracking and user status
 		return BANNER_DATA.filter((banner) => {
 			if (isBannerDismissed(banner.id)) {
 				return false
 			}
 
-			if (banner.isClineUserOnly !== undefined) {
-				return banner.isClineUserOnly === !!clineUser
+			if (banner.isClineUserOnly) {
+				return false // E3D: no Cline auth, hide Cline-only banners
 			}
 
 			if (banner.platforms && !banner.platforms.includes(getCurrentPlatform())) {
@@ -147,7 +115,7 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 
 			return true
 		})
-	}, [isBannerDismissed, clineUser])
+	}, [isBannerDismissed])
 
 	/**
 	 * Action handler - maps action types to actual implementations
@@ -177,7 +145,7 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 				}
 
 				case BannerActionType.ShowAccount:
-					AccountServiceClient.accountLoginClicked({}).catch((err) => console.error("Failed to get login URL:", err))
+					// E3D: no account system
 					break
 
 				case BannerActionType.ShowApiSettings:
@@ -264,63 +232,12 @@ export const WelcomeSection: React.FC<WelcomeSectionProps> = ({
 			<div className="overflow-y-auto flex flex-col pb-2.5">
 				<HomeHeader shouldShowQuickWins={shouldShowQuickWins} />
 				{!showWhatsNewModal && (
-					<>
+					<div>
 						{!shouldShowQuickWins && taskHistory.length > 0 && <HistoryPreview showHistoryView={showHistoryView} />}
-						{/* Quick launch worktree button */}
-						{isGitRepo && worktreesEnabled?.featureFlag && worktreesEnabled?.user && (
-							<div className="flex flex-col items-center gap-3 mt-2 mb-4 px-5">
-								{/* TODO: Re-enable once worktree creation is stable
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<button
-											className="flex items-center gap-2 px-4 py-2 rounded-full border border-[var(--vscode-foreground)]/30 text-[var(--vscode-foreground)] bg-transparent hover:bg-[var(--vscode-list-hoverBackground)] active:opacity-80 text-sm font-medium cursor-pointer"
-											onClick={() => setShowCreateWorktreeModal(true)}
-											type="button">
-											<span className="codicon codicon-empty-window"></span>
-											New Worktree Window
-										</button>
-									</TooltipTrigger>
-									<TooltipContent side="top">
-										Create a new git worktree and open it in a separate window. Great for running parallel
-										Cline tasks.
-									</TooltipContent>
-								</Tooltip>
-								*/}
-								{currentWorktree && (
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<button
-												className="flex flex-col items-center gap-0.5 text-xs text-[var(--vscode-descriptionForeground)] hover:text-[var(--vscode-foreground)] cursor-pointer bg-transparent border-none p-1 rounded"
-												onClick={handleWorktreeClick}
-												type="button">
-												<div className="flex items-center gap-1.5 text-xs">
-													<GitBranch className="w-3 h-3 stroke-[2.5] flex-shrink-0" />
-													<span className="break-all text-center">
-														<span className="font-semibold">{t("taskHeader.currentBranch")}</span>{" "}
-														{currentWorktree.branch || "detached HEAD"}
-													</span>
-												</div>
-												<span className="break-all text-center max-w-[300px]">
-													{currentWorktree.path}
-												</span>
-											</button>
-										</TooltipTrigger>
-										<TooltipContent side="bottom">{t("taskHeader.viewManageWorktrees")}</TooltipContent>
-									</Tooltip>
-								)}
-							</div>
-						)}
-					</>
+					</div>
 				)}
 			</div>
 			<SuggestedTasks shouldShowQuickWins={shouldShowQuickWins} />
-
-			{/* Quick launch worktree modal */}
-			<CreateWorktreeModal
-				onClose={() => setShowCreateWorktreeModal(false)}
-				open={showCreateWorktreeModal}
-				openAfterCreate={true}
-			/>
 		</div>
 	)
 }

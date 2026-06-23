@@ -123,8 +123,8 @@ namespace E3DCopilot.Core.Tools
                 catch { return ToolResult.Fail($"Invalid JSON args for {toolName}"); }
             }
 
-            // 分派事件
-            _sink?.Emit(CopilotEvent.ToolStart(Guid.NewGuid().ToString("N"), toolName, args));
+            // 分派事件（传原始 toolName 作为 coreToolName，effectiveName 作为实际执行的工具名）
+            _sink?.Emit(CopilotEvent.ToolStart(Guid.NewGuid().ToString("N"), effectiveName, args, toolName));
 
             var sw = Stopwatch.StartNew();
 
@@ -134,10 +134,10 @@ namespace E3DCopilot.Core.Tools
                 sw.Stop();
                 result.DurationMs = sw.ElapsedMilliseconds;
 
-                // 结果事件
+                // 结果事件（传递 result.Data 作为 meta，供前端渲染）
                 if (result.Success)
                     _sink?.Emit(CopilotEvent.ToolComplete(
-                        Guid.NewGuid().ToString("N"), result.Text));
+                        Guid.NewGuid().ToString("N"), result.Text, result.Data));
                 else
                     _sink?.Emit(CopilotEvent.ToolFail(
                         Guid.NewGuid().ToString("N"), result.Error));

@@ -147,6 +147,23 @@ export const ModelSwitcher: React.FC = () => {
                 </div>
               ))}
             </div>
+
+            <div className="border-t border-[var(--vscode-menu-border)]">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  // 全局事件触发导航到 Settings Provider 管理页
+                  window.postMessage({
+                    type: "grpc_response",
+                    grpc_response: { message: { key: "scrollToSettings", value: "api-config" } }
+                  }, "*");
+                }}
+                className="w-full px-3 py-1.5 text-left text-xs text-[var(--vscode-textLink-foreground)] hover:bg-[var(--vscode-menu-selectionBackground)]"
+              >
+                管理 Provider →
+              </button>
+            </div>
           </div>
         </>
       )}

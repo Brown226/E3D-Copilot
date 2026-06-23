@@ -51,6 +51,15 @@ const getActivityText = (tool: ClineSayTool, t: any): string | null => {
 			return tool.regex && tool.path ? `Searching ${formatSearchRegex(tool.regex, tool.path, tool.filePattern)}...` : null
 		case "listCodeDefinitionNames":
 			return tool.path ? `Analyzing ${cleanedPath}/...` : null
+		// ── E3D 工具活动文本 ──
+		case "execute_pml":
+			return "Executing PML script..."
+		case "query_model":
+			return tool.path ? `Querying ${cleanedPath}...` : "Querying model..."
+		case "modify_equipment":
+			return tool.path ? `Modifying ${cleanedPath}...` : "Modifying equipment..."
+		case "e3d_generic":
+			return "Running E3D operation..."
 		default:
 			return null
 	}

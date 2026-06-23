@@ -3,13 +3,23 @@ import { VSCodeDropdown, VSCodeOption } from "@/components/ui/vscode-compat"
 import { useTranslation } from "react-i18next"
 import styled from "styled-components"
 
+// ── Shared z-index constants (extracted from ApiOptions / OpenRouterModelPicker) ──
+
+/** Base z-index for OpenRouter model picker overlays */
+export const OPENROUTER_MODEL_PICKER_Z_INDEX = 1_000
+
+/** z-index for provider dropdown (must be above OpenRouterModelPicker and ModelSelectorTooltip) */
+export const DROPDOWN_Z_INDEX = OPENROUTER_MODEL_PICKER_Z_INDEX + 2
+
+// ── Dropdown container ──
+
 /**
  * Container for dropdowns that ensures proper z-index handling
  * This is necessary to ensure dropdown opens downward
  */
 export const DropdownContainer = styled.div.attrs<{ zIndex?: number }>(({ zIndex }) => ({
 	style: {
-		zIndex: zIndex || 1000,
+		zIndex: zIndex || DROPDOWN_Z_INDEX,
 	},
 }))`
 	position: relative;

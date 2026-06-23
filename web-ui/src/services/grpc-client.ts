@@ -64,8 +64,8 @@ const INITIAL_STATE = {
     planModeApiProvider: "openai",
     actModeApiProvider: "openai",
     apiModelId: "qwen3.7-plus",
-    openAiBaseUrl: "https://opencode.ai/zen/go/v1",
-    openAiApiKey: "sk-jnDafVDYkBqpd6X81cWbkNuocNQtgHcaaiwm08fU6EtQcavJV97iPr6J1SgPq1pe"
+    openAiBaseUrl: "",
+    openAiApiKey: ""
   },
   autoApprovalSettings: { enabled: false, actions: [], notifications: true },
   focusChainSettings: { enabled: false, modifiedMessages: [], checklists: [] },
@@ -159,6 +159,10 @@ bridge.on((msg: { type: string; payload: any }) => {
       break
 
     // ── LLM 流式文本 ──
+    case MessageTypes.LlmTurnStarted:
+      handleTurnStarted(msg.payload)
+      break
+
     case MessageTypes.LlmStreamDelta:
       handleStreamDelta(msg.payload)
       break
@@ -248,6 +252,26 @@ bridge.on((msg: { type: string; payload: any }) => {
 // ── 流式消息管理 ──
 let _currentStreamingMessage: any = null
 
+// 当前 api_req_started 消息的 ts（用于在 LlmStreamEnd 时回填 cost）
+let _currentApiReqTs: number | null = null
+
+function handleTurnStarted(payload: any) {
+  if (!_isTaskRunning) {
+    _isTaskRunning = true
+    INITIAL_STATE.isTaskRunning = true
+  }
+  // 插入 api_req_started 消息（前端依赖此消息做工具分组、活动指示器等）
+  _currentApiReqTs = Date.now()
+  const apiReqMsg = {
+    type: "say",
+    say: "api_req_started",
+    text: JSON.stringify({ request: payload?.request || "" }),
+    ts: _currentApiReqTs,
+  }
+  _clineMessages.push(apiReqMsg)
+  notifyStateChange()
+}
+
 function getOrCreateStreamingMessage() {
   if (!_currentStreamingMessage || _currentStreamingMessage.partial === false) {
     _currentStreamingMessage = {
@@ -273,13 +297,32 @@ function handleStreamDelta(payload: any) {
   notifyStateChange()
 }
 
-function handleStreamEnd(_payload: any) {
+function handleStreamEnd(payload: any) {
   if (_currentStreamingMessage) {
     _currentStreamingMessage.partial = false
     _currentStreamingMessage = null
   }
-  // 注意：流式结束 ≠ 任务结束；如果有工具调用，工具还在跑
-  // 真正的 UI 解锁等 TurnDone 事件
+  // 回填 api_req_started 的 cost/usage 信息
+  if (_currentApiReqTs) {
+    const apiReqMsg = _clineMessages.find((m: any) => m.say === "api_req_started" && m.ts === _currentApiReqTs)
+    if (apiReqMsg) {
+      try {
+        const info = JSON.parse(apiReqMsg.text || "{}")
+        info.cost = payload?.usage?.cost ?? payload?.usage?.totalCost
+        info.tokensIn = payload?.usage?.promptTokens
+        info.tokensOut = payload?.usage?.completionTokens
+        apiReqMsg.text = JSON.stringify(info)
+      } catch {}
+    }
+    _currentApiReqTs = null
+  }
+  // 将最后一条 reasoning 消息标记为 partial=false
+  for (let i = _clineMessages.length - 1; i >= 0; i--) {
+    if (_clineMessages[i].say === "reasoning" && _clineMessages[i].partial === true) {
+      _clineMessages[i].partial = false
+      break
+    }
+  }
   notifyStateChange()
 }
 
@@ -322,24 +365,58 @@ function handleToolDispatch(payload: any) {
     _isTaskRunning = true
     INITIAL_STATE.isTaskRunning = true
   }
+  // coreToolName: 原始核心工具名（路由前），供 ChatRow 渲染分组用
+  const coreToolName = payload?.coreToolName || payload?.name
   const msg = {
     type: "say",
     say: "tool",
-    text: JSON.stringify({ tool: payload?.name, args: payload?.args }),
+    text: JSON.stringify({ tool: payload?.name, coreTool: coreToolName, args: payload?.args }),
     ts: Date.now(),
+    _toolId: payload?.id,  // 保存 toolId 供 handleToolResult 回填
   }
   _clineMessages.push(msg)
   notifyStateChange()
 }
 
 function handleToolResult(payload: any) {
-  const msg = {
-    type: "say",
-    say: "tool_result",
-    text: JSON.stringify({ id: payload?.id, result: payload?.result || payload?.error }),
-    ts: Date.now(),
+  // 修复：不再创建独立的 tool_result 消息（ClineSay 枚举中没有 tool_result）
+  // 而是将结果回填到对应的 say:"tool" 消息中
+  const toolId = payload?.id
+  // meta: 结构化元数据（最小安全方案：由 Handler 的 ToolResult.Data 传过来）
+  const meta = payload?.meta
+  if (toolId) {
+    const toolMsg = _clineMessages.find((m: any) => m.say === "tool" && m._toolId === toolId)
+    if (toolMsg) {
+      try {
+        const toolData = JSON.parse(toolMsg.text || "{}")
+        toolData.result = payload?.result || payload?.error
+        // 回填 meta 信息（summary 供 ChatRow 标题渲染）
+        if (meta) {
+          toolData.summary = meta.summary
+          // 如果 meta 中有 coreTool，且 tool 消息中还没有（兜底），补上
+          if (meta.coreTool && !toolData.coreTool) {
+            toolData.coreTool = meta.coreTool
+          }
+          // PML 脚本特殊处理：meta 中有 pmlScript
+          if (meta.pmlScript) {
+            toolData.pmlScript = meta.pmlScript
+          }
+        }
+        toolMsg.text = JSON.stringify(toolData)
+      } catch {
+        toolMsg.text += "\nResult: " + (payload?.result || payload?.error)
+      }
+    } else {
+      // 找不到对应的 tool 消息，创建一个 say:"tool" 消息兜底
+      const msg = {
+        type: "say",
+        say: "tool",
+        text: JSON.stringify({ tool: meta?.tool || "e3d_generic", coreTool: meta?.coreTool || meta?.tool || "e3d_generic", result: payload?.result || payload?.error, summary: meta?.summary }),
+        ts: Date.now(),
+      }
+      _clineMessages.push(msg)
+    }
   }
-  _clineMessages.push(msg)
   notifyStateChange()
 }
 
@@ -829,10 +906,7 @@ export const UiServiceClient = createUiServiceClient()
 export const FileServiceClient = createFileServiceClient()
 export const McpServiceClient = createStubClient("Mcp")
 export const ModelsServiceClient = createModelsServiceClient()
-export const AccountServiceClient = createStubClient("Account")
 export const CheckpointsServiceClient = createStubClient("Checkpoints")
-export const WorktreeServiceClient = createStubClient("Worktree")
 export const SlashServiceClient = createStubClient("Slash")
 export const BrowserServiceClient = createStubClient("Browser")
 export const WebServiceClient = createStubClient("Web")
-export const OcaAccountServiceClient = createStubClient("OcaAccount")

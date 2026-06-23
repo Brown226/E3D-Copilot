@@ -45,6 +45,12 @@ export const MessageTypes = {
   ProvidersListResult: 'providers:list:result',
   ProviderFetchResult: 'provider:fetch_models:result',
   TurnDone: 'turn:done',
+
+  // === 新增事件类型（补全前后端事件覆盖） ===
+  LlmTurnStarted: 'llm:turn_started',     // 对应前端 api_req_started
+  LlmUsage: 'llm:usage',                  // Token 用量
+  LlmRetry: 'llm:retry',                  // 重试事件
+  ToolProgress: 'tool:progress',           // 工具执行进度
 } as const;
 
 export type MessageType = typeof MessageTypes[keyof typeof MessageTypes];

@@ -38,6 +38,12 @@ namespace E3DCopilot.Core.Events
         public string ToolId { get; set; }
         public object Data { get; set; }
 
+        /// <summary>原始核心工具名（路由前），供前端渲染分组用</summary>
+        public string CoreToolName { get; set; }
+
+        /// <summary>结构化元数据（最小安全方案：供前端渲染，不影响 LLM 的 Text）</summary>
+        public object Meta { get; set; }
+
         public static CopilotEvent TextEvent(string text) =>
             new CopilotEvent { Kind = EventKind.Text, Text = text };
 
@@ -53,11 +59,11 @@ namespace E3DCopilot.Core.Events
         public static CopilotEvent StreamEnd(object usage = null) =>
             new CopilotEvent { Kind = EventKind.StreamEnd, Data = usage };
 
-        public static CopilotEvent ToolStart(string toolId, string name, object args = null) =>
-            new CopilotEvent { Kind = EventKind.ToolDispatch, ToolId = toolId, Text = name, Data = args };
+        public static CopilotEvent ToolStart(string toolId, string name, object args = null, string coreToolName = null) =>
+            new CopilotEvent { Kind = EventKind.ToolDispatch, ToolId = toolId, Text = name, Data = args, CoreToolName = coreToolName };
 
-        public static CopilotEvent ToolComplete(string toolId, object result) =>
-            new CopilotEvent { Kind = EventKind.ToolResult, ToolId = toolId, Data = result };
+        public static CopilotEvent ToolComplete(string toolId, object result, object meta = null) =>
+            new CopilotEvent { Kind = EventKind.ToolResult, ToolId = toolId, Data = result, Meta = meta };
 
         public static CopilotEvent ToolFail(string toolId, string error) =>
             new CopilotEvent { Kind = EventKind.ToolError, ToolId = toolId, Text = error };

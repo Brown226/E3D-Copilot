@@ -43,7 +43,14 @@ namespace E3DCopilot.Core.Tools.Handlers
                 }
 
                 var result = await _dispatcher.ExecuteAsync("execute_pml", args);
-                return ToolResult.Ok(result, null);
+                // 最小安全方案：Text 不变，Data 放结构化 meta 供前端渲染
+                var meta = new JObject
+                {
+                    ["tool"] = "execute_pml",
+                    ["summary"] = "PML 脚本执行完成",
+                    ["pmlScript"] = script ?? "",
+                };
+                return ToolResult.Ok(result, meta);
             }
             catch (Exception ex)
             {

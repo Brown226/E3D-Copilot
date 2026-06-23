@@ -281,6 +281,12 @@ namespace E3DCopilot.WebHost
         {
             switch (evt.Kind)
             {
+                // ── 轮次开始：前端据此插入 api_req_started 消息 ──
+                case EventKind.TurnStarted:
+                    SendToFrontend(MessageTypes.LlmTurnStarted, new { request = evt.Text ?? "" });
+                    break;
+
+                // ── 流式文本（Text 和 StreamDelta 共用） ──
                 case EventKind.Text:
                 case EventKind.StreamDelta:
                     SendToFrontend(MessageTypes.LlmStreamDelta, new { delta = evt.Text });
@@ -290,74 +296,71 @@ namespace E3DCopilot.WebHost
                     SendToFrontend(MessageTypes.LlmStreamEnd, new { usage = evt.Data });
                     break;
 
-                case EventKind.TurnDone:
-                    // 整个轮次结束（LLM 完成 + 所有工具执行完毕）
-                    // 前端据此重置 sendingDisabled/enableButtons
-                    SendToFrontend(MessageTypes.TurnDone, new { });
+                // ── Reasoning：与 Thinking 区分，都映射到 LlmThinking ──
+                case EventKind.Reasoning:
+                    SendToFrontend(MessageTypes.LlmThinking, new { text = evt.Text });
                     break;
 
                 case EventKind.Thinking:
                     SendToFrontend(MessageTypes.LlmThinking, new { text = evt.Text });
                     break;
 
+                case EventKind.TurnDone:
+                    SendToFrontend(MessageTypes.TurnDone, new { });
+                    break;
+
                 case EventKind.ToolDispatch:
-                    SendToFrontend(MessageTypes.ToolDispatch, new 
-                    { 
-                        id = evt.ToolId, 
-                        name = evt.Text, 
-                        args = evt.Data 
-                    });
+                    SendToFrontend(MessageTypes.ToolDispatch, new { id = evt.ToolId, name = evt.Text, args = evt.Data, coreToolName = evt.CoreToolName });
                     break;
 
                 case EventKind.ToolResult:
-                    SendToFrontend(MessageTypes.ToolResult, new 
-                    { 
-                        id = evt.ToolId, 
-                        result = evt.Data?.ToString() 
-                    });
+                    SendToFrontend(MessageTypes.ToolResult, new { id = evt.ToolId, result = evt.Data?.ToString(), meta = evt.Meta });
                     break;
 
                 case EventKind.ToolError:
-                    SendToFrontend(MessageTypes.ToolError, new 
-                    { 
-                        id = evt.ToolId, 
-                        error = evt.Text 
-                    });
+                    SendToFrontend(MessageTypes.ToolError, new { id = evt.ToolId, error = evt.Text });
+                    break;
+
+                // ── 工具执行进度（长时操作） ──
+                case EventKind.ToolProgress:
+                    SendToFrontend(MessageTypes.ToolProgress, new { id = evt.ToolId, text = evt.Text, progress = evt.Data });
                     break;
 
                 case EventKind.ApprovalRequest:
-                    SendToFrontend(MessageTypes.ToolApproval, new 
-                    { 
-                        id = evt.ToolId, 
-                        name = evt.Text, 
-                        args = evt.Data?.ToString(),
-                        description = evt.Text
-                    });
+                    SendToFrontend(MessageTypes.ToolApproval, new { id = evt.ToolId, name = evt.Text, args = evt.Data?.ToString(), description = evt.Text });
                     break;
 
                 case EventKind.AskUser:
                     var question = evt.Data is System.Text.Json.JsonElement jo
                         ? jo.GetProperty("question").GetString()
                         : evt.Text;
-                    SendToFrontend(MessageTypes.AskUser, new 
-                    { 
-                        questionId = evt.ToolId, 
-                        question = question, 
-                        data = evt.Data 
-                    });
+                    SendToFrontend(MessageTypes.AskUser, new { questionId = evt.ToolId, question = question, data = evt.Data });
                     break;
 
                 case EventKind.PlanModeChanged:
                     SendToFrontend(MessageTypes.UserSetPlanMode, new { enabled = evt.Text?.IndexOf("enabled", StringComparison.OrdinalIgnoreCase) >= 0 });
                     break;
 
+                // ── Token 用量 ──
+                case EventKind.Usage:
+                    SendToFrontend(MessageTypes.LlmUsage, new { text = evt.Text, data = evt.Data });
+                    break;
+
+                // ── 重试事件 ──
+                case EventKind.Retry:
+                    SendToFrontend(MessageTypes.LlmRetry, new { text = evt.Text });
+                    break;
+
                 case EventKind.Notice:
-                    // Notice 仍可发送，但前端不再把它加入 _clineMessages（改为 console.log）
                     SendToFrontend(MessageTypes.Notice, new { text = evt.Text });
                     break;
 
                 case EventKind.Error:
                     SendToFrontend(MessageTypes.Error, new { message = evt.Text });
+                    break;
+
+                // ── 未映射的事件 ──
+                default:
                     break;
             }
         }

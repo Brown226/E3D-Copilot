@@ -19,7 +19,7 @@ import { Tab, TabContent, TabList, TabTrigger } from "../common/Tab"
 import ViewHeader from "../common/ViewHeader"
 import SectionHeader from "./SectionHeader"
 import AboutSection from "./sections/AboutSection"
-import ApiConfigurationSection from "./sections/ApiConfigurationSection"
+import ProviderSettingsSection from "./sections/ProviderSettingsSection"
 import DebugSection from "./sections/DebugSection"
 import FeatureSettingsSection from "./sections/FeatureSettingsSection"
 import GeneralSettingsSection from "./sections/GeneralSettingsSection"
@@ -40,9 +40,9 @@ interface SettingsTab {
 export const SETTINGS_TABS: SettingsTab[] = [
 	{
 		id: "api-config",
-		name: "API Configuration",
-		tooltipText: "API Configuration",
-		headerText: "API Configuration",
+		name: "Provider",
+		tooltipText: "Provider 管理",
+		headerText: "Provider 管理",
 		icon: SlidersHorizontal,
 	},
 	{
@@ -108,7 +108,7 @@ const SettingsView = ({ onDone, targetSection }: SettingsViewProps) => {
 	// Memoize to avoid recreation
 	const TAB_CONTENT_MAP: Record<SettingsTabID, React.FC<any>> = useMemo(
 		() => ({
-			"api-config": ApiConfigurationSection,
+			"api-config": ProviderSettingsSection,
 			general: GeneralSettingsSection,
 			features: FeatureSettingsSection,
 			about: AboutSection,

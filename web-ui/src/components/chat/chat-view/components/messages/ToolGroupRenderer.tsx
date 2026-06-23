@@ -23,7 +23,9 @@ interface ToolWithReasoning {
 	activityText?: string
 }
 
-const EXPANDABLE_TOOLS = new Set(["listFilesTopLevel", "listFilesRecursive", "listCodeDefinitionNames", "searchFiles"])
+const EXPANDABLE_TOOLS = new Set(["listFilesTopLevel", "listFilesRecursive", "listCodeDefinitionNames", "searchFiles", "readFile",
+	// E3D low-stakes tools (read-only)
+	"query_model", "check", "read_file", "search_knowledge"])
 
 // Helper to format activity text for active items (from RequestStartRow logic)
 const getActivityText = (tool: ClineSayTool): string | null => {

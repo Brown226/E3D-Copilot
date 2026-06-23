@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import VSCodeButtonLink from "@/components/common/VSCodeButtonLink"
 import { useClineAuth } from "@/context/ClineAuthContext"
-import { AccountServiceClient, TaskServiceClient } from "@/services/grpc-client"
+import { TaskServiceClient } from "@/services/grpc-client"
 
 interface CreditLimitErrorProps {
 	currentBalance: number
@@ -37,7 +37,8 @@ const CreditLimitError: React.FC<CreditLimitErrorProps> = ({
 	useEffect(() => {
 		const fetchCallbackUrl = async () => {
 			try {
-				const callbackUrl = (await AccountServiceClient.getRedirectUrl({})).value
+				// E3D: no account system, show generic message
+				console.warn("Credit limit reached but no account system in E3D")
 				const url = new URL(dashboardUrl)
 				url.searchParams.set("callback_url", callbackUrl)
 				setFullBuyCreditsUrl(url.toString())

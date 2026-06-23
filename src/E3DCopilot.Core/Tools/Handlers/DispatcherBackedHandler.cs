@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 
 namespace E3DCopilot.Core.Tools.Handlers
 {
@@ -32,7 +33,13 @@ namespace E3DCopilot.Core.Tools.Handlers
             try
             {
                 var result = await _dispatcher.ExecuteAsync(Name, args);
-                return ToolResult.Ok(result, null);
+                // 最小安全方案：Text 不变（LLM 侧零影响），Data 放结构化 meta 供前端渲染
+                var meta = new JObject
+                {
+                    ["tool"] = Name,
+                    ["summary"] = $"{Name} 执行完成",
+                };
+                return ToolResult.Ok(result, meta);
             }
             catch (Exception ex)
             {

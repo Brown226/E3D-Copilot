@@ -111,7 +111,14 @@ namespace E3DCopilot.Core.Tools.Handlers
                 };
 
                 // 使用缩进格式使 JSON 更清晰易读
-                return ToolResult.Ok(result.ToString(Formatting.Indented), null);
+                // 最小安全方案：Text 不变，Data 放结构化 meta 供前端渲染
+                var meta = new JObject
+                {
+                    ["tool"] = "get_attributes",
+                    ["coreTool"] = "query",
+                    ["summary"] = $"{element} 属性读取完成，共 {attrResults.Count} 项",
+                };
+                return ToolResult.Ok(result.ToString(Formatting.Indented), meta);
             }
             catch (OperationCanceledException)
             {

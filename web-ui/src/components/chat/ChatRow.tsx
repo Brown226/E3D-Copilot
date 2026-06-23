@@ -35,6 +35,7 @@ import {
 	SquareMinusIcon,
 	TerminalIcon,
 	TriangleAlertIcon,
+	WrenchIcon,
 } from "lucide-react"
 import { MouseEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -712,8 +713,278 @@ export const ChatRowContent = memo(
 							</div>
 						</div>
 					)
+				// ── E3D 工具渲染分支（按 coreTool 分组） ──
+				case "execute_pml":
+					return (
+						<div>
+							<div className={HEADER_CLASSNAMES}>
+								<TerminalIcon className="size-2" />
+								<span className="font-bold">{message.type === "ask" ? t("chatRow.wantsToExecute") || "Execute PML" : t("chatRow.executed") || "Executed PML"}</span>
+							</div>
+							{tool.pmlScript && (
+								<CodeAccordian
+									code={tool.pmlScript}
+									isExpanded={isExpanded}
+									language="pml"
+									onToggleExpand={handleToggle}
+									path={tool.path || "PML Script"}
+								/>
+							)}
+							{(tool.e3dResult || tool.result) && (
+								<CodeAccordian
+									code={tool.e3dResult || tool.result || ""}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path="Result"
+								/>
+							)}
+						</div>
+					)
+				// ── Query 类工具（coreTool=query） ──
+				case "query_model":
+				case "get_current_element":
+				case "get_element_info":
+				case "get_position":
+				case "get_nozzle_info":
+				case "get_pipe_branches":
+				case "query_elements":
+				case "get_attributes":
+				case "query_pipes":
+				case "query_equipment":
+				case "get_hierarchy":
+				case "read_file":
+				case "search_knowledge":
+					return (
+						<div>
+							<div className={HEADER_CLASSNAMES}>
+								<SearchIcon className="size-2" />
+								<span className="font-bold">{tool.summary || `Query: ${tool.coreTool || tool.tool}`}</span>
+							</div>
+							{tool.path && <div className="text-description text-xs">{tool.path}</div>}
+							{(tool.e3dResult || tool.result) && (
+								<CodeAccordian
+									code={tool.e3dResult || tool.result || ""}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path="Result"
+								/>
+							)}
+						</div>
+					)
+				// ── Check 类工具（coreTool=check） ──
+				case "check":
+				case "check_exists":
+				case "check_attribute_complete":
+				case "check_room_number":
+				case "check_name_consistency":
+				case "check_distance":
+				case "check_bore_consistency":
+				case "get_change_status":
+					return (
+						<div>
+							<div className={HEADER_CLASSNAMES}>
+								<CheckIcon className="size-2" />
+								<span className="font-bold">{tool.summary || `Check: ${tool.coreTool || tool.tool}`}</span>
+							</div>
+							{(tool.e3dResult || tool.result) && (
+								<CodeAccordian
+									code={tool.e3dResult || tool.result || ""}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path="Result"
+								/>
+							)}
+						</div>
+					)
+				// ── Modify 类工具（coreTool=modify） ──
+				case "modify_equipment":
+				case "set_attribute":
+				case "batch_set_attribute":
+				case "batch_rename":
+				case "modify_pipe_spec":
+				case "create_equipment":
+					return (
+						<div>
+							<div className={HEADER_CLASSNAMES}>
+								<PencilIcon className="size-2" />
+								<span className="font-bold">{tool.summary || `Modify: ${tool.coreTool || tool.tool}`}</span>
+							</div>
+							{tool.path && <div className="text-description text-xs">{tool.path}</div>}
+							{tool.content && (
+								<CodeAccordian
+									code={tool.content}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path={tool.path || "Modification"}
+								/>
+							)}
+							{(tool.e3dResult || tool.result) && (
+								<CodeAccordian
+									code={tool.e3dResult || tool.result || ""}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path="Result"
+								/>
+							)}
+						</div>
+					)
+				// ── Calculate 类工具（coreTool=calculate） ──
+				case "calculate":
+				case "calculate_distance":
+				case "get_orientation_wrt":
+				case "get_ppoint_info":
+				case "get_route_info":
+					return (
+						<div>
+							<div className={HEADER_CLASSNAMES}>
+								<LightbulbIcon className="size-2" />
+								<span className="font-bold">{tool.summary || `Calculate: ${tool.coreTool || tool.tool}`}</span>
+							</div>
+							{(tool.e3dResult || tool.result) && (
+								<CodeAccordian
+									code={tool.e3dResult || tool.result || ""}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path="Result"
+								/>
+							)}
+						</div>
+					)
+				// ── Export 类工具（coreTool=export） ──
+				case "export":
+				case "export_to_excel":
+				case "import_excel":
+				case "merge_excel":
+				case "generate_report":
+					return (
+						<div>
+							<div className={HEADER_CLASSNAMES}>
+								<FileCode2Icon className="size-2" />
+								<span className="font-bold">{tool.summary || `Export: ${tool.coreTool || tool.tool}`}</span>
+							</div>
+							{(tool.e3dResult || tool.result) && (
+								<CodeAccordian
+									code={tool.e3dResult || tool.result || ""}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path="Result"
+								/>
+							)}
+						</div>
+					)
+				case "task":
+				case "ask_user":
+					return (
+						<div>
+							<div className={HEADER_CLASSNAMES}>
+								<WrenchIcon className="size-2" />
+								<span className="font-bold">{tool.summary || tool.tool}</span>
+							</div>
+							{(tool.e3dResult || tool.result) && (
+								<CodeAccordian
+									code={tool.e3dResult || tool.result || ""}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path="Result"
+								/>
+							)}
+						</div>
+					)
 				default:
-					return <InvisibleSpacer />
+					// 兜底：利用 coreTool 做二次分组匹配，否则显示工具名 + 结果
+					{
+						const ct = tool.coreTool
+						if (ct === "query") {
+							return (
+								<div>
+									<div className={HEADER_CLASSNAMES}>
+										<SearchIcon className="size-2" />
+										<span className="font-bold">{tool.summary || `Query: ${tool.tool}`}</span>
+									</div>
+									{(tool.e3dResult || tool.result) && (
+										<CodeAccordian code={tool.e3dResult || tool.result || ""} isExpanded={isExpanded} onToggleExpand={handleToggle} path="Result" />
+									)}
+								</div>
+							)
+						} else if (ct === "modify") {
+							return (
+								<div>
+									<div className={HEADER_CLASSNAMES}>
+										<PencilIcon className="size-2" />
+										<span className="font-bold">{tool.summary || `Modify: ${tool.tool}`}</span>
+									</div>
+									{(tool.e3dResult || tool.result) && (
+										<CodeAccordian code={tool.e3dResult || tool.result || ""} isExpanded={isExpanded} onToggleExpand={handleToggle} path="Result" />
+									)}
+								</div>
+							)
+						} else if (ct === "check") {
+							return (
+								<div>
+									<div className={HEADER_CLASSNAMES}>
+										<CheckIcon className="size-2" />
+										<span className="font-bold">{tool.summary || `Check: ${tool.tool}`}</span>
+									</div>
+									{(tool.e3dResult || tool.result) && (
+										<CodeAccordian code={tool.e3dResult || tool.result || ""} isExpanded={isExpanded} onToggleExpand={handleToggle} path="Result" />
+									)}
+								</div>
+							)
+						} else if (ct === "calculate") {
+							return (
+								<div>
+									<div className={HEADER_CLASSNAMES}>
+										<LightbulbIcon className="size-2" />
+										<span className="font-bold">{tool.summary || `Calculate: ${tool.tool}`}</span>
+									</div>
+									{(tool.e3dResult || tool.result) && (
+										<CodeAccordian code={tool.e3dResult || tool.result || ""} isExpanded={isExpanded} onToggleExpand={handleToggle} path="Result" />
+									)}
+								</div>
+							)
+						} else if (ct === "export") {
+							return (
+								<div>
+									<div className={HEADER_CLASSNAMES}>
+										<FileCode2Icon className="size-2" />
+										<span className="font-bold">{tool.summary || `Export: ${tool.tool}`}</span>
+									</div>
+									{(tool.e3dResult || tool.result) && (
+										<CodeAccordian code={tool.e3dResult || tool.result || ""} isExpanded={isExpanded} onToggleExpand={handleToggle} path="Result" />
+									)}
+								</div>
+							)
+						} else if (ct === "execute_pml") {
+							return (
+								<div>
+									<div className={HEADER_CLASSNAMES}>
+										<TerminalIcon className="size-2" />
+										<span className="font-bold">{tool.summary || "PML"}</span>
+									</div>
+									{(tool.e3dResult || tool.result) && (
+										<CodeAccordian code={tool.e3dResult || tool.result || ""} isExpanded={isExpanded} onToggleExpand={handleToggle} path="Result" />
+									)}
+								</div>
+							)
+						}
+					}
+					// 完全未知工具：展示工具名 + 结果
+					return (
+						<div>
+							<div className={HEADER_CLASSNAMES}>
+								<WrenchIcon className="size-2" />
+								<span className="font-bold">{tool.summary || tool.tool || "Tool"}</span>
+							</div>
+							{(tool.e3dResult || tool.result) && (
+								<CodeAccordian
+									code={tool.e3dResult || tool.result || ""}
+									isExpanded={isExpanded}
+									onToggleExpand={handleToggle}
+									path="Result"
+								/>
+							)}
+						</div>
+					)
 			}
 		}
 

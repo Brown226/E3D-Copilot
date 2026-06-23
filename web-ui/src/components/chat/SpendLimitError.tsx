@@ -1,7 +1,7 @@
 import { VSCodeButton } from "@/components/ui/vscode-compat"
 import React, { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { AccountServiceClient } from "@/services/grpc-client"
+
 
 const COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
 const COOLDOWN_KEY = "cline:spendLimitRequestCooldown"
@@ -76,7 +76,8 @@ const SpendLimitError: React.FC<SpendLimitErrorProps> = ({ message, budgetPeriod
 	const handleRequestIncrease = async () => {
 		setButtonState("sending")
 		try {
-			await AccountServiceClient.submitLimitIncreaseRequest({})
+			// E3D: no account system
+		console.warn("Spend limit request not supported in E3D")
 			localStorage.setItem(COOLDOWN_KEY, String(Date.now()))
 			setButtonState("sent")
 		} catch (error) {
