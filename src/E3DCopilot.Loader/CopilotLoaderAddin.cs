@@ -30,9 +30,6 @@ namespace E3DCopilot.Loader
         private DockedWindow _dockedWindow;
 
         // ---- Loader 面板控件 ----
-        private Label _statusLabel;
-        private Button _reloadBtn;
-        private Button _openBtn;
         private Panel _containerPanel;
         private Panel _loaderPanel;
 
@@ -122,37 +119,6 @@ namespace E3DCopilot.Loader
         {
             _loaderPanel = new Panel();
             _loaderPanel.BackColor = Color.FromArgb(45, 45, 48);
-            _loaderPanel.Padding = new Padding(4);
-
-            // ---- 顶部状态栏 ----
-            var topBar = new Panel();
-            topBar.Height = 36;
-            topBar.Dock = DockStyle.Top;
-            topBar.BackColor = Color.FromArgb(55, 55, 58);
-
-            _statusLabel = new Label();
-            _statusLabel.Text = "⚪ 就绪";
-            _statusLabel.Location = new Point(6, 8);
-            _statusLabel.Size = new Size(200, 22);
-            _statusLabel.ForeColor = Color.LightGray;
-
-            _reloadBtn = new Button();
-            _reloadBtn.Text = "🔄 重载";
-            _reloadBtn.Location = new Point(300, 5);
-            _reloadBtn.Size = new Size(70, 26);
-            _reloadBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _reloadBtn.UseVisualStyleBackColor = true;
-            _reloadBtn.Click += OnReloadClick;
-
-            _openBtn = new Button();
-            _openBtn.Text = "📂 打开目录";
-            _openBtn.Location = new Point(220, 5);
-            _openBtn.Size = new Size(75, 26);
-            _openBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _openBtn.UseVisualStyleBackColor = true;
-            _openBtn.Click += (s, e) => { try { System.Diagnostics.Process.Start(_devDir); } catch { } };
-
-            topBar.Controls.AddRange(new Control[] { _statusLabel, _openBtn, _reloadBtn });
 
             // ---- 开发面板容器 ----
             _containerPanel = new Panel();
@@ -160,19 +126,11 @@ namespace E3DCopilot.Loader
             _containerPanel.BackColor = Color.FromArgb(45, 45, 48);
 
             // ---- 组装 ----
-            _loaderPanel.Controls.AddRange(new Control[] { _containerPanel, topBar });
+            _loaderPanel.Controls.Add(_containerPanel);
         }
 
-        private void SetStatus(string text, Color color)
-        {
-            if (_statusLabel.InvokeRequired)
-            {
-                _statusLabel.BeginInvoke(new Action(() => SetStatus(text, color)));
-                return;
-            }
-            _statusLabel.Text = text;
-            _statusLabel.ForeColor = color;
-        }
+        // SetStatus 已移除（顶部状态栏不再需要）
+        private void SetStatus(string text, Color color) { /* no-op */ }
 
         // ================================================================
         // 加载核心 — 同域加载（无跨 AppDomain 问题）
@@ -180,8 +138,6 @@ namespace E3DCopilot.Loader
 
         private void LoadDevAddin()
         {
-            SetStatus("⏳ 加载开发版...", Color.Yellow);
-            _reloadBtn.Enabled = false;
 
             try
             {
@@ -266,6 +222,7 @@ namespace E3DCopilot.Loader
                 SetStatus($"✅ 已加载 v{version}", Color.LightGreen);
                 OutputToE3D($"[E小智] 已加载开发版 v{version}");
 
+                // WebView2 加载成功后隐藏状态标签（节省空间）
             // CE 诊断弹窗（Loader 同域，可直接访问 E3D API）
                 try
                 {
@@ -336,7 +293,7 @@ namespace E3DCopilot.Loader
             }
             finally
             {
-                _reloadBtn.Enabled = true;
+                // reload button removed
             }
         }
 
@@ -428,8 +385,6 @@ namespace E3DCopilot.Loader
         /// </summary>
         private void OnReloadClick(object sender, EventArgs e)
         {
-            _reloadBtn.Enabled = false;
-
             UnloadDevAddin();
 
             // 尝试重新加载（如果程序集已存在，Assembly.Load 会返回已缓存的版本）
