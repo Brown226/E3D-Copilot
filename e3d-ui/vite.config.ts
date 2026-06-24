@@ -22,7 +22,7 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 1000,
-    outDir: '../src/E3DCopilot.WebHost/wwwroot',
+    outDir: 'D:/AVEVA/Everything3D2.10/wwwroot',
     sourcemap: true,
   },
 })
