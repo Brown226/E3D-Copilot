@@ -25,17 +25,35 @@ namespace E3DCopilot.Core.Tools.Handlers
     {
         private readonly IEventSink _sink;
 
-        // 知识库根目录（相对于程序运行目录）
-        private static readonly string KnowledgeRoot = Path.GetFullPath(Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory,
-            "..", "..", "..", "..", "..",
-            "E小智-v1.0-开发中", "knowledge"));
+        // 知识库根目录：优先用程序同级 knowledge/，回退到开发目录
+        private static readonly string KnowledgeRoot = ResolveKnowledgeRoot();
 
-        // 文档根目录
-        private static readonly string DocsRoot = Path.GetFullPath(Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory,
-            "..", "..", "..", "..", "..",
-            "E3D官方API文档", "docs"));
+        // 文档根目录：优先用程序同级 docs/，回退到开发目录
+        private static readonly string DocsRoot = ResolveDocsRoot();
+
+        private static string ResolveKnowledgeRoot()
+        {
+            // 1. 程序同级 knowledge/ 目录（部署后标准位置）
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            var bundled = Path.Combine(appDir, "knowledge");
+            if (Directory.Exists(bundled)) return bundled;
+
+            // 2. 开发环境回退
+            var devPath = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "E小智-v1.0-开发中", "knowledge"));
+            return devPath;
+        }
+
+        private static string ResolveDocsRoot()
+        {
+            // 1. 程序同级 docs/ 目录（部署后标准位置）
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            var bundled = Path.Combine(appDir, "docs");
+            if (Directory.Exists(bundled)) return bundled;
+
+            // 2. 开发环境回退
+            var devPath = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "E3D官方API文档", "docs"));
+            return devPath;
+        }
 
         // 预加载的搜索索引
         private static Dictionary<string, List<string>> _keywordIndex = null;

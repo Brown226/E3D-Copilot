@@ -11,8 +11,6 @@
 import { useState, useMemo } from 'react'
 import {
   Loader2,
-  CheckCircle2,
-  XCircle,
   Copy,
   Check,
   ChevronRight,
@@ -175,30 +173,30 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
   const hasBody = !!(argsStr || resultStr)
 
   return (
-    <div className="flex justify-start my-1">
+    <div className="flex justify-start my-0.5">
       <div className="max-w-[85%] w-full">
-        {/* 卡片头部 */}
+        {/* 卡片头部 — 紧凑行内风格 */}
         <button
           onClick={() => hasBody && toggleExpand()}
-          className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-left transition-all group ${
+          className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left transition-all group ${
             expanded
-              ? 'bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700'
+              ? 'bg-slate-50 dark:bg-slate-800/50'
               : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
           }`}
         >
-          {/* 状态图标 */}
-          <div className="shrink-0">
+          {/* 状态图标 — 简洁的 ✓/✗/• 符号 */}
+          <span className="shrink-0 text-xs leading-none">
             {isRunning ? (
               <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
             ) : isError ? (
-              <XCircle className="w-3.5 h-3.5 text-red-500" />
+              <span className="text-red-500">✗</span>
             ) : (
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="text-emerald-500">✓</span>
             )}
-          </div>
+          </span>
 
           {/* 工具名 */}
-          <span className="text-xs font-medium text-slate-700 dark:text-slate-300 font-mono shrink-0">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 font-mono shrink-0">
             {msg.toolName || 'tool_call'}
           </span>
 
@@ -211,39 +209,30 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
           )}
 
           {/* 摘要 */}
-          <span className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1">
+          <span className="text-xs text-slate-400 dark:text-slate-500 truncate flex-1">
             {hasSubcalls ? subcallSummary(subcalls) : summary}
           </span>
 
           {/* 执行耗时 */}
-          {msg.durationMs != null && msg.durationMs > 0 && (
-            <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0 font-mono">
-              {msg.durationMs >= 1000 ? `${(msg.durationMs / 1000).toFixed(1)}s` : `${msg.durationMs}ms`}
+          {msg.durationMs != null && msg.durationMs > 0 && !isRunning && (
+            <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
+              {msg.durationMs} ms
             </span>
           )}
 
-          {/* 展开箭头 + 状态圆点 */}
-          <div className="flex items-center gap-1 shrink-0">
-            {!expanded && (
-              <span className={`w-2 h-2 rounded-full ${
-                isRunning ? 'bg-blue-500 animate-pulse' :
-                isError ? 'bg-red-500' :
-                'bg-emerald-500'
-              }`} />
-            )}
-            {(hasBody || hasSubcalls) && (
-              <ChevronRight
-                className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
-                  expanded ? 'rotate-90' : ''
-                }`}
-              />
-            )}
-          </div>
+          {/* 展开箭头 */}
+          {(hasBody || hasSubcalls) && (
+            <ChevronRight
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${
+                expanded ? 'rotate-90' : ''
+              }`}
+            />
+          )}
         </button>
 
         {/* 展开内容（带平滑动画） */}
         {expanded && (
-          <div className="mt-1 ml-4 space-y-1.5 tool-card-body">
+          <div className="mt-1 ml-4 space-y-1.5 tool-card-body border-l-2 border-slate-200 dark:border-slate-700 pl-3">
             {/* 参数 */}
             {argsStr && (
               <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
@@ -313,7 +302,7 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
 }
 
 // ═══════════════════════════════════════════
-// 子调用行（内联展示）
+// 子调用行（内联展示） — 紧凑风格
 // ═══════════════════════════════════════════
 
 function SubToolRow({ msg }: { msg: Message }) {
@@ -333,21 +322,21 @@ function SubToolRow({ msg }: { msg: Message }) {
   }, [msg.content, msg.toolError])
 
   return (
-    <div className="rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 overflow-hidden">
+    <div className="rounded bg-transparent">
       <button
         onClick={() => resultPreview && setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
+        className="w-full flex items-center gap-1.5 px-1.5 py-1 text-left hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors rounded"
       >
-        <div className="shrink-0">
+        <span className="shrink-0 text-xs leading-none">
           {isRunning ? (
             <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
           ) : isError ? (
-            <XCircle className="w-3 h-3 text-red-500" />
+            <span className="text-red-500">✗</span>
           ) : (
-            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+            <span className="text-emerald-500">✓</span>
           )}
-        </div>
-        <span className="text-xs font-mono text-slate-600 dark:text-slate-400 shrink-0">
+        </span>
+        <span className="text-xs font-mono text-slate-500 dark:text-slate-400 shrink-0">
           {msg.toolName || 'tool'}
         </span>
         <span className="text-xs text-slate-400 dark:text-slate-500 truncate flex-1">
@@ -358,9 +347,9 @@ function SubToolRow({ msg }: { msg: Message }) {
         )}
       </button>
       {expanded && resultPreview && (
-        <div className="px-2.5 pb-2">
+        <div className="px-2 pb-1.5">
           <pre className="text-[11px] text-slate-500 dark:text-slate-400 font-mono whitespace-pre-wrap break-all max-h-[100px] overflow-y-auto bg-slate-50 dark:bg-slate-900 rounded p-1.5">
-            {expanded ? (msg.toolError || msg.content) : resultPreview}
+            {msg.toolError || msg.content}
           </pre>
         </div>
       )}

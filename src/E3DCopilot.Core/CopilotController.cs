@@ -58,6 +58,25 @@ namespace E3DCopilot.Core
             _tabSessions.TryRemove(tabId, out _);
         }
 
+        /// <summary>
+        /// 获取所有 tab session 的摘要信息（供历史面板使用）
+        /// </summary>
+        public List<TabSessionInfo> GetTabSessionInfos()
+        {
+            var list = new List<TabSessionInfo>();
+            foreach (var kvp in _tabSessions)
+            {
+                list.Add(new TabSessionInfo
+                {
+                    TabId = kvp.Key,
+                    SessionId = kvp.Value.SessionId,
+                    MessageCount = kvp.Value.Messages?.Count ?? 0,
+                    IsPlanMode = kvp.Value.IsPlanMode
+                });
+            }
+            return list;
+        }
+
         // ── Aggregated services ──
         private ICopilotProvider _provider;
         public ICopilotProvider Provider => _provider;
@@ -167,7 +186,24 @@ namespace E3DCopilot.Core
         public async Task SendAsync(string input)
         {
             if (string.IsNullOrWhiteSpace(input)) return;
-            if (Interlocked.Exchange(ref _runningFlag, 1) == 1) return;
+
+            // 如果上一个任务还在运行，先取消它（而非丢弃新消息）
+            if (_isRunning)
+            {
+                try { _cts?.Cancel(); } catch { }
+                Interlocked.Exchange(ref _runningFlag, 0);
+                _isRunning = false;
+                // 给前端发 TurnDone 解锁上一个任务的 UI 状态
+                try { _sink?.Emit(CopilotEvent.Notice("上一个任务已中断，开始处理新消息")); } catch { }
+                try { _sink?.Emit(CopilotEvent.TurnDone()); } catch { }
+            }
+
+            if (Interlocked.Exchange(ref _runningFlag, 1) == 1)
+            {
+                // 极端竞态：取消过程中又来了一个 — 放弃这次
+                System.Diagnostics.Debug.WriteLine("[Controller] _runningFlag race, dropping message");
+                return;
+            }
             _isRunning = true;
 
             _cts = new CancellationTokenSource();
@@ -176,6 +212,12 @@ namespace E3DCopilot.Core
             {
                 _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this);
                 await _agent.RunAsync(_session, input, _cts.Token);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Controller] SendAsync exception: {ex}");
+                // 确保发 TurnDone 给前端解锁
+                try { _sink?.Emit(CopilotEvent.TurnDone()); } catch { }
             }
             finally
             {
@@ -330,5 +372,16 @@ namespace E3DCopilot.Core
             public BridgeEventSink(Action<CopilotEvent> onEmit) => _onEmit = onEmit;
             public void Emit(CopilotEvent evt) => _onEmit?.Invoke(evt);
         }
+    }
+
+    /// <summary>
+    /// Tab 会话摘要信息（供历史面板使用）
+    /// </summary>
+    public class TabSessionInfo
+    {
+        public string TabId { get; set; }
+        public string SessionId { get; set; }
+        public int MessageCount { get; set; }
+        public bool IsPlanMode { get; set; }
     }
 }

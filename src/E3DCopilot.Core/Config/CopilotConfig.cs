@@ -88,6 +88,14 @@ namespace E3DCopilot.Core.Config
             public string Language { get; set; } = "zh-CN";
             public string Theme { get; set; } = "system";
             public int FontSize { get; set; } = 12;
+            /// <summary>默认模式：act / plan</summary>
+            public string DefaultMode { get; set; } = "act";
+            /// <summary>桌面通知</summary>
+            public bool Notifications { get; set; } = true;
+            /// <summary>提示音</summary>
+            public bool SoundEnabled { get; set; } = false;
+            /// <summary>字体族：default / mono</summary>
+            public string FontFamily { get; set; } = "default";
         }
 
         public class SafetyConfig
@@ -96,6 +104,10 @@ namespace E3DCopilot.Core.Config
             public int ConfirmBatchThreshold { get; set; } = 10;
             public bool ConfirmDelete { get; set; } = true;
             public bool LogAllActions { get; set; } = true;
+            /// <summary>自动批准工具调用</summary>
+            public bool AutoApproveTools { get; set; } = false;
+            /// <summary>自动批准文件编辑</summary>
+            public bool AutoApproveEdits { get; set; } = false;
         }
 
         public class MemoryConfig

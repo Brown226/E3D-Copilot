@@ -33,7 +33,17 @@ export function TabBar() {
           )}
           {tabs.length > 1 && (
             <button
-              onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
+              onClick={(e) => {
+                e.stopPropagation()
+                // 如果 Tab 正在 streaming，先 cancel 再关闭
+                import('@/services/bridgeService').then(({ default: bridge }) => {
+                  if (tab.isStreaming) {
+                    bridge.cancel()
+                  }
+                  bridge.closeTab(tab.id)
+                })
+                closeTab(tab.id)
+              }}
               className="shrink-0 opacity-0 group-hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-600 rounded p-0.5 transition-all"
             >
               <X className="w-3 h-3" />

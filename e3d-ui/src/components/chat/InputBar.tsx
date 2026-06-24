@@ -1,16 +1,18 @@
 /**
- * InputBar — 同款 Reasonix Composer 双行布局
+ * InputBar — Reasonix 风格 Composer
  *
  * 布局结构：
  * 1. 附件/粘贴块区（context cards）
- * 2. 主卡片：textarea + 发送按钮
- * 3. 底部工具栏：附件按钮 | Plan/Act | 模型选择器 | 连接状态
- * 4. Slash 命令菜单（浮层）
+ * 2. 流式状态栏（运行中显示：旋转词 + 时长 + token + 停止按钮）
+ * 3. 主卡片：textarea + 发送按钮
+ * 4. 底部工具栏：附件 | 模式切换(询问/自动/Yolo) | 模型选择器 | Plan/Act | 连接状态
+ * 5. Slash 命令菜单（浮层）
  */
 
-import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type ClipboardEvent, type DragEvent } from 'react'
-import { Paperclip, ArrowUp, Square, Zap, List } from 'lucide-react'
+import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type CSSProperties } from 'react'
+import { Paperclip, ArrowUp, Square, Zap, List, Shield, ShieldCheck, ShieldAlert, GripHorizontal } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
+import type { ToolApprovalMode } from '@/store/useChatStore'
 import { ModelSwitcher } from '@/components/chat/ModelSwitcher'
 import { SlashMenu } from '@/components/chat/SlashMenu'
 
@@ -18,8 +20,14 @@ import { SlashMenu } from '@/components/chat/SlashMenu'
 const LONG_PASTE_MIN_CHARS = 2000
 const LONG_PASTE_MIN_LINES = 20
 const COMPOSER_MIN_HEIGHT = 56
+const COMPOSER_MAX_HEIGHT = 280
 const COMPOSER_MAX_VIEWPORT_RATIO = 0.35
 const MAX_HISTORY = 100
+const IME_CONFIRM_GRACE_MS = 100
+const COMPOSER_HEIGHT_KEY = 'e3d-composer-height'
+
+// ── 旋转词（流式时显示） ──
+const SPINNER_WORDS = ['嘎吱运算', '飞速思考', '搜索中', '分析中', '推理中', '生成中']
 
 // ── 工具函数 ──
 function fileToBase64(file: File): Promise<string> {
@@ -41,8 +49,52 @@ function shouldFoldPaste(s: string): boolean {
 }
 
 function composerMaxHeight(): number {
-  if (typeof window === 'undefined') return 240
-  return Math.max(COMPOSER_MIN_HEIGHT, Math.floor(window.innerHeight * COMPOSER_MAX_VIEWPORT_RATIO))
+  if (typeof window === 'undefined') return COMPOSER_MAX_HEIGHT
+  return Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, Math.floor(window.innerHeight * COMPOSER_MAX_VIEWPORT_RATIO)))
+}
+
+function clampComposerHeight(h: number): number {
+  return Math.min(Math.max(Math.round(h), COMPOSER_MIN_HEIGHT), composerMaxHeight())
+}
+
+function loadComposerHeight(): number | null {
+  try {
+    const v = localStorage.getItem(COMPOSER_HEIGHT_KEY)
+    if (!v) return null
+    return clampComposerHeight(parseInt(v, 10))
+  } catch { return null }
+}
+
+function saveComposerHeight(h: number): void {
+  try { localStorage.setItem(COMPOSER_HEIGHT_KEY, String(h)) } catch { /* ignore */ }
+}
+
+function clearComposerHeight(): void {
+  try { localStorage.removeItem(COMPOSER_HEIGHT_KEY) } catch { /* ignore */ }
+}
+
+/** 格式化 token 数量 */
+function fmtTokens(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return String(n)
+}
+
+/** 格式化运行时长 */
+function fmtElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+/** 每秒触发的 tick hook（用于实时更新运行时长） */
+function useTick(on: boolean): number {
+  const [, setN] = useState(0)
+  useEffect(() => {
+    if (!on) return
+    const id = window.setInterval(() => setN((n) => n + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [on])
+  return Date.now()
 }
 
 // ── 附件类型 ──
@@ -61,6 +113,13 @@ interface PastedBlock {
   text: string
 }
 
+// ── 审批模式配置 ──
+const APPROVAL_MODES: { mode: ToolApprovalMode; icon: typeof Shield; label: string; title: string }[] = [
+  { mode: 'ask', icon: Shield, label: '询问', title: '每次工具调用前询问确认' },
+  { mode: 'auto', icon: ShieldCheck, label: '自动', title: '自动执行工具调用（只读操作）' },
+  { mode: 'yolo', icon: ShieldAlert, label: 'Yolo', title: '全自动模式：所有操作无需确认' },
+]
+
 export function InputBar() {
   const inputValue = useChatStore((s) => s.inputValue)
   const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
@@ -68,8 +127,15 @@ export function InputBar() {
   const currentModel = useChatStore((s) => s.currentModel)
   const isPlanMode = useChatStore((s) => s.isPlanMode)
   const togglePlanMode = useChatStore((s) => s.togglePlanMode)
+  const toolApprovalMode = useChatStore((s) => s.toolApprovalMode)
+  const setToolApprovalMode = useChatStore((s) => s.setToolApprovalMode)
+  const turnStartAt = useChatStore((s) => s.turnStartAt)
+  const turnTokens = useChatStore((s) => s.turnTokens)
   const setInputValue = useChatStore((s) => s.setInputValue)
   const sendMessage = useChatStore((s) => s.sendMessage)
+
+  // 每秒刷新（流式时）
+  const now = useTick(isStreaming)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -80,6 +146,12 @@ export function InputBar() {
 
   // IME 兼容
   const composingRef = useRef(false)
+  const lastCompositionEndAt = useRef(0)
+
+  // Composer 高度拖拽
+  const composerCardRef = useRef<HTMLDivElement>(null)
+  const [composerHeight, setComposerHeight] = useState<number | null>(loadComposerHeight)
+  const [composerResizing, setComposerResizing] = useState(false)
 
   // 输入历史
   const historyIndexRef = useRef(-1)
@@ -95,15 +167,51 @@ export function InputBar() {
     localStorage.setItem('e3d-input-history', JSON.stringify(historyEntries.slice(0, MAX_HISTORY)))
   }, [historyEntries])
 
-  // 自动伸缩 textarea
+  // 自动伸缩 textarea（仅当未手动调整高度时）
   useEffect(() => {
+    if (composerHeight !== null) return // 手动模式下不自动伸缩
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
     const maxH = composerMaxHeight()
     el.style.height = `${Math.min(el.scrollHeight, maxH)}px`
     el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden'
-  }, [inputValue])
+  }, [inputValue, composerHeight])
+
+  // Composer 拖拽调整高度
+  const onComposerResizeStart = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return
+    const card = composerCardRef.current
+    if (!card) return
+    e.preventDefault()
+    const startY = e.clientY
+    const startHeight = composerHeight ?? card.getBoundingClientRect().height
+    let nextHeight = clampComposerHeight(startHeight)
+    let moved = false
+    setComposerResizing(true)
+    document.body.classList.add('composer-resizing')
+    const onMove = (ev: PointerEvent) => {
+      moved = true
+      nextHeight = clampComposerHeight(startHeight + startY - ev.clientY)
+      setComposerHeight(nextHeight)
+    }
+    const onUp = () => {
+      setComposerResizing(false)
+      document.body.classList.remove('composer-resizing')
+      if (moved) saveComposerHeight(nextHeight)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
+    }
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
+  }, [composerHeight])
+
+  const resetComposerHeight = useCallback(() => {
+    setComposerHeight(null)
+    clearComposerHeight()
+  }, [])
 
   // ── 发送消息 ──
   const handleSend = useCallback(() => {
@@ -160,32 +268,50 @@ export function InputBar() {
 
   // ── 键盘事件 ──
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (composingRef.current) return
+    // IME 组字期间禁止所有快捷键
+    const isIme = composingRef.current
+      || (e.nativeEvent as globalThis.KeyboardEvent & { isComposing?: boolean }).isComposing === true
+      || Date.now() - lastCompositionEndAt.current < IME_CONFIRM_GRACE_MS
+    if (isIme) return
 
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    // Enter 发送（Shift+Enter 换行）
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
       return
     }
 
     const ta = textareaRef.current
-    if (ta && e.key === 'ArrowUp' && !e.shiftKey && ta.selectionStart === 0) {
-      e.preventDefault()
-      navigateHistory(-1)
-      return
+    // ↑ 历史导航：光标在行首时触发
+    if (ta && e.key === 'ArrowUp' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
+        e.preventDefault()
+        navigateHistory(-1)
+        return
+      }
     }
-    if (ta && e.key === 'ArrowDown' && !e.shiftKey && ta.selectionStart === ta.value.length) {
-      e.preventDefault()
-      navigateHistory(1)
-      return
+    // ↓ 历史导航：光标在行尾时触发
+    if (ta && e.key === 'ArrowDown' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      if (ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length) {
+        e.preventDefault()
+        navigateHistory(1)
+        return
+      }
     }
 
+    // Escape 清空
     if (e.key === 'Escape') {
       e.preventDefault()
       setInputValue('')
       setPastedBlocks([])
       setAttachments([])
       setShowSlashMenu(false)
+      historyIndexRef.current = -1
+      return
+    }
+
+    // 其他按键重置历史导航
+    if (historyIndexRef.current !== -1 && e.key.length === 1) {
       historyIndexRef.current = -1
     }
   }
@@ -202,7 +328,10 @@ export function InputBar() {
   }
 
   const handleCompositionStart = () => { composingRef.current = true }
-  const handleCompositionEnd = () => { composingRef.current = false }
+  const handleCompositionEnd = () => {
+    composingRef.current = false
+    lastCompositionEndAt.current = Date.now()
+  }
 
   // ── 粘贴处理 ──
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -280,6 +409,19 @@ export function InputBar() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  // ── 计算流式状态文本 ──
+  const runActivity = isStreaming && turnStartAt
+    ? (() => {
+        const elapsedMs = Math.max(0, now - turnStartAt)
+        const word = SPINNER_WORDS[Math.floor(elapsedMs / 3000) % SPINNER_WORDS.length]
+        const tok = turnTokens > 0 ? ` · ↓ ${fmtTokens(turnTokens)} tokens` : ''
+        return `${word}… ${fmtElapsed(elapsedMs)}${tok}`
+      })()
+    : null
+
+  // ── 审批模式切换器当前激活索引（用于滑块动画） ──
+  const approvalIndex = APPROVAL_MODES.findIndex((m) => m.mode === toolApprovalMode)
+
   return (
     <footer
       className={`border-t transition-colors duration-200 relative ${
@@ -324,11 +466,64 @@ export function InputBar() {
           </div>
         )}
 
-        {/* ═══════ 区域 2：主输入卡片 ═══════ */}
-        <div className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 border transition-colors overflow-hidden ${
-          dragOver ? 'border-blue-400 dark:border-blue-500' : 'border-slate-200 dark:border-slate-600'
-        }`}>
-          <div className="flex items-end">
+        {/* ═══════ 区域 2：流式状态栏 ═══════ */}
+        {runActivity && (
+          <div className="flex items-center justify-end">
+            <div
+              className="inline-flex items-center gap-2 h-[34px] px-3 rounded-[10px] border text-xs font-medium"
+              style={{
+                borderColor: 'color-mix(in srgb, var(--e3d-primary) 38%, var(--border))',
+                background: 'color-mix(in srgb, var(--e3d-primary) 9%, var(--bg-elev))',
+                color: 'var(--e3d-primary)',
+              }}
+              role="status"
+              aria-live="polite"
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"
+                style={{ animation: 'pulse 1.2s ease-in-out infinite' }}
+              />
+              <span className="truncate tabular-nums">{runActivity}</span>
+              <button
+                onClick={handleCancel}
+                className="inline-flex items-center gap-1 h-[26px] px-2.5 rounded-[7px] border text-xs font-semibold transition-colors"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--e3d-error) 42%, transparent)',
+                  background: 'color-mix(in srgb, var(--e3d-error) 14%, var(--bg-elev-2))',
+                  color: 'var(--e3d-error)',
+                }}
+                title="停止生成"
+              >
+                <Square className="w-2.5 h-2.5" fill="currentColor" />
+                <span>停止</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════ 区域 3：主输入卡片 ═══════ */}
+        <div
+          ref={composerCardRef}
+          className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 border transition-colors overflow-hidden ${
+            dragOver ? 'border-blue-400 dark:border-blue-500' : 'border-slate-200 dark:border-slate-600'
+          }${composerResizing ? ' ring-2 ring-blue-300 dark:ring-blue-700' : ''}`}
+          style={composerHeight !== null ? ({ '--composer-h': `${composerHeight}px` } as CSSProperties) : undefined}
+        >
+          {/* 拖拽调整高度手柄 */}
+          <button
+            type="button"
+            className="absolute -top-0.5 left-1/2 -translate-x-1/2 z-20 h-2 w-16 flex items-center justify-center cursor-ns-resize group/resizer touch-none"
+            onPointerDown={onComposerResizeStart}
+            onDoubleClick={resetComposerHeight}
+            title="拖拽调整高度（双击重置）"
+            aria-label="拖拽调整输入框高度"
+          >
+            <GripHorizontal className="w-4 h-3 text-slate-300 dark:text-slate-600 group-hover/resizer:text-slate-400 dark:group-hover/resizer:text-slate-400 transition-colors" />
+          </button>
+          <div
+            className="flex items-end"
+            style={composerHeight !== null ? { height: `${composerHeight}px` } : undefined}
+          >
             {/* textarea */}
             <textarea
               ref={textareaRef}
@@ -351,7 +546,7 @@ export function InputBar() {
                 dragOver
                   ? '拖放文件到此处...'
                   : bridgeConnected
-                  ? isStreaming ? 'AI 正在回复...' : '输入你的问题... (↑↓ 历史 · Shift+Enter 换行)'
+                  ? isStreaming ? 'AI 正在回复...' : '给 E小智 发消息... (/ 命令 · @ 文件 · ! 终端)'
                   : '等待连接...'
               }
               disabled={!bridgeConnected}
@@ -381,8 +576,8 @@ export function InputBar() {
             )}
           </div>
 
-          {/* ═══════ 区域 3：底部工具栏 ═══════ */}
-          <div className="flex items-center gap-0.5 px-1.5 py-1 border-t border-slate-100 dark:border-slate-700/50">
+          {/* ═══════ 区域 4：底部工具栏 ═══════ */}
+          <div className="flex items-center gap-1 px-1.5 py-1 border-t border-slate-100 dark:border-slate-700/50">
             {/* 附件按钮 */}
             <button
               onClick={handleFileSelect}
@@ -399,6 +594,55 @@ export function InputBar() {
               className="hidden"
               onChange={handleFileChange}
             />
+
+            {/* 分隔线 */}
+            <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+
+            {/* ══ 审批模式三段切换器（询问/自动/Yolo） ══ */}
+            <div
+              className="relative grid grid-cols-3 items-center h-8 p-0.5 rounded-full border border-slate-200 dark:border-slate-600 bg-slate-100/50 dark:bg-slate-900/50 overflow-hidden"
+              data-mode={toolApprovalMode}
+              style={{ minWidth: '180px' }}
+            >
+              {/* 滑块 */}
+              <span
+                className="absolute top-0.5 bottom-0.5 left-0.5 rounded-full border transition-all duration-200 pointer-events-none"
+                style={{
+                  width: 'calc((100% - 4px) / 3)',
+                  transform: `translateX(${approvalIndex * 100}%)`,
+                  ...(toolApprovalMode === 'ask'
+                    ? { borderColor: 'var(--border)', background: 'var(--bg-elev)' }
+                    : toolApprovalMode === 'auto'
+                    ? { borderColor: 'color-mix(in srgb, var(--e3d-success) 76%, #0b3d24)', background: 'color-mix(in srgb, var(--e3d-success) 58%, #0b3d24)' }
+                    : { borderColor: 'var(--e3d-error)', background: 'color-mix(in srgb, var(--e3d-error) 20%, var(--bg-elev-2))' }
+                  ),
+                }}
+              />
+              {APPROVAL_MODES.map(({ mode, icon: Icon, label, title }) => {
+                const isActive = toolApprovalMode === mode
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => setToolApprovalMode(mode)}
+                    disabled={!bridgeConnected}
+                    className={`relative z-10 inline-flex items-center justify-center gap-1 h-[26px] px-1.5 rounded-full border border-transparent text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isActive
+                        ? mode === 'ask'
+                          ? 'text-slate-700 dark:text-slate-200'
+                          : mode === 'auto'
+                          ? 'text-white'
+                          : 'text-red-600 dark:text-red-400'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                    }`}
+                    title={title}
+                    aria-pressed={isActive}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span className="hidden min-[420px]:inline">{label}</span>
+                  </button>
+                )
+              })}
+            </div>
 
             {/* 分隔线 */}
             <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
@@ -423,8 +667,14 @@ export function InputBar() {
             {/* 模型选择器 */}
             <ModelSwitcher />
 
-            {/* 右侧：连接状态 */}
+            {/* 右侧：连接状态 + token 统计 */}
             <div className="ml-auto flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+              {/* 会话 token 统计 */}
+              {useChatStore((s) => s.sessionTokens) > 0 && (
+                <span className="hidden sm:inline tabular-nums">
+                  Σ {fmtTokens(useChatStore((s) => s.sessionTokens))} tok
+                </span>
+              )}
               <span className={`w-1.5 h-1.5 rounded-full ${bridgeConnected ? 'bg-emerald-500' : 'bg-red-500'}`} />
               <span className="hidden sm:inline">
                 {bridgeConnected ? (currentModel || '已连接') : '未连接'}

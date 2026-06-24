@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Trash2, RefreshCw, Brain, Clock, Tag } from 'lucide-react'
+import { Search, Trash2, RefreshCw, Brain, Clock, Tag, Plus, X, Save } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import { useToastStore } from '@/store/useToastStore'
 import type { MemoryEntry } from '@/services/messageContracts'
@@ -17,6 +17,11 @@ export default function MemorySection() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterKind, setFilterKind] = useState<string>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newContent, setNewContent] = useState('')
+  const [newKind, setNewKind] = useState('project_context')
+  const [saving, setSaving] = useState(false)
 
   // 加载记忆列表
   const loadMemories = useCallback(async () => {
@@ -134,6 +139,53 @@ export default function MemorySection() {
           </button>
         ))}
       </div>
+
+      {/* 新增记忆表单 */}
+      {showAddForm && (
+        <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-3">
+          <input
+            type="text"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="标题"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500"
+          />
+          <select
+            value={newKind}
+            onChange={(e) => setNewKind(e.target.value)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
+          >
+            <option value="project_context">项目上下文</option>
+            <option value="architectural_decision">架构决策</option>
+            <option value="convention">约定</option>
+            <option value="known_issue">已知问题</option>
+            <option value="debug_context">调试</option>
+          </select>
+          <textarea
+            value={newContent}
+            onChange={(e) => setNewContent(e.target.value)}
+            placeholder="记忆内容..."
+            rows={3}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 resize-none"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowAddForm(false)}
+              className="px-3 py-1.5 text-sm rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !newTitle.trim() || !newContent.trim()}
+              className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-1"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {saving ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 记忆列表 */}
       {loading ? (

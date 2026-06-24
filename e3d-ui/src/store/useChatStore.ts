@@ -84,6 +84,9 @@ export interface PendingApproval {
   description?: string;
 }
 
+/** 工具审批模式 */
+export type ToolApprovalMode = 'ask' | 'auto' | 'yolo';
+
 export interface ChatStore {
   // === 多 Tab ===
   tabs: Tab[];
@@ -94,6 +97,8 @@ export interface ChatStore {
   currentProvider: string;
   currentModel: string;
   isPlanMode: boolean;
+  /** 工具审批模式：ask=每次询问 / auto=自动执行 / yolo=全自动 */
+  toolApprovalMode: ToolApprovalMode;
   providers: ProviderInfo[];
   models: { ref: string; provider: string; model: string; current: boolean }[];
   showSettings: boolean;
@@ -105,6 +110,14 @@ export interface ChatStore {
   lastPingTime: number | null;
   sessionId: string;
   sessions: SessionMeta[];
+
+  // === 流式状态追踪 ===
+  /** 当前轮次开始时间戳（用于计算运行时长） */
+  turnStartAt: number | null;
+  /** 当前轮次 token 用量 */
+  turnTokens: number;
+  /** 会话累计 token 用量 */
+  sessionTokens: number;
 
   // === Tab 操作 ===
   createTab: (title?: string) => string;
@@ -119,6 +132,7 @@ export interface ChatStore {
   finalizeAssistantMessage: (id: string, tabId?: string) => void;
   handleThinkingDelta: (text: string, tabId?: string) => void;
   handleToolResult: (toolId: string, result?: string, error?: string, tabId?: string, durationMs?: number) => void;
+  handleToolProgress: (toolId: string, text: string, progress: unknown, tabId?: string) => void;
   stopStreaming: (tabId?: string) => void;
   setPendingApproval: (approval: PendingApproval | null, tabId?: string) => void;
 
@@ -136,13 +150,23 @@ export interface ChatStore {
   setConfig: (config: { currentProvider: string; currentModel: string; providers: ProviderInfo[] }) => void;
   setPlanMode: (enabled: boolean) => void;
   togglePlanMode: () => void;
+  setToolApprovalMode: (mode: ToolApprovalMode) => void;
   saveSession: () => void;
   loadSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => void;
   loadSessionList: () => void;
+  setSessions: (sessions: SessionMeta[]) => void;
   newSession: (bridgeNewSession: () => void) => void;
   rerollLastMessage: (bridgeSend: (text: string, images?: string[]) => void) => void;
-  editUserMessage: (messageId: string) => void;
+  editUserMessage: (messageId: string, newText?: string) => void;
+  /** 重试状态 */
+  isRetrying: boolean;
+  setRetrying: (retrying: boolean) => void;
+
+  // === 流式状态 ===
+  setTurnStart: (timestamp: number | null) => void;
+  addTurnTokens: (tokens: number) => void;
+  resetTurnStats: () => void;
 }
 
 // ============================================
@@ -169,6 +193,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   currentProvider: '',
   currentModel: '',
   isPlanMode: false,
+  toolApprovalMode: 'ask' as ToolApprovalMode,
   providers: [],
   models: [],
   showSettings: false,
@@ -180,6 +205,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   lastPingTime: null,
   sessionId: generateSessionId(),
   sessions: loadSessionsFromStorage(),
+  turnStartAt: null,
+  turnTokens: 0,
+  sessionTokens: 0,
+  isRetrying: false,
 
   // ============================================
   // Tab 操作
@@ -348,6 +377,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }))
   },
 
+  handleToolProgress: (toolId, text, _progress, tabId) => {
+    const targetId = tabId || get().activeTabId
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === targetId
+          ? {
+              ...t,
+              messages: t.messages.map((m) =>
+                m.toolId === toolId && m.role === 'tool_call'
+                  ? { ...m, content: text || m.content }
+                  : m
+              ),
+            }
+          : t
+      ),
+    }))
+  },
+
   setPendingApproval: (approval, tabId) => {
     const targetId = tabId || get().activeTabId
     set((s) => ({
@@ -476,6 +523,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
+  setToolApprovalMode: (mode) => {
+    set({ toolApprovalMode: mode })
+    // 通知后端
+    import('@/services/bridgeService').then(({ default: bridge }) => {
+      bridge.send('user:set_approval_mode', { mode })
+    })
+  },
+
+  // === 流式状态 ===
+  setTurnStart: (timestamp) => set({ turnStartAt: timestamp }),
+  addTurnTokens: (tokens) => set((s) => ({
+    turnTokens: s.turnTokens + tokens,
+    sessionTokens: s.sessionTokens + tokens,
+  })),
+  resetTurnStats: () => set({ turnStartAt: null, turnTokens: 0 }),
+
+  setRetrying: (retrying) => set({ isRetrying: retrying }),
+
   // ============================================
   // 会话管理
   // ============================================
@@ -528,6 +593,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ sessions: loadSessionsFromStorage() })
   },
 
+  setSessions: (sessions) => set({ sessions }),
+
   newSession: (bridgeNewSession) => {
     get().saveSession()
     const { activeTabId } = get()
@@ -579,7 +646,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     bridgeSend(text, images)
   },
 
-  editUserMessage: (messageId) => {
+  editUserMessage: (messageId, newText) => {
     const { activeTabId } = get()
     const tab = get().tabs.find((t) => t.id === activeTabId)
     if (!tab) return
@@ -587,10 +654,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const msg = tab.messages.find((m) => m.id === messageId)
     if (!msg || msg.role !== 'user') return
 
-    // 将消息内容放回输入框，删除该消息及其之后的所有消息
+    // 将编辑后的内容（或原始内容）放回输入框，删除该消息及其之后的所有消息
     const msgIdx = tab.messages.findIndex((m) => m.id === messageId)
     set((s) => ({
-      inputValue: msg.content,
+      inputValue: newText ?? msg.content,
       tabs: updateTab(s.tabs, activeTabId, () => ({
         messages: s.tabs.find((t) => t.id === activeTabId)?.messages.slice(0, msgIdx) ?? [],
         isStreaming: false,

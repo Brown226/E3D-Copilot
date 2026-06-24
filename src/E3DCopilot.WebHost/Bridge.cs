@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using E3DCopilot.Core;
@@ -100,6 +101,10 @@ namespace E3DCopilot.WebHost
 
                     case MessageTypes.UserSetPlanMode:
                         HandleSetPlanMode(payload);
+                        break;
+
+                    case MessageTypes.UserCloseTab:
+                        HandleCloseTab(payload);
                         break;
 
                     case MessageTypes.Ping:
@@ -272,6 +277,21 @@ namespace E3DCopilot.WebHost
 
             // 通知前端模式已切换
             SendToFrontend(MessageTypes.UserSetPlanMode, new { enabled, mode });
+        }
+
+        /// <summary>
+        /// 处理 Tab 关闭 — 清理后端对应的 session
+        /// </summary>
+        private void HandleCloseTab(JsonElement? payload)
+        {
+            string tabId = null;
+            if (payload.HasValue && payload.Value.TryGetProperty("tabId", out var tabIdProp))
+                tabId = tabIdProp.GetString();
+
+            if (!string.IsNullOrEmpty(tabId))
+            {
+                _controller.RemoveTabSession(tabId);
+            }
         }
 
         /// <summary>
@@ -521,7 +541,7 @@ namespace E3DCopilot.WebHost
             }
         }
 
-        private void HandleProviderFetchModels(JsonElement? payload)
+        private async void HandleProviderFetchModels(JsonElement? payload)
         {
             string rid = TakeRequestId(MessageTypes.ProviderFetchModels);
             try
@@ -529,7 +549,7 @@ namespace E3DCopilot.WebHost
                 string name = null;
                 if (payload.HasValue && payload.Value.TryGetProperty("name", out var prop))
                     name = prop.GetString();
-                var result = ProvidersService.FetchProviderModels(_controller.Config, name ?? "");
+                var result = await ProvidersService.FetchProviderModelsAsync(_controller.Config, name ?? "");
                 SendToFrontend(MessageTypes.ProviderFetchResult, result, rid);
             }
             catch (Exception ex)
@@ -755,6 +775,7 @@ namespace E3DCopilot.WebHost
                 var config = _controller.Config;
                 switch (key)
                 {
+                    // === UI 设置 ===
                     case "language":
                         config.Ui.Language = value ?? "zh-CN";
                         break;
@@ -765,8 +786,47 @@ namespace E3DCopilot.WebHost
                         if (int.TryParse(value, out var fontSize))
                             config.Ui.FontSize = fontSize;
                         break;
+                    case "fontFamily":
+                    case "font":
+                        config.Ui.FontFamily = value ?? "default";
+                        break;
+                    case "defaultMode":
+                        config.Ui.DefaultMode = value ?? "act";
+                        break;
+                    case "notifications":
+                        if (bool.TryParse(value, out var notifications))
+                            config.Ui.Notifications = notifications;
+                        break;
+                    case "soundEnabled":
+                        if (bool.TryParse(value, out var soundEnabled))
+                            config.Ui.SoundEnabled = soundEnabled;
+                        break;
+                    // === 安全设置 ===
+                    case "autoApproveTools":
+                        if (bool.TryParse(value, out var autoTools))
+                            config.Safety.AutoApproveTools = autoTools;
+                        break;
+                    case "autoApproveEdits":
+                        if (bool.TryParse(value, out var autoEdits))
+                            config.Safety.AutoApproveEdits = autoEdits;
+                        break;
+                    // === 模型参数 ===
+                    case "temperature":
+                        if (double.TryParse(value, out var temp))
+                        {
+                            var (prov, _) = config.ResolveModel(config.DefaultModel);
+                            if (prov != null) prov.Temperature = temp;
+                        }
+                        break;
+                    case "maxTokens":
+                        if (int.TryParse(value, out var maxTokens))
+                        {
+                            var (prov, _) = config.ResolveModel(config.DefaultModel);
+                            if (prov != null) prov.MaxTokens = maxTokens;
+                        }
+                        break;
                     default:
-                        // 自定义键值对 — 存储到 Safety 配置的扩展字段
+                        // 未知键 — 静默忽略
                         break;
                 }
 
@@ -787,17 +847,31 @@ namespace E3DCopilot.WebHost
         {
             try
             {
-                // 返回当前会话信息（简单实现：只返回当前活跃 session）
-                var sessions = new object[]
+                var tabInfos = _controller.GetTabSessionInfos();
+                var sessions = tabInfos.Select(t => new
                 {
-                    new {
-                        id = _controller.Session?.SessionId ?? "default",
+                    id = t.SessionId,
+                    tabId = t.TabId,
+                    title = $"会话 {t.TabId.Substring(0, Math.Min(8, t.TabId.Length))}",
+                    messageCount = t.MessageCount,
+                    isPlanMode = t.IsPlanMode,
+                    isActive = t.TabId == _controller.ActiveTabId,
+                }).ToList();
+
+                // 如果没有 tab session，至少返回当前 session
+                if (sessions.Count == 0 && _controller.Session != null)
+                {
+                    sessions.Add(new
+                    {
+                        id = _controller.Session.SessionId,
+                        tabId = _controller.ActiveTabId ?? "default",
                         title = "当前会话",
-                        messageCount = _controller.Session?.Messages?.Count ?? 0,
-                        createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                        lastActivityAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                    }
-                };
+                        messageCount = (object)(_controller.Session.Messages?.Count ?? 0),
+                        isPlanMode = (object)_controller.Session.IsPlanMode,
+                        isActive = (object)true,
+                    });
+                }
+
                 SendToFrontend(MessageTypes.SessionsList, new { sessions }, requestId);
             }
             catch (Exception ex)

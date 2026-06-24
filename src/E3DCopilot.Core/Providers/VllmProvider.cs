@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -121,12 +121,7 @@ namespace E3DCopilot.Core.Providers
                     }
         
                     string jsonBody = bodyObj.ToString(Formatting.None);
-                    
-                    // Debug: output request body
-                    try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.Environment.GetEnvironmentVariable("TEMP") ?? ".", "vllm_request.json"), jsonBody); } catch { }
         
-                    // Avoid default UTF8 encoding (would include BOM), construct manually to avoid API rejection
-                    
                     // Debug: output request body size
                     System.Diagnostics.Debug.WriteLine($"[VllmProvider] Request body size: {jsonBody.Length} chars, tools: {request.Tools?.Count}");
                     // Avoid default UTF8 encoding (would include BOM), construct manually to avoid API rejection

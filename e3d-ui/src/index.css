@@ -145,35 +145,57 @@ body {
 }
 
 /* ============================================
-   Reasoning Block — 同款 Reasonix 风格
+   Reasoning Block — 简洁行内风格
    ============================================ */
 .reasoning-block {
-  @apply mb-2 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden;
-  @apply bg-slate-50/50 dark:bg-slate-800/50;
+  @apply mb-1.5 overflow-hidden;
 }
 
 .reasoning-block__head {
-  @apply flex items-center gap-2 w-full px-3 py-2 text-left;
-  @apply text-xs text-slate-500 dark:text-slate-400;
-  @apply hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors;
-}
-.reasoning-block__head[data-running] {
-  @apply text-blue-500 dark:text-blue-400;
+  @apply inline-flex items-center gap-1.5 px-2 py-1 text-left rounded;
+  @apply text-xs text-slate-400 dark:text-slate-500;
+  @apply hover:text-slate-600 dark:hover:text-slate-300 transition-colors;
+  @apply cursor-pointer;
+  -webkit-app-region: no-drag;
 }
 
-.reasoning-block__icon {
-  @apply text-sm shrink-0;
+/* 流式时 shimmer 动画 */
+.reasoning-block__head[data-running] {
+  background: linear-gradient(
+    105deg,
+    var(--fg-faint, #94a3b8) 0%,
+    var(--fg-faint, #94a3b8) 38%,
+    var(--fg, #475569) 46%,
+    var(--fg, #475569) 54%,
+    var(--fg-faint, #94a3b8) 62%,
+    var(--fg-faint, #94a3b8) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: shimmer-sweep 5s linear infinite;
 }
-.reasoning-block__icon--pulse {
-  animation: reasoning-pulse 1.5s ease-in-out infinite;
+
+@keyframes shimmer-sweep {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
 }
-@keyframes reasoning-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+
+.reasoning-block__head[data-running]:hover {
+  animation-play-state: paused;
+  background: none;
+  color: var(--fg, #475569);
 }
 
 .reasoning-block__label {
-  @apply flex-1 font-medium;
+  @apply font-medium;
+}
+
+.reasoning-block__meta {
+  @apply text-[11px] opacity-70;
+  font-variant-numeric: tabular-nums;
 }
 
 .reasoning-block__chevron {
@@ -184,8 +206,9 @@ body {
 }
 
 .reasoning-block__body {
-  @apply px-3 pb-2 pt-0 border-t border-slate-200/50 dark:border-slate-700/50;
+  @apply px-3 pb-2 pt-1 mt-0.5 border-l-2 border-slate-200 dark:border-slate-700;
   @apply max-h-[300px] overflow-y-auto;
+  @apply ml-2 rounded-r;
 }
 
 /* ============================================
@@ -238,4 +261,25 @@ body {
 @keyframes tool-slide-down {
   from { opacity: 0; max-height: 0; }
   to { opacity: 1; max-height: 2000px; }
+}
+
+/* ============================================
+   流式状态脉冲动画
+   ============================================ */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ============================================
+   Composer 拖拽调整高度
+   ============================================ */
+body.composer-resizing {
+  cursor: ns-resize !important;
+  user-select: none !important;
+}
+body.composer-resizing * {
+  cursor: ns-resize !important;
+  user-select: none !important;
+  pointer-events: none !important;
 }

@@ -41,7 +41,7 @@ namespace E3DCopilot.WebHost
         private void InitializeComponent()
         {
             this.Dock = DockStyle.Fill;
-            this.MinimumSize = new Size(600, 400);
+            this.MinimumSize = new Size(280, 200);
             this.BackColor = Color.FromArgb(12, 12, 20);
 
             // 加载占位面板（WebView2 初始化前显示）
@@ -100,7 +100,8 @@ namespace E3DCopilot.WebHost
                 await _webView.EnsureCoreWebView2Async(env);
 
                 // 配置 WebView2 设置
-                _webView.CoreWebView2.Settings.AreDevToolsEnabled = true; // 临时开启方便调试
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled =
+                    Environment.GetEnvironmentVariable("E3D_COPILOT_DEV") != null; // 仅开发模式开启
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
                 _webView.CoreWebView2.Settings.IsScriptEnabled = true;
 
@@ -156,7 +157,21 @@ namespace E3DCopilot.WebHost
                                 mode = _controller.IsPlanMode ? "plan" : "act",
                                 currentProvider = prov?.Name ?? "",
                                 currentModel = model ?? "",
-                                providers = providersList.Providers
+                                providers = providersList.Providers,
+                                // UI 设置同步到前端
+                                ui = new
+                                {
+                                    theme = config.Ui.Theme,
+                                    fontSize = config.Ui.FontSize,
+                                    fontFamily = config.Ui.FontFamily,
+                                    language = config.Ui.Language,
+                                    defaultMode = config.Ui.DefaultMode,
+                                    notifications = config.Ui.Notifications,
+                                    soundEnabled = config.Ui.SoundEnabled,
+                                },
+                                // 模型参数同步
+                                temperature = prov?.Temperature ?? 0.7,
+                                maxTokens = prov?.MaxTokens ?? 4096,
                             });
                         }
                         catch (Exception ex)

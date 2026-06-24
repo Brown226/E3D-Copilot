@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using E3DCopilot.Core.Config;
@@ -172,8 +173,9 @@ namespace E3DCopilot.Core.Providers
 
         /// <summary>
         /// 拉取 provider 的模型列表（调用 /v1/models）
+        /// 异步版本：避免同步阻塞 UI 线程
         /// </summary>
-        public static ProviderFetchResultPayload FetchProviderModels(CopilotConfig config, string name)
+        public static async Task<ProviderFetchResultPayload> FetchProviderModelsAsync(CopilotConfig config, string name)
         {
             var p = config.Providers.Find(x => x.Name == name);
             if (p == null)
@@ -186,9 +188,7 @@ namespace E3DCopilot.Core.Providers
                 if (!string.IsNullOrEmpty(p.ApiKey))
                     req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", p.ApiKey);
 
-                var task = _http.SendAsync(req);
-                task.Wait();
-                var resp = task.Result;
+                var resp = await _http.SendAsync(req);
                 if (!resp.IsSuccessStatusCode)
                 {
                     return new ProviderFetchResultPayload
@@ -199,7 +199,7 @@ namespace E3DCopilot.Core.Providers
                     };
                 }
 
-                var body = resp.Content.ReadAsStringAsync().Result;
+                var body = await resp.Content.ReadAsStringAsync();
                 var json = JObject.Parse(body);
                 var data = json["data"] as JArray;
                 var models = new List<string>();
@@ -252,13 +252,8 @@ namespace E3DCopilot.Core.Providers
 
         private static void Save(CopilotConfig config)
         {
-            try
-            {
-                var path = Path.Combine(CopilotConfig.GetDataDir(), "config.json");
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.WriteAllText(path, JsonConvert.SerializeObject(config, Formatting.Indented));
-            }
-            catch { /* 保存失败不阻塞 */ }
+            // 统一走 CopilotConfig.Save()，避免写入路径不一致
+            config.Save();
         }
     }
 }

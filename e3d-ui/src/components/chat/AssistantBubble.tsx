@@ -16,7 +16,7 @@ interface AssistantBubbleProps {
   thinkingMsg?: Message
 }
 
-/** 内联 reasoning 折叠块 */
+/** 内联 reasoning 折叠块 — 简洁行内风格 */
 function ReasoningBlock({ msg }: { msg: Message }) {
   const [open, setOpen] = useState(!msg.finalized) // 流式时默认展开，完成后折叠
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -36,12 +36,13 @@ function ReasoningBlock({ msg }: { msg: Message }) {
         className="reasoning-block__head"
         data-running={!msg.finalized ? '' : undefined}
       >
-        {/* 脑图标（思考中时脉冲动画） */}
-        <span className={`reasoning-block__icon ${!msg.finalized ? 'reasoning-block__icon--pulse' : ''}`}>
-          🧠
-        </span>
+        {/* 思考状态文字 */}
         <span className="reasoning-block__label">
-          {msg.finalized ? '思考过程' : '正在思考...'}
+          {!msg.finalized ? '正在思考…' : '思考过程'}
+        </span>
+        {/* 右侧 meta + 箭头 */}
+        <span className="reasoning-block__meta">
+          {!msg.finalized ? '运行中' : '已完成'}
         </span>
         <ChevronRight
           className={`reasoning-block__chevron ${open ? 'reasoning-block__chevron--open' : ''}`}

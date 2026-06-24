@@ -18,6 +18,7 @@ export const MessageTypes = {
   UserApprove: 'user:approve',
   UserAskResponse: 'user:ask_response',
   UserSetPlanMode: 'user:set_plan_mode',
+  TabClose: 'tab:close',
   Ping: 'ping',
   ModelsList: 'models:list',
   ModelSwitch: 'model:switch',
@@ -162,6 +163,19 @@ export interface ConfigSyncPayload {
   currentModel: string;
   /** 后端同步的 Provider 完整列表 */
   providers: ProviderInfo[];
+  /** UI 设置（后端同步） */
+  ui?: {
+    theme: string;
+    fontSize: number;
+    fontFamily: string;
+    language: string;
+    defaultMode: string;
+    notifications: boolean;
+    soundEnabled: boolean;
+  };
+  /** 模型参数（后端同步） */
+  temperature?: number;
+  maxTokens?: number;
 }
 
 // ============================================

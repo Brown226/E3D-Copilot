@@ -5,7 +5,7 @@
  * 3. 字体（默认/等宽）
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Monitor, Sun, Moon, Type } from 'lucide-react'
 
 // ── 主题 ──
@@ -76,6 +76,18 @@ function applyTextSize(size: TextSize) {
   localStorage.setItem('e3d-text-size', size)
 }
 
+// 字号映射到数字（后端 CopilotConfig.UiConfig.FontSize 使用数字）
+const TEXT_SIZE_TO_NUMBER: Record<TextSize, number> = { sm: 14, md: 16, lg: 18, xl: 20 }
+
+// 同步设置到后端
+function syncToBackend(key: string, value: string) {
+  import('@/services/bridgeService').then(({ default: bridge }) => {
+    if (bridge.isAvailable()) {
+      bridge.saveSetting(key, value)
+    }
+  })
+}
+
 export default function AppearanceSection() {
   const [theme, setTheme] = useState<Theme>(getStoredTheme)
   const [textSize, setTextSize] = useState<TextSize>(getStoredTextSize)
@@ -85,15 +97,23 @@ export default function AppearanceSection() {
     applyTheme(theme)
   }, [])
 
-  const handleThemeChange = (t: Theme) => {
+  const handleThemeChange = useCallback((t: Theme) => {
     setTheme(t)
     applyTheme(t)
-  }
+    syncToBackend('theme', t)
+  }, [])
 
-  const handleTextSizeChange = (s: TextSize) => {
+  const handleTextSizeChange = useCallback((s: TextSize) => {
     setTextSize(s)
     applyTextSize(s)
-  }
+    syncToBackend('fontSize', String(TEXT_SIZE_TO_NUMBER[s]))
+  }, [])
+
+  const handleFontChange = useCallback((opt: { id: FontFamily; label: string; family: string }) => {
+    localStorage.setItem('e3d-font', opt.id)
+    document.documentElement.style.setProperty('--font-family', opt.family)
+    syncToBackend('fontFamily', opt.id)
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -146,10 +166,7 @@ export default function AppearanceSection() {
           {FONT_OPTIONS.map((opt) => (
             <button
               key={opt.id}
-              onClick={() => {
-                localStorage.setItem('e3d-font', opt.id)
-                document.documentElement.style.setProperty('--font-family', opt.family)
-              }}
+              onClick={() => handleFontChange(opt)}
               className="w-full flex items-center justify-between px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
             >
               <span className="text-sm text-slate-800 dark:text-slate-100">{opt.label}</span>

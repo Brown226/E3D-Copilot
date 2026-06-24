@@ -1,6 +1,5 @@
 /**
- * UserBubble — Reasonix 风格
- * 纯文本左对齐，无背景气泡，底部细线分隔
+ * UserBubble — 聊天式右对齐 + 蓝色气泡
  */
 
 import { useState } from 'react'
@@ -25,22 +24,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function AttachmentChip({ attachment }: { attachment: Attachment }) {
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-xs text-slate-500 dark:text-slate-400">
-      {attachment.previewUrl || attachment.data ? (
-        <img
-          src={attachment.previewUrl || `data:${attachment.type};base64,${attachment.data}`}
-          alt=""
-          className="w-4 h-4 rounded object-cover"
-        />
-      ) : null}
-      <span className="truncate max-w-[100px]">{attachment.name}</span>
-      <span className="text-slate-400 dark:text-slate-500">{formatSize(attachment.size)}</span>
-    </span>
-  )
-}
-
 export function UserBubble({ msg }: UserBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -62,19 +45,33 @@ export function UserBubble({ msg }: UserBubbleProps) {
   const handleCancelEdit = () => setEditing(false)
 
   const handleSubmitEdit = () => {
-    editUserMessage(msg.id)
+    editUserMessage(msg.id, draftText)
     setEditing(false)
   }
 
   const hasAttachments = msg.attachments && msg.attachments.length > 0
 
   return (
-    <div className="group" data-entrance={msg.id}>
-      {/* 用户消息正文 */}
-      <div className={`msg-user ${editing ? 'msg-user--editing' : ''}`}>
+    <div className="flex justify-end group px-4 py-1">
+      <div className="max-w-[80%] flex flex-col items-end gap-1">
+        {/* 附件 */}
+        {hasAttachments && (
+          <div className="flex flex-wrap gap-1.5 justify-end">
+            {msg.attachments!.map((att) => (
+              <span key={att.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/20 rounded text-xs text-blue-100">
+                {att.previewUrl || att.data ? (
+                  <img src={att.previewUrl || `data:${att.type};base64,${att.data}`} alt="" className="w-4 h-4 rounded object-cover" />
+                ) : null}
+                <span className="truncate max-w-[100px]">{att.name}</span>
+                <span className="text-blue-200/70">{formatSize(att.size)}</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* 消息气泡 */}
         {editing ? (
-          /* ── 编辑模式 ── */
-          <div className="space-y-2">
+          <div className="space-y-2 w-full">
             <textarea
               autoFocus
               value={draftText}
@@ -84,73 +81,34 @@ export function UserBubble({ msg }: UserBubbleProps) {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSubmitEdit() }
               }}
               rows={Math.max(2, Math.min(8, draftText.split('\n').length))}
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-base text-slate-800 dark:text-slate-200 resize-none focus:border-blue-400 dark:focus:border-blue-500"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-500 rounded-lg outline-none text-sm text-slate-800 dark:text-slate-200 resize-none focus:border-blue-400"
             />
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCancelEdit}
-                className="px-3 py-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleSubmitEdit}
-                disabled={!draftText.trim()}
-                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 transition-colors"
-              >
-                发送
-              </button>
+            <div className="flex items-center gap-2 justify-end">
+              <button onClick={handleCancelEdit} className="px-3 py-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">取消</button>
+              <button onClick={handleSubmitEdit} disabled={!draftText.trim()} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 transition-colors">发送</button>
             </div>
           </div>
-        ) : (
-          /* ── 展示模式 ── */
-          <>
-            {/* 附件行 */}
-            {hasAttachments && (
-              <div className="flex flex-wrap gap-1.5 mb-1.5">
-                {msg.attachments!.map((att) => (
-                  <AttachmentChip key={att.id} attachment={att} />
-                ))}
-              </div>
-            )}
+        ) : msg.content ? (
+          <div className="rounded-2xl px-4 py-2.5 bg-blue-600 text-white text-sm whitespace-pre-wrap break-words leading-relaxed">
+            {msg.content}
+          </div>
+        ) : null}
 
-            {/* 文本内容 */}
-            {msg.content && (
-              <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
-                {msg.content}
-              </p>
-            )}
-          </>
-        )}
+        {/* 底部信息 */}
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatTime(msg.timestamp)}</span>
+          {!editing && (
+            <>
+              <button onClick={handleEdit} className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors" title="编辑">
+                <Pencil className="w-3 h-3" />
+              </button>
+              <button onClick={handleCopy} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" title="复制">
+                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </>
+          )}
+        </div>
       </div>
-
-      {/* 底部：时间 + 操作按钮（hover 显示） */}
-      <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className="text-xs text-slate-400 dark:text-slate-500">
-          {formatTime(msg.timestamp)}
-        </span>
-        {!editing && (
-          <>
-            <button
-              onClick={handleEdit}
-              className="text-xs text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
-              title="编辑此消息"
-            >
-              <Pencil className="w-3 h-3" />
-            </button>
-            <button
-              onClick={handleCopy}
-              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-              title="复制"
-            >
-              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* 分隔线 */}
-      <div className="mt-3 border-t border-slate-100 dark:border-slate-800" />
     </div>
   )
 }

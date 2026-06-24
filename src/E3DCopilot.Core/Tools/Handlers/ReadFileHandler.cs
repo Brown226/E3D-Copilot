@@ -23,18 +23,29 @@ namespace E3DCopilot.Core.Tools.Handlers
         private readonly IEventSink _sink;
 
         /// <summary>允许读取的根目录列表</summary>
-        private static readonly string[] AllowedRoots =
+        private static readonly string[] AllowedRoots = ResolveAllowedRoots();
+
+        private static string[] ResolveAllowedRoots()
         {
-            // 项目根目录
-            Path.GetFullPath(Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "..", "..")),
-            // E3D 官方 API 文档目录
-            Path.GetFullPath(Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "..",
-                "E3D官方API文档")),
-            // 当前程序目录
-            AppDomain.CurrentDomain.BaseDirectory
-        };
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            var roots = new List<string> { appDir };
+
+            // 程序同级 knowledge/ 和 docs/（部署后标准位置）
+            var knowledgeDir = Path.Combine(appDir, "knowledge");
+            var docsDir = Path.Combine(appDir, "docs");
+            if (Directory.Exists(knowledgeDir)) roots.Add(knowledgeDir);
+            if (Directory.Exists(docsDir)) roots.Add(docsDir);
+
+            // 开发环境回退：项目根目录
+            var devRoot = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", ".."));
+            if (Directory.Exists(devRoot)) roots.Add(devRoot);
+
+            // 开发环境回退：E3D 官方 API 文档目录
+            var devDocs = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "E3D官方API文档"));
+            if (Directory.Exists(devDocs)) roots.Add(devDocs);
+
+            return roots.ToArray();
+        }
 
         /// <summary>最大文件大小（字节）</summary>
         private const int MaxFileSize = 100 * 1024; // 100KB

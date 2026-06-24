@@ -152,6 +152,10 @@ class Bridge {
     this.send('user:new_session');
   }
 
+  closeTab(tabId: string): void {
+    this.send('tab:close', { tabId });
+  }
+
   ping(): Promise<unknown> {
     return this.sendAndWait('ping', null, 5000);
   }
@@ -554,11 +558,38 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         if (p.mode) {
           s.setPlanMode(p.mode === 'plan');
         }
+        // 同步 UI 设置到 localStorage
+        if (p.ui) {
+          if (p.ui.theme) localStorage.setItem('e3d-theme', p.ui.theme)
+          if (p.ui.fontSize) localStorage.setItem('e3d-setting-fontSize', String(p.ui.fontSize))
+          if (p.ui.fontFamily) localStorage.setItem('e3d-font', p.ui.fontFamily)
+          // 应用主题
+          if (p.ui.theme) {
+            const root = document.documentElement
+            if (p.ui.theme === 'dark' || (p.ui.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+              root.classList.add('dark')
+              root.classList.remove('light')
+            } else {
+              root.classList.add('light')
+              root.classList.remove('dark')
+            }
+          }
+        }
+        // 同步模型参数到 localStorage
+        if (p.temperature != null) {
+          localStorage.setItem('e3d-setting-temperature', String(p.temperature))
+        }
+        if (p.maxTokens != null) {
+          localStorage.setItem('e3d-setting-maxTokens', String(p.maxTokens))
+        }
         break;
       }
 
       case 'llm:turn_started': {
         s.startStreaming(tabId);
+        s.setTurnStart(Date.now());
+        s.resetTurnStats();
+        s.setRetrying(false);
         break;
       }
 
@@ -579,6 +610,11 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         const tab = state.tabs.find((t) => t.id === targetId);
         if (tab?.currentAssistantMsgId) {
           state.finalizeAssistantMessage(tab.currentAssistantMsgId, tabId);
+        }
+        // 解析 usage 中的 token 信息
+        const endPayload = msg.payload as { usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } };
+        if (endPayload?.usage?.total_tokens) {
+          state.addTurnTokens(endPayload.usage.total_tokens);
         }
         break;
       }
@@ -626,6 +662,7 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
 
       case 'turn:done': {
         s.stopStreaming(tabId);
+        s.setTurnStart(null);
         break;
       }
 
@@ -651,6 +688,41 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
       case 'pong':
         s.setLastPingTime(Date.now());
         break;
+
+      case 'llm:usage': {
+        const p = msg.payload as { tokens?: number; total_tokens?: number; data?: { total_tokens?: number } };
+        const tokens = p?.tokens ?? p?.total_tokens ?? p?.data?.total_tokens;
+        if (tokens) {
+          s.addTurnTokens(tokens);
+        }
+        break;
+      }
+
+      case 'llm:retry': {
+        const p = msg.payload as { text?: string };
+        s.setRetrying(true);
+        // Toast 通知用户正在重试
+        import('../store/useToastStore').then(({ useToastStore }) => {
+          useToastStore.getState().addToast('warning', p?.text || '正在重试...');
+        });
+        break;
+      }
+
+      case 'tool:progress': {
+        const p = msg.payload as { id: string; text?: string; progress?: unknown };
+        if (p?.id) {
+          s.handleToolProgress(p.id, p.text || '', p.progress, tabId);
+        }
+        break;
+      }
+
+      case 'user:set_plan_mode': {
+        // 后端确认 Plan/Act 模式切换（可能是后端主动触发或前端请求的响应）
+        const p = msg.payload as { enabled?: boolean; mode?: string };
+        const enabled = p?.enabled ?? (p?.mode === 'plan');
+        s.setPlanMode(enabled);
+        break;
+      }
 
       default:
         break;

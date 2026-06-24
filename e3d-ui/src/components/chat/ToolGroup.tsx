@@ -35,8 +35,8 @@ function kindIcon(kind: ToolGroupKind) {
 
 function kindLabel(kind: ToolGroupKind, count: number) {
   switch (kind) {
-    case 'explore': return `读取 ${count} 个文件`
-    case 'modify': return `修改 ${count} 个文件`
+    case 'explore': return `已读 ${count} 个文件`
+    case 'modify': return `已修改 ${count} 个文件`
     case 'delegate': return `${count} 个子任务`
     case 'shell': return `${count} 个命令`
   }

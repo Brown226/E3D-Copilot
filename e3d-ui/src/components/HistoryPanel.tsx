@@ -8,7 +8,7 @@
  * 4. 空状态 — 引导用户开始新对话
  */
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   Search,
   MessageSquare,
@@ -60,6 +60,32 @@ export function HistoryPanel() {
   const [query, setQuery] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
+  // 从后端加载会话列表（合并去重，不覆盖 localStorage）
+  const loadSessionsFromBackend = useCallback(async () => {
+    try {
+      const { default: bridge } = await import('@/services/bridgeService')
+      if (bridge.isAvailable()) {
+        const result = await bridge.listSessions() as { sessions?: SessionMeta[] } | null
+        if (result?.sessions) {
+          const localSessions = useChatStore.getState().sessions
+          // 合并：以后端为主，补充 localStorage 中有但后端没有的
+          const backendIds = new Set(result.sessions.map(s => s.id))
+          const localOnly = localSessions.filter(s => !backendIds.has(s.id))
+          const merged = [...result.sessions, ...localOnly]
+          useChatStore.getState().setSessions(merged)
+        }
+      }
+    } catch {
+      // 后端不可用时降级到 localStorage（store 已默认加载）
+    }
+  }, [])
+
+  useEffect(() => {
+    if (showHistory) {
+      loadSessionsFromBackend()
+    }
+  }, [showHistory, loadSessionsFromBackend])
+
   // 搜索过滤
   const filteredSessions = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -91,6 +117,12 @@ export function HistoryPanel() {
 
   // 删除确认
   const handleDelete = useCallback((sessionId: string) => {
+    // 通知后端删除会话
+    import('@/services/bridgeService').then(({ default: bridge }) => {
+      if (bridge.isAvailable()) {
+        bridge.deleteSession(sessionId)
+      }
+    })
     deleteSession(sessionId)
     setDeleteConfirm(null)
   }, [deleteSession])

@@ -13,7 +13,7 @@
  *   - 添加/编辑/删除 Provider
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   RefreshCw,
   Pencil,
@@ -107,8 +107,41 @@ function UsageTab() {
   const currentModel = useChatStore((s) => s.currentModel)
   const switchModel = useChatStore((s) => s.switchModel)
 
-  const [temperature, setTemperature] = useState(0.7)
-  const [maxTokens, setMaxTokens] = useState(4096)
+  // 从 localStorage 初始化（后端 config:sync 时也可同步）
+  const [temperature, setTemperature] = useState(() => {
+    try { return parseFloat(localStorage.getItem('e3d-setting-temperature') || '0.7') }
+    catch { return 0.7 }
+  })
+  const [maxTokens, setMaxTokens] = useState(() => {
+    try { return parseInt(localStorage.getItem('e3d-setting-maxTokens') || '4096') }
+    catch { return 4096 }
+  })
+
+  // debounced 保存 ref
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 持久化 Temperature / MaxTokens 到后端 + localStorage（带 300ms debounce）
+  const saveParam = useCallback((key: string, value: string) => {
+    localStorage.setItem(`e3d-setting-${key}`, value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      import('@/services/bridgeService').then(({ default: bridge }) => {
+        if (bridge.isAvailable()) {
+          bridge.saveSetting(key, value)
+        }
+      })
+    }, 300)
+  }, [])
+
+  const handleTemperatureChange = useCallback((val: number) => {
+    setTemperature(val)
+    saveParam('temperature', String(val))
+  }, [saveParam])
+
+  const handleMaxTokensChange = useCallback((val: number) => {
+    setMaxTokens(val)
+    saveParam('maxTokens', String(val))
+  }, [saveParam])
 
   // 当前激活的 Provider
   const activeProvider = useMemo(
@@ -214,7 +247,7 @@ function UsageTab() {
             max="2"
             step="0.1"
             value={temperature}
-            onChange={(e) => setTemperature(parseFloat(e.target.value))}
+            onChange={(e) => handleTemperatureChange(parseFloat(e.target.value))}
             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
           />
           <div className="flex justify-between text-xs text-slate-400 mt-1">
@@ -238,7 +271,7 @@ function UsageTab() {
             max="16384"
             step="256"
             value={maxTokens}
-            onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+            onChange={(e) => handleMaxTokensChange(parseInt(e.target.value))}
             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
           />
           <div className="flex justify-between text-xs text-slate-400 mt-1">
