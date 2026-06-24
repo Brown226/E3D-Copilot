@@ -101,6 +101,7 @@ namespace E3DCopilot.WebHost
 
                 // 配置 WebView2 设置
                 _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
                 _webView.CoreWebView2.Settings.IsScriptEnabled = true;
 
@@ -126,6 +127,18 @@ namespace E3DCopilot.WebHost
                     if (!string.IsNullOrEmpty(raw))
                         _bridge.HandleMessage(raw);
                 };
+
+                // F12 打开 DevTools（E3D 内嵌面板右键菜单可能被拦截）
+                // 通过前端 JS 监听 F12，发消息到 C# 打开 DevTools
+                string devToolsScript = @"
+                    document.addEventListener('keydown', function(e) {
+                        if (e.key === 'F12') {
+                            e.preventDefault();
+                            chrome.webview.postMessage(JSON.stringify({ type: 'devtools:open' }));
+                        }
+                    });
+                ";
+                _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(devToolsScript);
 
                 // 导航完成 → 通知前端宿主就绪
                 _webView.CoreWebView2.NavigationCompleted += (s, e) =>

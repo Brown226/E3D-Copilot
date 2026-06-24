@@ -185,6 +185,10 @@ namespace E3DCopilot.WebHost
                         HandleSessionsDelete(payload, requestId);
                         break;
 
+                    case "devtools:open":
+                        _webView.CoreWebView2.OpenDevToolsWindow();
+                        break;
+
                     default:
                         // 未知消息类型 — 静默忽略
                         break;
