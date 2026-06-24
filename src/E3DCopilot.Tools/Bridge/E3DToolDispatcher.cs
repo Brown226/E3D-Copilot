@@ -164,25 +164,47 @@ namespace E3DCopilot.Tools.Bridge
         }
 
         /// <summary>
-        /// 处理修改请求
+        /// 处理修改请求 — 支持 dburi + attributes（主接口），兼容 element + attribute + value（旧接口）
         /// </summary>
         private string HandleModify(string args)
         {
             try
             {
                 var json = JObject.Parse(args ?? "{}");
-                var element = json["element"]?.ToString();
-                var attribute = json["attribute"]?.ToString();
-                var value = json["value"]?.ToString();
 
-                if (string.IsNullOrEmpty(element) || string.IsNullOrEmpty(attribute))
+                // 主接口：dburi + attributes（键值对对象）
+                var dburi = json["dburi"]?.ToString()
+                    ?? json["element"]?.ToString();
+                var attributes = json["attributes"] as JObject;
+
+                // 兼容旧接口：element + attribute + value（单属性模式）
+                if (attributes == null && json["attribute"] != null)
                 {
-                    return "{\"success\": false, \"error\": \"缺少 element 或 attribute 参数\"}";
+                    attributes = new JObject
+                    {
+                        [json["attribute"]?.ToString()] = json["value"]?.ToString()
+                    };
                 }
 
-                _env.SetAttribute(element, attribute, value);
+                if (string.IsNullOrEmpty(dburi))
+                {
+                    return "{\"success\": false, \"error\": \"缺少 dburi 或 element 参数\"}";
+                }
 
-                return $"{{\"success\": true, \"message\": \"已设置 {element}.{attribute} = {value}\"}}";
+                if (attributes == null || attributes.Count == 0)
+                {
+                    return "{\"success\": false, \"error\": \"缺少 attributes 参数\"}";
+                }
+
+                // 逐属性设置
+                var setList = new List<string>();
+                foreach (var prop in attributes.Properties())
+                {
+                    _env.SetAttribute(dburi, prop.Name, prop.Value?.ToString());
+                    setList.Add($"{prop.Name}={prop.Value}");
+                }
+
+                return $"{{\"success\": true, \"message\": \"已设置 {dburi} 的 {attributes.Count} 个属性: {string.Join(", ", setList)}\"}}";
             }
             catch (Exception ex)
             {
@@ -191,11 +213,17 @@ namespace E3DCopilot.Tools.Bridge
         }
 
         /// <summary>
-        /// 处理检查请求 — 支持 4 种检查类型:
-        ///   exists    : 元素存在性检查
-        ///   attribute : 属性值验证（比较实际值与期望值）
-        ///   naming    : 命名规范检查（正则匹配）
-        ///   clearance : 碰撞/净距检查（尚未实现，预留）
+        /// 处理检查请求 — 支持多种检查类型:
+        ///   exists              : 元素存在性检查
+        ///   attribute           : 属性值验证（比较实际值与期望值）
+        ///   attribute_complete  : 属性完整性检查（同 attribute，检查属性是否存在）
+        ///   naming              : 命名规范检查（正则匹配）
+        ///   name_consistency    : 命名一致性检查（同 naming）
+        ///   clearance           : 碰撞/净距检查（占位）
+        ///   distance            : 距离检查（同 clearance）
+        ///   bore_consistency    : 管径一致性检查（占位）
+        ///   change_status       : 变更状态检查（占位）
+        ///   room_number         : 房间号检查（占位）
         /// </summary>
         private string HandleCheck(string args)
         {
@@ -204,27 +232,32 @@ namespace E3DCopilot.Tools.Bridge
                 var json = JObject.Parse(args ?? "{}");
                 string checkType = json["type"]?.ToString()?.ToLower() ?? "exists";
 
-                // 兼容 element/dburi 两种参数名
+                // 兼容 element/dburi/target 多种参数名
                 string element = json["element"]?.ToString()
-                    ?? json["dburi"]?.ToString();
-
-                if (string.IsNullOrEmpty(element))
-                {
-                    return "{\"success\": false, \"error\": \"缺少 element/dburi 参数\"}";
-                }
+                    ?? json["dburi"]?.ToString()
+                    ?? json["target"]?.ToString();
 
                 switch (checkType)
                 {
                     case "exists":
                         return HandleCheckExists(json, element);
                     case "attribute":
+                    case "attribute_complete":
                         return HandleCheckAttribute(json, element);
                     case "naming":
+                    case "name_consistency":
                         return HandleCheckNaming(json, element);
                     case "clearance":
+                    case "distance":
                         return HandleCheckClearance(json, element);
+                    case "bore_consistency":
+                        return HandleCheckBoreConsistency(json, element);
+                    case "change_status":
+                        return HandleCheckChangeStatus(json, element);
+                    case "room_number":
+                        return HandleCheckRoomNumber(json, element);
                     default:
-                        return $"{{\"success\": false, \"error\": \"未知检查类型: {checkType}，支持: exists, attribute, naming, clearance\"}}";
+                        return $"{{\"success\": false, \"error\": \"未知检查类型: {checkType}，支持: exists, attribute, attribute_complete, naming, name_consistency, clearance, distance, bore_consistency, change_status, room_number\"}}";
                 }
             }
             catch (Exception ex)
@@ -360,11 +393,75 @@ namespace E3DCopilot.Tools.Bridge
         }
 
         /// <summary>
-        /// 处理计算请求（占位）
+        /// 管径一致性检查（占位 — 需要遍历管件，当前返回引导信息）
+        /// </summary>
+        private string HandleCheckBoreConsistency(JObject json, string element)
+        {
+            var result = new JObject
+            {
+                ["success"] = true,
+                ["type"] = "bore_consistency",
+                ["element"] = element,
+                ["implemented"] = false,
+                ["message"] = "管径一致性检查需要遍历管件的 BORE 属性，当前尚未实现。可通过 PML 执行检查。",
+                ["alternatives"] = new JArray
+                {
+                    "使用 query 获取所有管件的 BORE 属性",
+                    "通过 execute_pml 执行 PML 脚本检查"
+                }
+            };
+            return result.ToString();
+        }
+
+        /// <summary>
+        /// 变更状态检查（占位 — 需要 E3D 变更追踪 API，当前返回引导信息）
+        /// </summary>
+        private string HandleCheckChangeStatus(JObject json, string element)
+        {
+            var result = new JObject
+            {
+                ["success"] = true,
+                ["type"] = "change_status",
+                ["element"] = element,
+                ["implemented"] = false,
+                ["message"] = "变更状态检查需要 E3D 变更追踪功能，当前尚未实现。",
+                ["alternatives"] = new JArray
+                {
+                    "通过 execute_pml 执行 PML 脚本检查变更状态"
+                }
+            };
+            return result.ToString();
+        }
+
+        /// <summary>
+        /// 房间号检查（占位 — 需要遍历设备并检查 ROOM_NO 属性，当前返回引导信息）
+        /// </summary>
+        private string HandleCheckRoomNumber(JObject json, string element)
+        {
+            var result = new JObject
+            {
+                ["success"] = true,
+                ["type"] = "room_number",
+                ["element"] = element,
+                ["implemented"] = false,
+                ["message"] = "房间号检查需要遍历设备的 ROOM_NO 属性，当前尚未实现。可通过 PML 执行检查。",
+                ["alternatives"] = new JArray
+                {
+                    "使用 query 获取设备的 ROOM_NO 属性",
+                    "通过 execute_pml 执行 PML 脚本检查"
+                }
+            };
+            return result.ToString();
+        }
+
+        /// <summary>
+        /// 处理计算请求（占位 — 实际计算由 Core 层 CalculateHandler 处理）
+        /// 此方法不会被调用，因为 calculate 不经过 DispatcherBackedHandler。
+        /// 保留仅用于向后兼容。
         /// </summary>
         private string HandleCalculate(string args)
         {
-            return "{\"success\": true, \"message\": \"计算工具尚未实现\"}";
+            return "{\"success\": true, \"message\": \"几何计算由 Core 层 CalculateHandler 处理（纯数学运算）。如需 E3D 元素几何计算，请使用 execute_pml。\"}";
         }
 
         /// <summary>
@@ -547,11 +644,13 @@ namespace E3DCopilot.Tools.Bridge
             try
             {
                 var json = JObject.Parse(args ?? "{}");
-                var command = json["command"]?.ToString();
+                // 优先读取 script（与 PmlCommandHandler Schema 一致），兼容旧参数 command
+                var command = json["script"]?.ToString()
+                    ?? json["command"]?.ToString();
 
                 if (string.IsNullOrEmpty(command))
                 {
-                    return "{\"success\": false, \"error\": \"缺少 command 参数\"}";
+                    return "{\"success\": false, \"error\": \"缺少 script 参数\"}";
                 }
 
                 string result = _env.ExecutePml(command);

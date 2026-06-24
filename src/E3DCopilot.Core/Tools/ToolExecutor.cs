@@ -123,8 +123,11 @@ namespace E3DCopilot.Core.Tools
                 catch { return ToolResult.Fail($"Invalid JSON args for {toolName}"); }
             }
 
+            // 生成统一的 toolId，用于关联 Start/Complete/Fail 事件
+            var toolId = Guid.NewGuid().ToString("N");
+
             // 分派事件（传原始 toolName 作为 coreToolName，effectiveName 作为实际执行的工具名）
-            _sink?.Emit(CopilotEvent.ToolStart(Guid.NewGuid().ToString("N"), effectiveName, args, toolName));
+            _sink?.Emit(CopilotEvent.ToolStart(toolId, effectiveName, args, toolName));
 
             var sw = Stopwatch.StartNew();
 
@@ -134,13 +137,11 @@ namespace E3DCopilot.Core.Tools
                 sw.Stop();
                 result.DurationMs = sw.ElapsedMilliseconds;
 
-                // 结果事件（传递 result.Data 作为 meta，供前端渲染）
+                // 结果事件（使用相同 toolId 关联）
                 if (result.Success)
-                    _sink?.Emit(CopilotEvent.ToolComplete(
-                        Guid.NewGuid().ToString("N"), result.Text, result.Data));
+                    _sink?.Emit(CopilotEvent.ToolComplete(toolId, result.Text, result.Data));
                 else
-                    _sink?.Emit(CopilotEvent.ToolFail(
-                        Guid.NewGuid().ToString("N"), result.Error));
+                    _sink?.Emit(CopilotEvent.ToolFail(toolId, result.Error));
 
                 return result;
             }
@@ -154,7 +155,7 @@ namespace E3DCopilot.Core.Tools
             {
                 sw.Stop();
                 var result = ToolResult.Fail($"工具执行异常: {ex.Message}");
-                _sink?.Emit(CopilotEvent.ToolFail(Guid.NewGuid().ToString("N"), result.Error));
+                _sink?.Emit(CopilotEvent.ToolFail(toolId, result.Error));
                 return result;
             }
         }
@@ -173,16 +174,16 @@ namespace E3DCopilot.Core.Tools
 
             // 7 个透传 Handler：直接转发到 IToolDispatcher，零业务逻辑
             executor.Register(new DispatcherBackedHandler(dispatcher,
-                "query", "Query E3D elements by type (PIPE/EQUI/STRU), name pattern, scope",
-                @"{""type"":""object"",""properties"":{""type"":{""type"":""string"",""description"":""Element type like PIPE/EQUI/STRU/BRAN""},""name"":{""type"":""string"",""description"":""Name pattern, supports *""},""scope"":{""type"":""string"",""description"":""Scope DBURI""},""limit"":{""type"":""integer"",""description"":""Max results""}},""required"":[""type""]}",
+                "query", "Query E3D elements by type (PIPE/EQUI/STRU/BRAN), name pattern, scope. 按类型/名称/范围查询元素列表。不要用于读取单个元素的属性——用 get_attributes。",
+                @"{""type"":""object"",""properties"":{""type"":{""type"":""string"",""description"":""Element type like PIPE/EQUI/STRU/BRAN""},""name"":{""type"":""string"",""description"":""Name pattern, supports * wildcard""},""scope"":{""type"":""string"",""description"":""Scope DBURI, e.g. ZONE-01 or CE for current element""},""limit"":{""type"":""integer"",""description"":""Max results (default 50)""}},""required"":[""type""]}",
                 true));
             executor.Register(new DispatcherBackedHandler(dispatcher,
-                "modify", "Modify E3D element attribute values (single or batch). Query first.",
-                @"{""type"":""object"",""properties"":{""dburi"":{""type"":""string"",""description"":""Target element DBURI""},""attributes"":{""type"":""object"",""description"":""Key-value pairs to modify""},""preview"":{""type"":""boolean"",""description"":""Preview only""}},""required"":[""dburi"",""attributes""]}",
+                "modify", "Modify E3D element attribute values (single or batch). Query first. 修改元素属性，支持单属性和批量。",
+                @"{""type"":""object"",""properties"":{""dburi"":{""type"":""string"",""description"":""Target element name or DBURI""},""attributes"":{""type"":""object"",""description"":""Key-value pairs to modify, e.g. {\""WTHK\"": \""SCH40\""}""},""element"":{""type"":""string"",""description"":""Alias for dburi (backward compatible)""},""attribute"":{""type"":""string"",""description"":""Single attribute name (backward compatible, use with value)""},""value"":{""type"":""string"",""description"":""Single attribute value (backward compatible, use with attribute)""},""preview"":{""type"":""boolean"",""description"":""Preview only, don't actually modify""}},""required"":[""dburi""]}",
                 false));
             executor.Register(new DispatcherBackedHandler(dispatcher,
-                "check", "Check and validate: existence, attribute, naming, clearance",
-                @"{""type"":""object"",""properties"":{""type"":{""type"":""string"",""enum"":[""exists"",""attribute"",""naming"",""clearance""],""description"":""Check type""},""element"":{""type"":""string"",""description"":""Target element name or DBURI""},""attribute"":{""type"":""string"",""description"":""Attribute name""},""expected"":{""type"":""string"",""description"":""Expected value""},""pattern"":{""type"":""string"",""description"":""Naming regex""}},""required"":[""type"",""element""]}",
+                "check", "Check and validate: existence, attribute completeness, naming, clearance, bore consistency, change status, room number",
+                @"{""type"":""object"",""properties"":{""type"":{""type"":""string"",""enum"":[""exists"",""attribute"",""attribute_complete"",""naming"",""name_consistency"",""clearance"",""distance"",""bore_consistency"",""change_status"",""room_number""],""description"":""Check type""},""element"":{""type"":""string"",""description"":""Target element name or DBURI""},""target"":{""type"":""string"",""description"":""Alias for element""},""attribute"":{""type"":""string"",""description"":""Attribute name to check""},""expected"":{""type"":""string"",""description"":""Expected value for attribute check""},""pattern"":{""type"":""string"",""description"":""Naming regex pattern""}},""required"":[""type""]}",
                 true));
             executor.Register(new DispatcherBackedHandler(dispatcher,
                 "export", "Import/Export: export element list to Excel/CSV, generate PML script",

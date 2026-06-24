@@ -30,6 +30,7 @@ namespace E3DCopilot.Core.Security
         public static ToolPreset Observe => new ToolPreset("observe", new Dictionary<string, ApprovalMode>
         {
             ["query"] = ApprovalMode.Auto,
+            ["get_attributes"] = ApprovalMode.Auto,
             ["check"] = ApprovalMode.Auto,
             ["calculate"] = ApprovalMode.Auto,
             ["modify"] = ApprovalMode.PlanOnly,
@@ -41,6 +42,7 @@ namespace E3DCopilot.Core.Security
         public static ToolPreset Confirm => new ToolPreset("confirm", new Dictionary<string, ApprovalMode>
         {
             ["query"] = ApprovalMode.Auto,
+            ["get_attributes"] = ApprovalMode.Auto,
             ["check"] = ApprovalMode.Auto,
             ["calculate"] = ApprovalMode.Auto,
             ["modify"] = ApprovalMode.Ask,
@@ -52,6 +54,7 @@ namespace E3DCopilot.Core.Security
         public static ToolPreset Auto => new ToolPreset("auto", new Dictionary<string, ApprovalMode>
         {
             ["query"] = ApprovalMode.Auto,
+            ["get_attributes"] = ApprovalMode.Auto,
             ["check"] = ApprovalMode.Auto,
             ["calculate"] = ApprovalMode.Auto,
             ["modify"] = ApprovalMode.Auto,

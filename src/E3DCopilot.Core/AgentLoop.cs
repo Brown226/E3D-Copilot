@@ -10,7 +10,6 @@ using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Providers;
 using E3DCopilot.Core.Security;
 using E3DCopilot.Core.Tools;
-using static E3DCopilot.Core.Security.CommandPermissionController;
 
 namespace E3DCopilot.Core
 {
@@ -54,6 +53,7 @@ namespace E3DCopilot.Core
             policy.ApplyPreset(ToolPreset.Confirm);
             // 只读工具自动执行
             policy.Set("query", ApprovalMode.Auto);
+            policy.Set("get_attributes", ApprovalMode.Auto);
             policy.Set("check", ApprovalMode.Auto);
             policy.Set("calculate", ApprovalMode.Auto);
             policy.Set("export", ApprovalMode.Auto);
@@ -115,11 +115,10 @@ namespace E3DCopilot.Core
                             continue;
                         }
 
-                        // 5a. Permission check (CommandPermissionController + ToolPolicy)
-                        var access = _permission.CheckTool(call.Name, call.Arguments);
-                        if (access == CommandPermissionController.AccessMode.Block)
+                        // 5a. 危险模式检测（CommandPermissionController 负责）
+                        if (_permission.HasDangerousPattern(call.Arguments))
                         {
-                            string msg = $"Tool {call.Name} blocked by policy";
+                            string msg = $"Tool {call.Name} 参数包含危险模式，已阻止";
                             session.AddToolResult(call.Id, msg);
                             _sink.Emit(CopilotEvent.Error(msg));
                             continue;
@@ -137,12 +136,11 @@ namespace E3DCopilot.Core
                             continue;
                         }
 
-                        // 5c. Batch operation detection (>5 elements need extra confirmation)
+                        // 5c. 批量操作检测（>5 个元素需额外确认）
                         bool isBatch = _permission.IsBatchOperation(call.Arguments);
 
-                        // 5d. Needs approval? (ToolPolicy Ask mode + batch detection)
-                        bool needsApproval = access == CommandPermissionController.AccessMode.Ask
-                            || _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask
+                        // 5d. 是否需要审批：ToolPolicy Ask 模式 或 批量操作
+                        bool needsApproval = _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask
                             || isBatch;
 
                         if (needsApproval)
@@ -390,12 +388,13 @@ namespace E3DCopilot.Core
                 SystemPrompt.Build(currentElement, null, selectedElements)));
 
             // Tool definitions (from ToolExecutor) — only expose 10 core tools to LLM
-            // Internal/deprecated tools (design, piping, geometry, get_attributes) are still
+            // Internal/deprecated tools (design, piping, geometry) are still
             // registered for backward compat but hidden from AI to simplify decision-making.
             var toolSchemas = new List<ToolSchema>();
             var exposedToolNames = new HashSet<string>
             {
                 "query", "modify", "check", "calculate", "export", "execute_pml",
+                "get_attributes",
                 "ask_user", "task", "read_file", "search_knowledge"
             };
             foreach (var handler in _executor.GetAllHandlers())
