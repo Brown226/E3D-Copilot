@@ -102,6 +102,20 @@ namespace E3DCopilot.Core
     private volatile bool _isRunning;
     private readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
 
+        // ── Steer Queue — 中途干预（用户运行中注入引导消息） ──
+        public readonly ConcurrentQueue<string> SteerQueue = new ConcurrentQueue<string>();
+
+        public void EnqueueSteer(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                SteerQueue.Enqueue(message.Trim());
+                _sink?.Emit(CopilotEvent.Notice($"Steer queued: {message}"));
+            }
+        }
+
+        public bool HasPendingSteer => !SteerQueue.IsEmpty;
+
         // ── Approval management ──
         private readonly Dictionary<string, PendingApproval> _pendingApprovals
             = new Dictionary<string, PendingApproval>();

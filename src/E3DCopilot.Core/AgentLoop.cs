@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using E3DCopilot.Core.Config;
 using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Logging;
+using E3DCopilot.Core.Memory;
 using E3DCopilot.Core.Providers;
 using E3DCopilot.Core.Security;
 using E3DCopilot.Core.Skills;
@@ -128,6 +129,9 @@ namespace E3DCopilot.Core
                 Text = $"Processing: {input}"
             });
 
+            // ── 记忆注入：每 turn 只计算一次，后续步骤复用 ──
+            string memoryContext = ComputeMemoryContext(session);
+
             for (int step = 0; step < MaxSteps; step++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -143,8 +147,21 @@ namespace E3DCopilot.Core
                             "what still needs to be done, and any recommendations.");
                     }
 
+                    // ── Steer Queue: 用户中途干预，注入引导消息（对齐 Reasonix steerQueue） ──
+                    if (_controller?.SteerQueue != null)
+                    {
+                        string steer;
+                        while (_controller.SteerQueue.TryDequeue(out steer))
+                        {
+                            session.AddSystemMessage(
+                                $"[user steer] The user has provided mid-run guidance: \"{steer}\"\n" +
+                                "Please adjust your approach accordingly.");
+                            _sink?.Emit(CopilotEvent.Notice($"Steer injected: {steer}"));
+                        }
+                    }
+
                     // 1. Build request (including available tool definitions)
-                    var request = BuildRequest(session);
+                    var request = BuildRequest(session, memoryContext);
 
                     // 2. Call LLM (streaming)
                     var result = await StreamLlmAsync(request, ct);
@@ -244,8 +261,11 @@ namespace E3DCopilot.Core
             // 注入结果到 session
             for (int j = 0; j < calls.Count; j++)
             {
-                if (string.IsNullOrEmpty(results[j])) continue;
-                session.AddToolResult(calls[j].Id, results[j]);
+                // 空结果也要告知 LLM 工具已执行，避免 LLM 困惑
+                string result = string.IsNullOrEmpty(results[j])
+                    ? $"(tool {calls[j].Name} executed, no output)"
+                    : results[j];
+                session.AddToolResult(calls[j].Id, result);
             }
         }
 
@@ -335,9 +355,15 @@ namespace E3DCopilot.Core
             {
                 var toolResult = await _executor.ExecuteAsync(call.Name, call.Arguments, ct);
                 if (toolResult.Success)
-                    return (toolResult.Text, null);
+                {
+                    string output = TruncateToolResult(toolResult.Text, call.Name);
+                    return (output, null);
+                }
                 else
-                    return (toolResult.Error ?? toolResult.Text, toolResult.Error ?? "execution failed");
+                {
+                    string output = TruncateToolResult(toolResult.Error ?? toolResult.Text, call.Name);
+                    return (output, toolResult.Error ?? "execution failed");
+                }
             }
             catch (Exception ex)
             {
@@ -478,7 +504,7 @@ namespace E3DCopilot.Core
         //  BuildRequest — 构建 LLM 请求（对齐 Reasonix boot.go 装配）
         // ═══════════════════════════════════════════════════════════
 
-        private CopilotRequest BuildRequest(CopilotSession session)
+        private CopilotRequest BuildRequest(CopilotSession session, string memoryContext = null)
         {
             string modelRef = !string.IsNullOrEmpty(_controller?.CurrentModelName)
                 ? _controller.CurrentModelName
@@ -533,6 +559,13 @@ namespace E3DCopilot.Core
             }
 
             request.Messages.AddRange(history);
+
+            // ── 记忆注入：放在历史之后、更靠近当前对话位置（每 turn 只计算一次）──
+            if (!string.IsNullOrEmpty(memoryContext))
+            {
+                request.Messages.Add(new ChatMessage(MessageRole.System, memoryContext));
+            }
+
             return request;
         }
 
@@ -604,6 +637,122 @@ namespace E3DCopilot.Core
             }
 
             return sb.ToString();
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  记忆注入 — 每 turn 计算一次，返回注入文本（空字符串表示无匹配）
+        // ═══════════════════════════════════════════════════════════
+
+        private string ComputeMemoryContext(CopilotSession session)
+        {
+            if (_controller?.Memory == null) return null;
+
+            // 提取最后一条用户消息作为搜索源
+            string lastUserMsg = null;
+            for (int i = session.Messages.Count - 1; i >= 0; i--)
+            {
+                if (session.Messages[i].Role == MessageRole.User
+                    && !string.IsNullOrEmpty(session.Messages[i].Content))
+                {
+                    lastUserMsg = session.Messages[i].Content;
+                    break;
+                }
+            }
+            if (string.IsNullOrWhiteSpace(lastUserMsg)) return null;
+
+            // 提取关键词（简单策略：按空格分割，取 > 2 字符的词，去重，最多 5 个）
+            var words = lastUserMsg.Split(new[] { ' ', ',', '，', ';', '。', '？', '！', '\n' },
+                StringSplitOptions.RemoveEmptyEntries);
+            var keywords = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var w in words)
+            {
+                string trimmed = w.Trim();
+                if (trimmed.Length > 2 && seen.Add(trimmed))
+                    keywords.Add(trimmed);
+                if (keywords.Count >= 5) break;
+            }
+            if (keywords.Count == 0) return null;
+
+            // 搜索记忆
+            try
+            {
+                var allMemories = _controller.Memory.List();
+                if (allMemories.Count == 0) return null;
+
+                var matched = new List<Memory.MemoryEntry>();
+                foreach (var m in allMemories)
+                {
+                    int score = 0;
+                    string titleLower = (m.Title ?? "").ToLowerInvariant();
+                    string contentLower = (m.Content ?? "").ToLowerInvariant();
+                    foreach (var kw in keywords)
+                    {
+                        string kwLower = kw.ToLowerInvariant();
+                        if (titleLower.Contains(kwLower)) score += 3;
+                        if (contentLower.Contains(kwLower)) score += 2;
+                        if (m.Tags != null && Array.Exists(m.Tags, t => t.IndexOf(kw, StringComparison.OrdinalIgnoreCase) >= 0))
+                            score += 1;
+                    }
+                    if (score > 0)
+                        matched.Add(m);
+                }
+
+                if (matched.Count == 0) return null;
+
+                // 取分数最高的前 3 条，构建注入文本
+                var top = matched.OrderByDescending(m =>
+                {
+                    int s = 0;
+                    string tl = (m.Title ?? "").ToLowerInvariant();
+                    string cl = (m.Content ?? "").ToLowerInvariant();
+                    foreach (var kw in keywords)
+                    {
+                        string kl = kw.ToLowerInvariant();
+                        if (tl.Contains(kl)) s += 3;
+                        if (cl.Contains(kl)) s += 2;
+                    }
+                    return s;
+                }).Take(3).ToList();
+
+                var sb = new StringBuilder();
+                sb.AppendLine("<relevant-memories>");
+                sb.AppendLine("以下是与当前对话相关的历史记忆，请参考：");
+                foreach (var m in top)
+                {
+                    string excerpt = m.Content;
+                    if (excerpt.Length > 200)
+                        excerpt = excerpt.Substring(0, 197) + "...";
+                    sb.AppendLine($"- [{m.Kind}] {m.Title}: {excerpt}");
+                }
+                sb.AppendLine("</relevant-memories>");
+
+                _sink?.Emit(CopilotEvent.Notice($"Memory context: {top.Count} relevant memories will be injected"));
+                return sb.ToString();
+            }
+            catch
+            {
+                // 记忆检索失败不影响主流程
+                return null;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  Token 预算 — 工具结果超长截断
+        // ═══════════════════════════════════════════════════════════
+
+        private const int MaxToolResultChars = 4000;
+
+        private string TruncateToolResult(string text, string toolName)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= MaxToolResultChars)
+                return text;
+
+            string truncated = text.Substring(0, MaxToolResultChars);
+            string hint = $"\n\n[truncated: {toolName} result was {text.Length} chars, showing first {MaxToolResultChars}. " +
+                          "Use a more specific query or add filters to reduce results.]";
+            _sink?.Emit(CopilotEvent.Notice($"Token budget: {toolName} result truncated {text.Length}→{MaxToolResultChars} chars"));
+            return truncated + hint;
         }
     }
 }

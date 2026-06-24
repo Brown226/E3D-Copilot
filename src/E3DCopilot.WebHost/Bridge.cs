@@ -111,6 +111,10 @@ namespace E3DCopilot.WebHost
                         HandleCloseTab(payload);
                         break;
 
+                    case MessageTypes.UserSteer:
+                        HandleUserSteer(payload);
+                        break;
+
                     case MessageTypes.Ping:
                         SendToFrontend(MessageTypes.Pong, new { timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }, TakeRequestId(MessageTypes.Ping));
                         break;
@@ -315,6 +319,19 @@ namespace E3DCopilot.WebHost
             {
                 _controller.RemoveTabSession(tabId);
             }
+        }
+
+        /// <summary>
+        /// 处理中途干预消息 — 将引导文本放入 SteerQueue，AgentLoop 下一步自动注入
+        /// </summary>
+        private void HandleUserSteer(JsonElement? payload)
+        {
+            string text = null;
+            if (payload.HasValue && payload.Value.TryGetProperty("text", out var textProp))
+                text = textProp.GetString();
+
+            if (!string.IsNullOrWhiteSpace(text))
+                _controller.EnqueueSteer(text);
         }
 
         /// <summary>

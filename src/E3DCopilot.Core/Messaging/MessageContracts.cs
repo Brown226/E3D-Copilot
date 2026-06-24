@@ -20,6 +20,7 @@ namespace E3DCopilot.Core.Messaging
         public const string UserSetPlanMode = "user:set_plan_mode";
         public const string UserSetApprovalMode = "user:set_approval_mode";
         public const string UserCloseTab = "tab:close";
+        public const string UserSteer = "user:steer";  // 中途干预：用户运行中注入引导消息
         public const string Ping = "ping";
 
         // === Provider / Model 管理（参考 Reasonix） ===
