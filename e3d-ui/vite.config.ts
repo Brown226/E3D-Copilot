@@ -23,6 +23,7 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1000,
     outDir: 'D:/AVEVA/Everything3D2.10/wwwroot',
+    emptyOutDir: true,
     sourcemap: true,
   },
 })
