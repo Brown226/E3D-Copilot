@@ -38,6 +38,19 @@ namespace E3DCopilot.WebHost
             InitializeComponent();
         }
 
+        /// <summary>
+        /// 捕获 F12 打开 DevTools（WinForms 层级，优先于 WebView2 内部处理）
+        /// </summary>
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.F12 && _webView?.CoreWebView2 != null)
+            {
+                _webView.CoreWebView2.OpenDevToolsWindow();
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         private void InitializeComponent()
         {
             this.Dock = DockStyle.Fill;
@@ -128,17 +141,7 @@ namespace E3DCopilot.WebHost
                         _bridge.HandleMessage(raw);
                 };
 
-                // F12 打开 DevTools（E3D 内嵌面板右键菜单可能被拦截）
-                // 通过前端 JS 监听 F12，发消息到 C# 打开 DevTools
-                string devToolsScript = @"
-                    document.addEventListener('keydown', function(e) {
-                        if (e.key === 'F12') {
-                            e.preventDefault();
-                            chrome.webview.postMessage(JSON.stringify({ type: 'devtools:open' }));
-                        }
-                    });
-                ";
-                _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(devToolsScript);
+                // F12 打开 DevTools（WinForms ProcessCmdKey 处理，见上方）
 
                 // 导航完成 → 通知前端宿主就绪
                 _webView.CoreWebView2.NavigationCompleted += (s, e) =>
