@@ -211,7 +211,15 @@ namespace E3DCopilot.Core.Tools
             executor.Register(new AskUserHandler(sink));
             executor.Register(new TaskHandler(sink));
             executor.Register(new ReadFileHandler(sink));
+            executor.Register(new WriteFileHandler(sink));
             executor.Register(new SearchKnowledgeHandler(sink));
+
+            // 文件搜索工具（纯读操作，不依赖 IToolDispatcher）
+            executor.Register(new GrepHandler(sink));
+            executor.Register(new GlobHandler(sink));
+
+            // 结构化任务追踪（替代 task 工具的升级版）
+            executor.Register(new TodoWriteHandler(sink));
 
             // 接入可选路由器
             executor.Router = router;

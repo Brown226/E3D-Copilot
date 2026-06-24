@@ -174,6 +174,10 @@ namespace E3DCopilot.Core.Security
             ctrl.AddRule("get_attributes", AccessMode.Allow, "获取属性");
             ctrl.AddRule("check",          AccessMode.Allow, "检查/校验");
             ctrl.AddRule("calculate",      AccessMode.Allow, "几何计算（纯数学）");
+            ctrl.AddRule("grep",           AccessMode.Allow, "文件内容搜索");
+            ctrl.AddRule("glob",           AccessMode.Allow, "文件模式查找");
+            ctrl.AddRule("todo_write",     AccessMode.Allow, "任务列表管理");
+            ctrl.AddRule("memory",         AccessMode.Allow, "记忆存取");
 
             // 导出 —— 涉及文件写入，需确认
             ctrl.AddRule("export",    AccessMode.Ask, "导出需确认");

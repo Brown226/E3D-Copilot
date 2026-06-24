@@ -19,7 +19,8 @@ namespace E3DCopilot.Tools.Registry
         {
             "query", "modify", "check", "calculate", "export", "execute_pml",
             "get_attributes", "design", "piping", "geometry",
-            "ask_user", "task", "read_file", "search_knowledge"
+            "ask_user", "task", "todo_write", "read_file", "write_file", "search_knowledge",
+            "grep", "glob", "memory"
         };
 
         /// <summary>

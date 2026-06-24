@@ -89,6 +89,10 @@ namespace E3DCopilot.Core
         // ── Current model ──
         public string CurrentModelName { get; private set; }
 
+        // ── Storm Breaker 状态（跨 turn 持久化，注入 AgentLoop）──
+        public string StormSig { get; set; } = "";
+        public int StormCount { get; set; } = 0;
+
         // ── Tool approval mode: "ask" | "auto" | "yolo" ──
         public string ToolApprovalMode { get; private set; } = "auto";
 
@@ -133,8 +137,16 @@ namespace E3DCopilot.Core
                 "E3DCopilot", "skills-state.json");
             Skills = new SkillManager(skillStatePath);
 
+            // 注册 run_skill 工具（需要 SkillManager，在 ToolExecutor.CreateDefault 之后）
+            if (Executor.GetHandler("run_skill") == null)
+                Executor.Register(new Tools.Handlers.RunSkillHandler(Skills, _sink));
+
             // 初始化记忆管理器
             Memory = new MemoryManager();
+
+            // 注册 memory 工具（需要 MemoryManager，在 CreateDefault 之后）
+            if (Executor.GetHandler("memory") == null)
+                Executor.Register(new Tools.Handlers.MemoryHandler(Memory, _sink));
 
             _session = new CopilotSession();
 
@@ -206,8 +218,12 @@ namespace E3DCopilot.Core
                 _isRunning = true;
                 _cts = new CancellationTokenSource();
 
-                _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this);
+                _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this, skillManager: Skills,
+                    stormSig: StormSig, stormCount: StormCount);
                 await _agent.RunAsync(_session, input, _cts.Token);
+                // 回写 Storm Breaker 状态（AgentLoop 内部可能已更新）
+                StormSig = _agent.StormSig;
+                StormCount = _agent.StormCount;
             }
             catch (Exception ex)
             {

@@ -93,6 +93,39 @@ namespace E3DCopilot.Core.Skills
         }
 
         /// <summary>
+        /// 根据名称查找单个技能
+        /// </summary>
+        public SkillInfo Read(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            return ListSkills().Find(s =>
+                string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// 读取技能 SKILL.md 的 body 内容（去掉 frontmatter）
+        /// </summary>
+        public string ReadContent(string name)
+        {
+            var skill = Read(name);
+            if (skill == null || string.IsNullOrEmpty(skill.FilePath))
+                return null;
+
+            try
+            {
+                var content = File.ReadAllText(skill.FilePath);
+                var match = FrontmatterRegex.Match(content);
+                if (match.Success)
+                    return content.Substring(match.Length).Trim();
+                return content.Trim();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// 获取所有技能来源
         /// </summary>
         public List<SkillSource> ListSources()

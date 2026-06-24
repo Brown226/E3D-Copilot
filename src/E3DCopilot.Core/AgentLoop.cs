@@ -9,6 +9,7 @@ using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Providers;
 using E3DCopilot.Core.Security;
+using E3DCopilot.Core.Skills;
 using E3DCopilot.Core.Tools;
 
 namespace E3DCopilot.Core
@@ -16,7 +17,12 @@ namespace E3DCopilot.Core
     /// <summary>
     /// Core Agent loop: LLM call → ToolExecutor dispatch → result injection → loop
     /// net48 compatible: callback mode streaming, no IAsyncEnumerable
-    /// Corresponds to cline-chinese-main's Task engine + ToolExecutor
+    /// 
+    /// Phase 1 对齐 Reasonix:
+    ///   - 只读工具并行执行（partitionToolCalls + Task.WhenAll）
+    ///   - executeOne 提取为独立方法
+    ///   - Storm Breaker 循环检测
+    ///   - Grace Round 最大步数优雅收尾
     /// </summary>
     public class AgentLoop
     {
@@ -27,13 +33,20 @@ namespace E3DCopilot.Core
         private readonly ToolPolicy _toolPolicy;
         private readonly CopilotConfig _config;
         private readonly CopilotController _controller;
+        private readonly SkillManager _skillManager;
 
         private const int MaxSteps = 20;
+
+        // ── Storm Breaker 状态（由 CopilotController 跨 turn 持久化注入） ──
+        public string StormSig { get; set; } = "";
+        public int StormCount { get; set; } = 0;
+        private const int StormBreakThreshold = 3;
 
         public AgentLoop(ICopilotProvider provider, IEventSink sink,
             ToolExecutor executor, CommandPermissionController permission,
             CopilotConfig config, CopilotController controller = null,
-            ToolPolicy toolPolicy = null)
+            ToolPolicy toolPolicy = null, SkillManager skillManager = null,
+            string stormSig = "", int stormCount = 0)
         {
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
             _sink = sink;
@@ -42,15 +55,11 @@ namespace E3DCopilot.Core
             _toolPolicy = toolPolicy ?? CreateDefaultToolPolicy();
             _config = config ?? CopilotConfig.Load();
             _controller = controller;
+            _skillManager = skillManager;
+            StormSig = stormSig;
+            StormCount = stormCount;
         }
 
-        /// <summary>
-        /// 创建默认工具策略（匹配 CommandPermissionController.CreateDefault 的规则）
-        /// 根据 Controller 的 ToolApprovalMode 动态构建：
-        ///   "ask"  → 所有工具都需审批
-        ///   "auto" → 只读工具自动，写工具需审批（默认）
-        ///   "yolo" → 所有工具自动执行
-        /// </summary>
         private ToolPolicy CreateDefaultToolPolicy()
         {
             var policy = new ToolPolicy();
@@ -58,32 +67,34 @@ namespace E3DCopilot.Core
 
             if (mode == "yolo")
             {
-                // 所有工具自动执行，无需审批
                 policy.ApplyPreset(ToolPreset.Auto);
                 policy.Set("ask_user", ApprovalMode.Auto);
                 policy.Set("task", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Auto);
+                policy.Set("write_file", ApprovalMode.Auto);
                 policy.Set("search_knowledge", ApprovalMode.Auto);
+                policy.Set("run_skill", ApprovalMode.Auto);
             }
             else if (mode == "ask")
             {
-                // 所有工具都需审批
                 policy.ApplyPreset(ToolPreset.Confirm);
                 policy.Set("query", ApprovalMode.Ask);
                 policy.Set("get_attributes", ApprovalMode.Ask);
                 policy.Set("check", ApprovalMode.Ask);
                 policy.Set("calculate", ApprovalMode.Ask);
                 policy.Set("export", ApprovalMode.Ask);
-                policy.Set("ask_user", ApprovalMode.Auto);  // 用户交互工具不需要审批
+                policy.Set("ask_user", ApprovalMode.Auto);
                 policy.Set("task", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Ask);
+                policy.Set("write_file", ApprovalMode.Ask);
                 policy.Set("search_knowledge", ApprovalMode.Ask);
+                policy.Set("run_skill", ApprovalMode.Ask);
                 policy.Set("modify", ApprovalMode.Ask);
                 policy.Set("execute_pml", ApprovalMode.Ask);
             }
             else
             {
-                // "auto"：只读工具自动执行，写工具需确认（默认行为）
+                // "auto"：只读工具自动执行，写工具需确认
                 policy.ApplyPreset(ToolPreset.Confirm);
                 policy.Set("query", ApprovalMode.Auto);
                 policy.Set("get_attributes", ApprovalMode.Auto);
@@ -94,6 +105,8 @@ namespace E3DCopilot.Core
                 policy.Set("task", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Auto);
                 policy.Set("search_knowledge", ApprovalMode.Auto);
+                policy.Set("run_skill", ApprovalMode.Auto);
+                policy.Set("write_file", ApprovalMode.Ask);
                 policy.Set("modify", ApprovalMode.Ask);
                 policy.Set("execute_pml", ApprovalMode.Ask);
             }
@@ -121,6 +134,15 @@ namespace E3DCopilot.Core
 
                 try
                 {
+                    // ── Grace Round: 最大步数前注入收尾 nudge（对齐 Reasonix） ──
+                    if (step == MaxSteps - 1)
+                    {
+                        session.AddSystemMessage(
+                            "You are about to reach the maximum step limit. " +
+                            "Stop calling tools and give a final summary of what has been done, " +
+                            "what still needs to be done, and any recommendations.");
+                    }
+
                     // 1. Build request (including available tool definitions)
                     var request = BuildRequest(session);
 
@@ -137,108 +159,26 @@ namespace E3DCopilot.Core
                         return;
                     }
 
-                    // 5. Execute tools via ToolExecutor
-                    foreach (var call in result.ToolCalls)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        
-                        // Skip empty tool calls (LLM sometimes returns tool calls with no name/args)
-                        if (string.IsNullOrWhiteSpace(call.Name))
-                        {
-                            _sink.Emit(CopilotEvent.Notice($"Skipped tool call with empty name (args: {call.Arguments})"));
-                            continue;
-                        }
+                    // 5. Execute tools — read-only parallel, writer serial（对齐 Reasonix executeBatch）
+                    await ExecuteBatchAsync(session, result.ToolCalls, ct);
 
-                        // 5a. 危险模式检测（CommandPermissionController 负责）
-                        if (_permission.HasDangerousPattern(call.Arguments))
-                        {
-                            string msg = $"Tool {call.Name} 参数包含危险模式，已阻止";
-                            session.AddToolResult(call.Id, msg);
-                            _sink.Emit(CopilotEvent.Error(msg));
-                            continue;
-                        }
-
-                        // 5b. ToolPolicy 检查：PlanOnly 模式下写工具被阻止
-                        bool isPlanMode = session?.IsPlanMode ?? false;
-                        if (!_toolPolicy.IsAllowed(call.Name, isPlanMode))
-                        {
-                            string msg = isPlanMode
-                                ? $"Tool {call.Name} blocked: write operations disabled in Plan Mode"
-                                : $"Tool {call.Name} blocked by tool policy";
-                            session.AddToolResult(call.Id, msg);
-                            _sink.Emit(CopilotEvent.Error(msg));
-                            continue;
-                        }
-
-                        // 5c. 批量操作检测（>5 个元素需额外确认）
-                        bool isBatch = _permission.IsBatchOperation(call.Arguments);
-
-                        // 5d. 是否需要审批：ToolPolicy Ask 模式 或 批量操作
-                        bool needsApproval = _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask
-                            || isBatch;
-
-                        if (needsApproval)
-                        {
-                            var approval = new PendingApproval
-                            {
-                                ToolName = call.Name,
-                                Args = call.Arguments,
-                                Description = $"{call.Name}({call.Arguments})"
-                                    + (isBatch ? " [batch]" : "")
-                            };
-
-                            // Register approval via Controller (if controller is available)
-                            if (_controller != null)
-                            {
-                                _controller.RegisterApproval(approval);
-                            }
-                            else
-                            {
-                                // Fallback: emit event directly (backward compat)
-                                _sink.Emit(new CopilotEvent
-                                {
-                                    Kind = EventKind.ApprovalRequest,
-                                    Data = approval
-                                });
-                            }
-
-                            var approvalResult = await approval.WaitAsync(ct);
-                            if (!approvalResult.Allow)
-                            {
-                                string msg = $"User rejected {call.Name}";
-                                session.AddToolResult(call.Id, msg);
-                                _sink.Emit(CopilotEvent.Error(msg));
-                                continue;
-                            }
-                        }
-
-                        // 5d. Execute via ToolExecutor
-                        var toolResult = await _executor.ExecuteAsync(
-                            call.Name, call.Arguments, ct);
-                        session.AddToolResult(call.Id,
-                            toolResult.Success ? toolResult.Text : toolResult.Error);
-                    }
-
-                    // 6. Context compression (optional)
+                    // 6. Context compression
                     MaybeCompact(session);
                 }
                 catch (OperationCanceledException)
                 {
                     _sink.Emit(CopilotEvent.Notice("Cancelled"));
-                    // 取消也要发 TurnDone，让前端解锁 UI
                     _sink.Emit(CopilotEvent.TurnDone());
                     return;
                 }
                 catch (Exception ex)
                 {
-                    // Minimal exception handling, avoid cascading failures from extra operations
                     try { CopilotLogger.Error(ex, "AgentLoop step {0} failed", step); } catch { }
-                    
+
                     string msg = "Error encountered";
                     try { msg = $"Error: {ex.GetType().Name}: {ex.Message}"; } catch { }
-                    
+
                     _sink?.Emit(CopilotEvent.Error(msg));
-                    // 出错也要发 TurnDone，让前端解锁 UI（避免输入框永久禁用）
                     _sink?.Emit(CopilotEvent.TurnDone());
                     return;
                 }
@@ -248,12 +188,227 @@ namespace E3DCopilot.Core
             _sink.Emit(CopilotEvent.TurnDone());
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  executeBatch — 分区并行执行（对齐 Reasonix executeBatch）
+        //  只读工具段：Task.WhenAll 并行
+        //  写入工具段：串行保序
+        // ═══════════════════════════════════════════════════════════
+
+        private async Task ExecuteBatchAsync(CopilotSession session, List<ToolCall> calls, CancellationToken ct)
+        {
+            var results = new string[calls.Count];
+            var errors = new string[calls.Count];
+
+            // 分区：连续只读 → parallel，写/未知 → serial
+            int i = 0;
+            while (i < calls.Count)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                if (IsParallelisable(calls[i].Name))
+                {
+                    // 收集连续只读段
+                    int start = i;
+                    i++;
+                    while (i < calls.Count && IsParallelisable(calls[i].Name))
+                        i++;
+
+                    // 并行执行只读段（对齐 Reasonix runParallel）
+                    var tasks = new List<Task>();
+                    for (int j = start; j < i; j++)
+                    {
+                        if (ct.IsCancellationRequested) break;
+                        int idx = j; // capture
+                        tasks.Add(Task.Run(async () =>
+                        {
+                            var (output, err) = await ExecuteOneAsync(session, calls[idx], ct);
+                            results[idx] = output;
+                            errors[idx] = err;
+                        }, ct));
+                    }
+                    await Task.WhenAll(tasks);
+                }
+                else
+                {
+                    // 串行执行写入/未知工具
+                    var (output, err) = await ExecuteOneAsync(session, calls[i], ct);
+                    results[i] = output;
+                    errors[i] = err;
+                    i++;
+                }
+            }
+
+            // ── Storm Breaker（对齐 Reasonix applyStormBreaker） ──
+            ApplyStormBreaker(calls, errors, results);
+
+            // 注入结果到 session
+            for (int j = 0; j < calls.Count; j++)
+            {
+                if (string.IsNullOrEmpty(results[j])) continue;
+                session.AddToolResult(calls[j].Id, results[j]);
+            }
+        }
+
         /// <summary>
-        /// Stream LLM call (net48 callback mode)
-        /// Supports two tool call methods:
-        ///   1. Standard OpenAI tool_calls (streaming fragments)
-        ///   2. XML fallback: extract &lt;tool_invocation name="..." arguments={...} /&gt; from text
+        /// 判断工具是否可并行执行（只读 + 非 todo/complete_step）
+        /// 对齐 Reasonix parallelisable()
         /// </summary>
+        private bool IsParallelisable(string toolName)
+        {
+            var handler = _executor.GetHandler(toolName);
+            return handler != null && handler.IsReadOnly;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  executeOne — 单工具执行（对齐 Reasonix executeOne）
+        //  包含：权限检查 + 审批 + plan mode 门控 + 实际执行
+        // ═══════════════════════════════════════════════════════════
+
+        private async Task<(string output, string errMsg)> ExecuteOneAsync(
+            CopilotSession session, ToolCall call, CancellationToken ct)
+        {
+            // 跳过空工具调用
+            if (string.IsNullOrWhiteSpace(call.Name))
+            {
+                _sink.Emit(CopilotEvent.Notice($"Skipped tool call with empty name"));
+                return ("Skipped: empty tool name", "empty name");
+            }
+
+            // ── 1. 危险模式检测 ──
+            if (_permission.HasDangerousPattern(call.Arguments))
+            {
+                string msg = $"Tool {call.Name} 参数包含危险模式，已阻止";
+                _sink.Emit(CopilotEvent.Error(msg));
+                return (msg, "dangerous pattern blocked");
+            }
+
+            // ── 2. Plan Mode 门控（对齐 Reasonix planModeBlocked） ──
+            bool isPlanMode = session?.IsPlanMode ?? false;
+            if (!_toolPolicy.IsAllowed(call.Name, isPlanMode))
+            {
+                string msg = isPlanMode
+                    ? $"blocked: \"{call.Name}\" is a writer tool and plan mode is read-only. Keep exploring with read-only tools."
+                    : $"Tool {call.Name} blocked by tool policy";
+                _sink.Emit(CopilotEvent.Error(msg));
+                return (msg, "blocked by plan mode");
+            }
+
+            // ── 3. 批量操作检测 ──
+            bool isBatch = _permission.IsBatchOperation(call.Arguments);
+
+            // ── 4. 审批检查 ──
+            bool needsApproval = _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask || isBatch;
+
+            if (needsApproval)
+            {
+                var approval = new PendingApproval
+                {
+                    ToolName = call.Name,
+                    Args = call.Arguments,
+                    Description = $"{call.Name}({call.Arguments})"
+                        + (isBatch ? " [batch]" : "")
+                };
+
+                if (_controller != null)
+                {
+                    _controller.RegisterApproval(approval);
+                }
+                else
+                {
+                    _sink.Emit(new CopilotEvent
+                    {
+                        Kind = EventKind.ApprovalRequest,
+                        Data = approval
+                    });
+                }
+
+                var approvalResult = await approval.WaitAsync(ct);
+                if (!approvalResult.Allow)
+                {
+                    string msg = $"User rejected {call.Name}";
+                    return (msg, "user rejected");
+                }
+            }
+
+            // ── 5. 实际执行 ──
+            try
+            {
+                var toolResult = await _executor.ExecuteAsync(call.Name, call.Arguments, ct);
+                if (toolResult.Success)
+                    return (toolResult.Text, null);
+                else
+                    return (toolResult.Error ?? toolResult.Text, toolResult.Error ?? "execution failed");
+            }
+            catch (Exception ex)
+            {
+                string err = $"{ex.GetType().Name}: {ex.Message}";
+                return ($"Error: {err}", err);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  Storm Breaker（对齐 Reasonix applyStormBreaker）
+        //  连续 N 次同样错误 → 注入 nudge 让模型换策略
+        // ═══════════════════════════════════════════════════════════
+
+        private void ApplyStormBreaker(List<ToolCall> calls, string[] errors, string[] results)
+        {
+            // 构建签名：所有调用都是 error 才算 storm
+            if (calls.Count == 0) { StormSig = ""; StormCount = 0; return; }
+
+            bool allErrored = true;
+            var sb = new StringBuilder();
+            for (int i = 0; i < calls.Count; i++)
+            {
+                if (string.IsNullOrEmpty(errors[i]))
+                {
+                    allErrored = false;
+                    break;
+                }
+                sb.Append(calls[i].Name);
+                sb.Append('\0');
+                sb.Append(errors[i]);
+                sb.Append('\0');
+            }
+
+            if (!allErrored)
+            {
+                // 有成功的调用 → 重置计数器
+                StormSig = "";
+                StormCount = 0;
+                return;
+            }
+
+            string sig = sb.ToString();
+            if (sig != StormSig)
+            {
+                StormSig = sig;
+                StormCount = 1;
+                return;
+            }
+
+            StormCount++;
+            if (StormCount < StormBreakThreshold)
+                return;
+
+            // 注入 nudge（对齐 Reasonix：在第一个 tool result 后追加 loop guard 消息）
+            string subject = calls.Count == 1
+                ? $"\"{calls[0].Name}\""
+                : $"this batch of {calls.Count} tool calls";
+            string shortMsg = calls.Count == 1
+                ? calls[0].Name
+                : $"a batch of {calls.Count} calls";
+
+            results[0] = results[0] + $"\n\n[loop guard] {subject} has now failed {StormCount} times in a row with the same error. Re-sending it — even with the wording changed — will not help. Change approach: if an argument is being truncated, write less in one call; otherwise fix the arguments, use a different tool, or explain the blocker in your final answer.";
+
+            _sink.Emit(CopilotEvent.Notice(
+                $"loop guard: {shortMsg} failed {StormCount}× the same way — nudging model to change approach"));
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  StreamLlmAsync — LLM 流式调用
+        // ═══════════════════════════════════════════════════════════
+
         private async Task<(string Text, List<ToolCall> ToolCalls)> StreamLlmAsync(
             CopilotRequest request, CancellationToken ct)
         {
@@ -285,7 +440,7 @@ namespace E3DCopilot.Core
                 }
             }, ct);
 
-            // ── Fallback: if standard tool_calls not detected, try extracting XML format from text ──
+            // ── XML fallback ──
             if (toolCalls.Count == 0 && !string.IsNullOrEmpty(text)
                 && Providers.ToolInvocationParser.ContainsToolInvocation(text))
             {
@@ -293,24 +448,16 @@ namespace E3DCopilot.Core
                 if (xmlCalls.Count > 0)
                 {
                     toolCalls.AddRange(xmlCalls);
-                    // Strip XML tags from text, keep plain text response
                     text = Providers.ToolInvocationParser.StripToolInvocationTags(text);
-
                     _sink.Emit(CopilotEvent.Notice(
                         $"Parsed {xmlCalls.Count} XML format tool calls from text (fallback mode)"));
                 }
             }
 
-            // 流式结束：通知前端 _currentStreamingMessage.partial = false
-            // 前端据此完成最后一条消息的渲染（但 UI 解锁等 TurnDone）
             _sink.Emit(CopilotEvent.StreamEnd());
-
             return (text, toolCalls);
         }
 
-        /// <summary>
-        /// Merge incremental tool calls (vLLM streaming tool_calls may be fragmented)
-        /// </summary>
         private void MergeToolCall(List<ToolCall> existing, ToolCall incoming)
         {
             var match = existing.FirstOrDefault(t => t.Id == incoming.Id);
@@ -327,86 +474,17 @@ namespace E3DCopilot.Core
             }
         }
 
-        /// <summary>
-        /// Parse XML format tool calls from text (fallback)
-        /// When LLM does not use standard function calling, try to extract from text
-        /// </summary>
-        private List<ToolCall> ParseTextToolCalls(string text)
-        {
-            var results = new List<ToolCall>();
-            if (string.IsNullOrEmpty(text)) return results;
+        // ═══════════════════════════════════════════════════════════
+        //  BuildRequest — 构建 LLM 请求（对齐 Reasonix boot.go 装配）
+        // ═══════════════════════════════════════════════════════════
 
-            int idx = 0;
-            while (true)
-            {
-                // Search for <tool_call> or <function=xxx> tags
-                int start = text.IndexOf("<tool_call", idx, StringComparison.OrdinalIgnoreCase);
-                int funcStart = text.IndexOf("<function=", idx, StringComparison.OrdinalIgnoreCase);
-                
-                // Take the first occurrence
-                if (funcStart >= 0 && (start < 0 || funcStart < start))
-                    start = funcStart;
-                
-                if (start < 0) break;
-                
-                int end = text.IndexOf("</tool_call>", start, StringComparison.OrdinalIgnoreCase);
-                int funcEnd = text.IndexOf("</function>", start, StringComparison.OrdinalIgnoreCase);
-                if (end < 0 && funcEnd < 0) break;
-                
-                int closeTag = (funcEnd >= 0 && (end < 0 || funcEnd < end)) ? funcEnd + "</function>".Length : end + "</tool_call>".Length;
-                
-                string block = text.Substring(start, closeTag - start);
-                idx = closeTag;
-                
-                // Parse function name
-                string funcName = null;
-                var nameMatch = System.Text.RegularExpressions.Regex.Match(block, @"<function=(.+?)>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                if (nameMatch.Success)
-                    funcName = nameMatch.Groups[1].Value.Trim();
-                
-                if (string.IsNullOrEmpty(funcName)) continue;
-                
-                // Parse arguments
-                var sb = new StringBuilder("{");
-                bool first = true;
-                foreach (System.Text.RegularExpressions.Match paramMatch in System.Text.RegularExpressions.Regex.Matches(block, @"<parameter=([^>]+)>(.*?)</parameter>", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                {
-                    if (!first) sb.Append(", ");
-                    string paramName = paramMatch.Groups[1].Value.Trim();
-                    string paramValue = paramMatch.Groups[2].Value.Trim();
-                    sb.AppendFormat("\"{0}\": \"{1}\"", 
-                        System.Security.SecurityElement.Escape(paramName),
-                        System.Security.SecurityElement.Escape(paramValue));
-                    first = false;
-                }
-                sb.Append("}");
-                
-                string args = sb.ToString();
-                if (args == "{}") args = "";
-                
-                results.Add(new ToolCall
-                {
-                    Id = Guid.NewGuid().ToString("N"),
-                    Name = funcName,
-                    Arguments = args
-                });
-            }
-            
-            return results;
-        }
-
-        /// <summary>
-        /// Build LLM request (with tool definitions)
-        /// </summary>
         private CopilotRequest BuildRequest(CopilotSession session)
         {
-            // Resolve current Provider and model
-            // If controller has a current model set (user switched), use it; otherwise use default
-            string modelRef = !string.IsNullOrEmpty(_controller?.CurrentModelName) 
-                ? _controller.CurrentModelName 
+            string modelRef = !string.IsNullOrEmpty(_controller?.CurrentModelName)
+                ? _controller.CurrentModelName
                 : _config.DefaultModel;
             var (providerConfig, modelName) = _config.ResolveModel(modelRef);
-            
+
             var request = new CopilotRequest
             {
                 Model = modelName,
@@ -415,21 +493,21 @@ namespace E3DCopilot.Core
                 Messages = new List<ChatMessage>()
             };
 
-            // System Prompt（包含当前选中元素上下文 + 多选元素列表）
+            // System Prompt（静态基础 + Skill 索引 + 动态上下文）
+            // 静态基础享受 vLLM 前缀缓存
             string currentElement = _executor.GetCurrentElementName();
             var selectedElements = _executor.GetSelectedElementNames();
             request.Messages.Add(new ChatMessage(MessageRole.System,
-                SystemPrompt.Build(currentElement, null, selectedElements)));
+                SystemPrompt.Build(currentElement, null, selectedElements, _skillManager)));
 
-            // Tool definitions (from ToolExecutor) — only expose 10 core tools to LLM
-            // Internal/deprecated tools (design, piping, geometry) are still
-            // registered for backward compat but hidden from AI to simplify decision-making.
+            // Tool definitions — 暴露给 LLM 的工具
             var toolSchemas = new List<ToolSchema>();
             var exposedToolNames = new HashSet<string>
             {
                 "query", "modify", "check", "calculate", "export", "execute_pml",
                 "get_attributes",
-                "ask_user", "task", "read_file", "search_knowledge"
+                "ask_user", "task", "todo_write", "read_file", "write_file", "search_knowledge",
+                "run_skill", "grep", "glob", "memory"
             };
             foreach (var handler in _executor.GetAllHandlers())
             {
@@ -448,22 +526,84 @@ namespace E3DCopilot.Core
             // History messages (last 20)
             var history = session.GetRecentMessages(20);
 
-            // 安全守卫：截断可能导致 tool 消息变成"孤儿"（前面的 assistant 消息被切掉了）
-            // DeepSeek 会因为 tool_call_id 无匹配而报错
-            // 从头部开始，删除所有前面没有 assistant(tool_calls) 的 tool 消息
+            // 安全守卫：删除头部孤立的 tool 消息
             while (history.Count > 0 && history[0].Role == MessageRole.Tool)
             {
                 history.RemoveAt(0);
             }
 
             request.Messages.AddRange(history);
-
             return request;
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  MaybeCompact — 上下文压缩（对齐 Reasonix maybeCompact）
+        //  轻量实现：消息数 > 15 时，保留最近 6 条 + 摘要前缀
+        // ═══════════════════════════════════════════════════════════
+
         private void MaybeCompact(CopilotSession session)
         {
-            // Phase 3: context compression
+            const int compactThreshold = 15;  // assistant 消息超过此数量触发
+            const int keepTail = 6;           // 保留最近 N 条消息
+
+            var msgs = session.Messages;
+            int assistantCount = msgs.Count(m => m.Role == MessageRole.Assistant);
+            if (assistantCount <= compactThreshold) return;
+
+            // 找到保留分割点：保留最后 keepTail 条消息
+            // 实际保留多一点，确保 tool 消息不孤悬
+            int keepFrom = Math.Max(0, msgs.Count - keepTail);
+            // 确保分割点后的首条消息不是孤立的 tool 消息
+            while (keepFrom < msgs.Count && msgs[keepFrom].Role == MessageRole.Tool)
+                keepFrom++;
+            if (keepFrom >= msgs.Count) return; // 保护：无有效消息可保留
+
+            // 构建摘要（简单方案：提取用户消息和助手消息首句）
+            var oldMsgs = msgs.Take(keepFrom).ToList();
+            var summary = BuildCompactSummary(oldMsgs);
+
+            // 替换：摘要 system 消息 + 尾部原样保留
+            var tail = msgs.Skip(keepFrom).ToList();
+            msgs.Clear();
+            msgs.Add(new ChatMessage(MessageRole.System,
+                $"<compaction-summary>\n{summary}\n</compaction-summary>"));
+            msgs.AddRange(tail);
+
+            _sink.Emit(CopilotEvent.Notice(
+                $"Context compacted: {oldMsgs.Count} messages → summary, {tail.Count} kept verbatim"));
+        }
+
+        private string BuildCompactSummary(List<ChatMessage> messages)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("## Earlier conversation summary");
+
+            string currentGoal = "";
+            foreach (var msg in messages)
+            {
+                if (msg.Role == MessageRole.User && !string.IsNullOrEmpty(msg.Content))
+                {
+                    // 提取用户目标
+                    string trimmed = msg.Content.Length > 200
+                        ? msg.Content.Substring(0, 200) + "..."
+                        : msg.Content;
+                    if (currentGoal != trimmed)
+                    {
+                        sb.AppendLine($"- User asked: {trimmed}");
+                        currentGoal = trimmed;
+                    }
+                }
+                else if (msg.Role == MessageRole.Assistant && !string.IsNullOrEmpty(msg.Content))
+                {
+                    // 提取助手首句作为响应摘要
+                    string firstLine = msg.Content.Split(new[] { '\n' }, 2)[0];
+                    if (firstLine.Length > 150)
+                        firstLine = firstLine.Substring(0, 150) + "...";
+                    sb.AppendLine($"  → {firstLine}");
+                }
+            }
+
+            return sb.ToString();
         }
     }
 }

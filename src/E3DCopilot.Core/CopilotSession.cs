@@ -47,6 +47,14 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
+        /// 追加系统消息（用于 Grace Round nudge / 压缩摘要注入）
+        /// </summary>
+        public void AddSystemMessage(string content)
+        {
+            Messages.Add(new ChatMessage(MessageRole.System, content));
+        }
+
+        /// <summary>
         /// 获取最近 N 条消息用于 LLM 上下文
         /// 返回副本（.ToList()），防止 BuildRequest 中的 RemoveAt 意外修改会话历史
         /// </summary>
