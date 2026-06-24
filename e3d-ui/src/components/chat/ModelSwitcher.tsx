@@ -1,6 +1,7 @@
 /**
  * T5.1 ModelSwitcher 组件
  * 点击弹出下拉面板，按 provider 分组显示模型列表
+ * 修复：使用 fixed 定位 + 动态计算位置，避免被父容器 overflow-hidden 裁剪
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -17,6 +18,7 @@ export function ModelSwitcher() {
   const toggleSettings = useChatStore((s) => s.toggleSettings)
 
   const [open, setOpen] = useState(false)
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
   const panelRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
@@ -28,6 +30,19 @@ export function ModelSwitcher() {
       })
     }
   }, [providers.length, loadProviders])
+
+  // 计算弹窗位置：fixed 定位到按钮上方
+  const updatePanelPosition = useCallback(() => {
+    if (!open || !buttonRef.current) return
+    const rect = buttonRef.current.getBoundingClientRect()
+    setPanelStyle({
+      position: 'fixed',
+      left: rect.left + 'px',
+      bottom: (window.innerHeight - rect.top + 6) + 'px',
+      width: '256px',
+      maxHeight: '320px',
+    })
+  }, [open])
 
   // 点击外部关闭
   useEffect(() => {
@@ -54,9 +69,23 @@ export function ModelSwitcher() {
     return () => document.removeEventListener('keydown', handler)
   }, [open])
 
+  // 打开时计算位置 + 监听滚动/resize
+  useEffect(() => {
+    if (!open) return
+    updatePanelPosition()
+    window.addEventListener('scroll', updatePanelPosition, true)
+    window.addEventListener('resize', updatePanelPosition)
+    return () => {
+      window.removeEventListener('scroll', updatePanelPosition, true)
+      window.removeEventListener('resize', updatePanelPosition)
+    }
+  }, [open, updatePanelPosition])
+
   const handleToggle = () => {
     if (!open) {
       ensureProvidersLoaded()
+      // 打开后下一帧计算位置
+      requestAnimationFrame(() => requestAnimationFrame(updatePanelPosition))
     }
     setOpen((prev) => !prev)
   }
@@ -109,7 +138,8 @@ export function ModelSwitcher() {
       {open && (
         <div
           ref={panelRef}
-          className="absolute left-0 bottom-full mb-1.5 w-64 max-h-80 overflow-y-auto bg-white rounded-xl shadow-xl shadow-slate-200/60 border border-slate-200 z-[var(--z-dropdown)] dark:bg-slate-800 dark:border-slate-600 dark:shadow-slate-900/60"
+          style={panelStyle}
+          className="overflow-y-auto bg-white rounded-xl shadow-xl shadow-slate-200/60 border border-slate-200 z-[9999] dark:bg-slate-800 dark:border-slate-600 dark:shadow-slate-900/60"
         >
           {isLoadingModels ? (
             <div className="flex items-center justify-center py-8">

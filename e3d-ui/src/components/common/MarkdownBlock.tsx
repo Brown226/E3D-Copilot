@@ -195,6 +195,10 @@ interface MarkdownBlockProps {
 }
 
 const MarkdownBlock = memo(({ markdown, showCursor }: MarkdownBlockProps) => {
+  // 流式时（showCursor=true）使用纯文本渲染，避免每个 delta 都重新解析 Markdown
+  // 完成后（showCursor=false）才用 ReactMarkdown 解析完整内容
+  const isStreaming = showCursor === true && !!markdown
+
   return (
     <div className="inline-markdown-block">
       <span
@@ -202,7 +206,13 @@ const MarkdownBlock = memo(({ markdown, showCursor }: MarkdownBlockProps) => {
           'inline-cursor-container': showCursor,
         })}
       >
-        {markdown ? <MemoizedMarkdown content={markdown} /> : markdown}
+        {isStreaming ? (
+          <span className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap break-words">
+            {markdown}
+          </span>
+        ) : markdown ? (
+          <MemoizedMarkdown content={markdown} />
+        ) : markdown}
       </span>
     </div>
   )

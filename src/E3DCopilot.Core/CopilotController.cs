@@ -92,11 +92,11 @@ namespace E3DCopilot.Core
         // ── Tool approval mode: "ask" | "auto" | "yolo" ──
         public string ToolApprovalMode { get; private set; } = "auto";
 
-        // ── Infrastructure ──
-        private readonly IEventSink _sink;
-        private CancellationTokenSource _cts;
-        private volatile bool _isRunning;
-        private int _runningFlag;
+    // ── Infrastructure ──
+    private readonly IEventSink _sink;
+    private CancellationTokenSource _cts;
+    private volatile bool _isRunning;
+    private readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
 
         // ── Approval management ──
         private readonly Dictionary<string, PendingApproval> _pendingApprovals
@@ -185,47 +185,39 @@ namespace E3DCopilot.Core
 
         /// <summary>
         /// Send user input → AgentLoop processing
+        /// 使用 SemaphoreSlim 串行化，彻底消除旧 finally 与新请求的竞态
         /// </summary>
         public async Task SendAsync(string input)
         {
             if (string.IsNullOrWhiteSpace(input)) return;
 
-            // 如果上一个任务还在运行，先取消它（而非丢弃新消息）
+            // 取消上一个任务（仅发 Cancel 信号，不阻塞）
             if (_isRunning)
             {
                 try { _cts?.Cancel(); } catch { }
-                Interlocked.Exchange(ref _runningFlag, 0);
-                _isRunning = false;
-                // 给前端发 TurnDone 解锁上一个任务的 UI 状态
-                try { _sink?.Emit(CopilotEvent.Notice("上一个任务已中断，开始处理新消息")); } catch { }
                 try { _sink?.Emit(CopilotEvent.TurnDone()); } catch { }
             }
 
-            if (Interlocked.Exchange(ref _runningFlag, 1) == 1)
-            {
-                // 极端竞态：取消过程中又来了一个 — 放弃这次
-                System.Diagnostics.Debug.WriteLine("[Controller] _runningFlag race, dropping message");
-                return;
-            }
-            _isRunning = true;
-
-            _cts = new CancellationTokenSource();
+            // 等待上一个任务完全结束（finally 执行完毕后才继续）
+            await _sendLock.WaitAsync();
 
             try
             {
+                _isRunning = true;
+                _cts = new CancellationTokenSource();
+
                 _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this);
                 await _agent.RunAsync(_session, input, _cts.Token);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[Controller] SendAsync exception: {ex}");
-                // 确保发 TurnDone 给前端解锁
                 try { _sink?.Emit(CopilotEvent.TurnDone()); } catch { }
             }
             finally
             {
                 _isRunning = false;
-                Interlocked.Exchange(ref _runningFlag, 0);
+                _sendLock.Release();
             }
         }
 
@@ -236,7 +228,6 @@ namespace E3DCopilot.Core
         {
             _cts?.Cancel();
             _isRunning = false;
-            Interlocked.Exchange(ref _runningFlag, 0);
         }
 
         /// <summary>
@@ -337,8 +328,13 @@ namespace E3DCopilot.Core
         /// </summary>
         public void NewSession()
         {
-            _session = new CopilotSession();
+            // 完成所有待处理的审批（避免旧 AgentLoop 永久挂起）
+            foreach (var kvp in _pendingApprovals)
+            {
+                try { kvp.Value.Complete(false, false); } catch { }
+            }
             _pendingApprovals.Clear();
+            _session = new CopilotSession();
             _sink.Emit(CopilotEvent.Notice("New session created"));
         }
 

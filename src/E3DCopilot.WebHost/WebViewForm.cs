@@ -100,8 +100,7 @@ namespace E3DCopilot.WebHost
                 await _webView.EnsureCoreWebView2Async(env);
 
                 // 配置 WebView2 设置
-                _webView.CoreWebView2.Settings.AreDevToolsEnabled =
-                    Environment.GetEnvironmentVariable("E3D_COPILOT_DEV") != null; // 仅开发模式开启
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
                 _webView.CoreWebView2.Settings.IsScriptEnabled = true;
 

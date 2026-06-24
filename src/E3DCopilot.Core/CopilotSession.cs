@@ -48,13 +48,14 @@ namespace E3DCopilot.Core
 
         /// <summary>
         /// 获取最近 N 条消息用于 LLM 上下文
+        /// 返回副本（.ToList()），防止 BuildRequest 中的 RemoveAt 意外修改会话历史
         /// </summary>
         public List<ChatMessage> GetRecentMessages(int count = 20)
         {
             if (Messages.Count <= count)
-                return Messages;
+                return new List<ChatMessage>(Messages);
 
-            return Messages.GetRange(Messages.Count - count, count);
+            return new List<ChatMessage>(Messages.GetRange(Messages.Count - count, count));
         }
     }
 }

@@ -531,6 +531,12 @@ class Bridge {
 }
 
 // ============================================
+// 流式 delta 批量合并缓冲（60fps 节流）
+// ============================================
+let _deltaBuffer: { tabId: string; text: string }[] = [];
+let _deltaFlushScheduled = false;
+
+// ============================================
 // Bridge 事件 → Store 映射（T2.4）
 // ============================================
 
@@ -600,12 +606,42 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         const targetId = tabId || state.activeTabId;
         const tab = state.tabs.find((t) => t.id === targetId);
         if (tab?.currentAssistantMsgId) {
-          state.appendAssistantDelta(p.delta, tabId);
+          // 批量合并 delta：16ms 内的多个 token 合并为一次 setState（60fps 节流）
+          _deltaBuffer.push({ tabId: targetId, text: p.delta });
+          if (!_deltaFlushScheduled) {
+            _deltaFlushScheduled = true;
+            setTimeout(() => {
+              _deltaFlushScheduled = false;
+              if (_deltaBuffer.length === 0) return;
+              // 按 tabId 分组合并
+              const byTab = new Map<string, string>();
+              for (const d of _deltaBuffer) {
+                byTab.set(d.tabId, (byTab.get(d.tabId) || '') + d.text);
+              }
+              _deltaBuffer = [];
+              const s = store.getState();
+              for (const [tid, combined] of byTab) {
+                s.appendAssistantDelta(combined, tid);
+              }
+            }, 16);
+          }
         }
         break;
       }
 
       case 'llm:stream:end': {
+        // 立即 flush 残留的 delta 缓冲
+        if (_deltaBuffer.length > 0) {
+          const byTab = new Map<string, string>();
+          for (const d of _deltaBuffer) {
+            byTab.set(d.tabId, (byTab.get(d.tabId) || '') + d.text);
+          }
+          _deltaBuffer = [];
+          const flushState = store.getState();
+          for (const [tid, combined] of byTab) {
+            flushState.appendAssistantDelta(combined, tid);
+          }
+        }
         const state = store.getState();
         const targetId = tabId || state.activeTabId;
         const tab = state.tabs.find((t) => t.id === targetId);

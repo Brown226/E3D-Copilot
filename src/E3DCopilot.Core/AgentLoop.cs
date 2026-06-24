@@ -202,7 +202,7 @@ namespace E3DCopilot.Core
                                 });
                             }
 
-                            var approvalResult = await approval.WaitAsync();
+                            var approvalResult = await approval.WaitAsync(ct);
                             if (!approvalResult.Allow)
                             {
                                 string msg = $"User rejected {call.Name}";

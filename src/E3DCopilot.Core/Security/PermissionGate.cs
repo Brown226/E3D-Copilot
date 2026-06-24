@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace E3DCopilot.Core.Security
@@ -38,9 +39,14 @@ namespace E3DCopilot.Core.Security
 
         /// <summary>
         /// 后台线程调用：阻塞等待审批结果
+        /// 支持 CancellationToken，取消时自动释放等待
         /// </summary>
-        public Task<ApprovalResult> WaitAsync()
+        public Task<ApprovalResult> WaitAsync(CancellationToken ct = default)
         {
+            if (ct.CanBeCanceled)
+            {
+                ct.Register(() => _tcs.TrySetCanceled(ct));
+            }
             return _tcs.Task;
         }
     }

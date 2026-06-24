@@ -264,12 +264,18 @@ export function MessageList() {
     setShowScrollBtn(!atBottom)
   }, [])
 
-  // 新消息到达时自动滚动
+  // 流式时追踪最后一条消息的 content 变化（messages.length 不变但 content 增长）
+  const lastMsgContentLen = useMemo(() => {
+    const last = messages[messages.length - 1]
+    return last ? (last.content?.length ?? 0) : 0
+  }, [messages])
+
+  // 新消息到达或 content 增长时自动滚动
   useEffect(() => {
     if (autoScrollRef.current && messages.length > 0) {
-      parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: 'smooth' })
+      parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: 'auto' })
     }
-  }, [messages.length])
+  }, [messages.length, lastMsgContentLen])
 
   useEffect(() => {
     if (messages.length === 0) {
