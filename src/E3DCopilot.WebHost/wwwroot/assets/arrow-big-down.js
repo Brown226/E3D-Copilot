@@ -1,1 +1,0 @@
-import{g as e}from"./index.js";var t=[[`path`,{d:`M15 6v6h4l-7 7-7-7h4V6h6z`,key:`1thax2`}]],n=e(`arrow-big-down`,t);export{t as __iconNode,n as default};

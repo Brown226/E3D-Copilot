@@ -2,6 +2,7 @@
 
 **用途**: PML Form 中列表控件的高级操作（多列、选中、刷新）
 **验证**: ✅ 来自 DrawDisplace / RoomCheck / TrayClassifyAdd 等真实工具
+**preferred_tool**: `execute_pml` — UI 控件操作仅在 PML Form 中使用
 
 ## 列表初始化
 

@@ -2,6 +2,7 @@
 
 **用途**: 检查管道内各管件的管径是否一致
 **验证**: ✅ 来自真实 EquiCheck 工具
+**preferred_tool**: `query` + `get_attributes` — query 查管件，get_attributes 读管径
 
 ## PML 骨架
 

@@ -2,6 +2,7 @@
 
 **用途**: 让用户选择文件、读取 CSV/Excel、导入到 E3D 或导出结果
 **验证**: ✅ 来自 DrawDisplace / EquiCheck / RoomCheck / ExclMerge 等真实工具
+**preferred_tool**: `export` — 简单导出用 export 工具，复杂文件操作才用 execute_pml
 
 ## 文件浏览器对话框
 

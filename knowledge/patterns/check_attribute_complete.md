@@ -2,6 +2,7 @@
 
 **用途**: 检查元素是否缺少必要属性
 **验证**: ✅ 来自 modelCheck 等真实工具
+**preferred_tool**: `check(type=attribute)` + `get_attributes`
 
 ## PML 骨架
 

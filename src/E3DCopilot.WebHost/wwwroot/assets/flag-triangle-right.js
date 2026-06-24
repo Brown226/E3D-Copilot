@@ -1,1 +1,0 @@
-import{g as e}from"./index.js";var t=[[`path`,{d:`M7 22V2l10 5-10 5`,key:`17n18y`}]],n=e(`flag-triangle-right`,t);export{t as __iconNode,n as default};

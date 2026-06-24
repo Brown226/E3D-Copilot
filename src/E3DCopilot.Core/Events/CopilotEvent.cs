@@ -44,6 +44,9 @@ namespace E3DCopilot.Core.Events
         /// <summary>结构化元数据（最小安全方案：供前端渲染，不影响 LLM 的 Text）</summary>
         public object Meta { get; set; }
 
+        /// <summary>事件时间戳（毫秒），用于前端计算耗时</summary>
+        public long Timestamp { get; set; } = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
         public static CopilotEvent TextEvent(string text) =>
             new CopilotEvent { Kind = EventKind.Text, Text = text };
 

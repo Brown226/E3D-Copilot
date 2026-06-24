@@ -29,6 +29,25 @@ namespace E3DCopilot.Core.Messaging
         public const string ProviderFetchModels = "provider:fetch_models";
         public const string ProviderSetKey = "provider:set_key";
 
+        // === Skills 管理 ===
+        public const string SkillsList = "skills:list";
+        public const string SkillsToggle = "skills:toggle";
+        public const string SkillsAddSource = "skills:add_source";
+        public const string SkillsRemoveSource = "skills:remove_source";
+        public const string SkillsRefresh = "skills:refresh";
+
+        // === Memory 管理 ===
+        public const string MemoryList = "memory:list";
+        public const string MemorySave = "memory:save";
+        public const string MemoryDelete = "memory:delete";
+
+        // === Settings 管理 ===
+        public const string SettingsSave = "settings:save";
+
+        // === Sessions 管理 ===
+        public const string SessionsList = "sessions:list";
+        public const string SessionsDelete = "sessions:delete";
+
         // === 后端 → 前端 ===
         public const string Pong = "pong";
         public const string LlmStreamDelta = "llm:stream:delta";
@@ -72,6 +91,9 @@ namespace E3DCopilot.Core.Messaging
         
         [JsonProperty("files")]
         public string[] Files { get; set; }
+
+        [JsonProperty("tabId")]
+        public string TabId { get; set; }
     }
     
     /// <summary>
@@ -127,6 +149,9 @@ namespace E3DCopilot.Core.Messaging
     {
         [JsonProperty("delta")]
         public string Delta { get; set; } = "";
+
+        [JsonProperty("tabId")]
+        public string TabId { get; set; }
     }
     
     /// <summary>
@@ -151,6 +176,9 @@ namespace E3DCopilot.Core.Messaging
         
         [JsonProperty("args")]
         public object Args { get; set; }
+
+        [JsonProperty("tabId")]
+        public string TabId { get; set; }
     }
     
     /// <summary>
@@ -166,6 +194,9 @@ namespace E3DCopilot.Core.Messaging
         
         [JsonProperty("error")]
         public string Error { get; set; }
+
+        [JsonProperty("tabId")]
+        public string TabId { get; set; }
     }
     
     /// <summary>

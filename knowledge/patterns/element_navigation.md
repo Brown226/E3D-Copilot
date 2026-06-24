@@ -2,6 +2,7 @@
 
 **用途**: 切换到指定元素、获取选中状态、元素树遍历
 **验证**: ✅ 来自 DrawDisplace / ExploreTreeOrder / SearchDif 等真实工具
+**preferred_tool**: `query` + `check(type=exists)` — 导航用 query，存在检查用 check
 
 ## 导航到元素
 

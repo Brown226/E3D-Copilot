@@ -2,6 +2,7 @@
 
 **用途**: 按类型+名称条件查询 E3D 元素
 **验证**: ✅ 263 次命中，21/33 个真实工具使用
+**preferred_tool**: `query` — 优先用 query 工具，不要手写 execute_pml 的 coll all
 
 ## PML 骨架
 

@@ -116,6 +116,21 @@ namespace E3DCopilot.Core.Config
         private static readonly object LockObj = new object();
 
         /// <summary>
+        /// 保存配置到文件
+        /// </summary>
+        public void Save(string configPath = null)
+        {
+            string path = configPath
+                ?? Path.Combine(GetDataDir(), "config.json");
+
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            File.WriteAllText(path, JsonConvert.SerializeObject(this, Formatting.Indented));
+        }
+
+        /// <summary>
         /// Load config, create default config.json if not exists
         /// </summary>
         public static CopilotConfig Load(string configPath = null)

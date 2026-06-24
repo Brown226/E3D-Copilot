@@ -2,6 +2,7 @@
 
 **用途**: 根据元素类型进行不同处理逻辑
 **验证**: ✅ 来自 drawConn / CheckName / ReWriteElecWidth 真实工具
+**preferred_tool**: `query` + `get_attributes` — 先查元素，再按类型分派
 
 ## TYPE 判断
 

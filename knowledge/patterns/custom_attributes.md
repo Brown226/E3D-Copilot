@@ -2,6 +2,7 @@
 
 **用途**: 读取和写入 E3D 自定义属性（如 :ROOM_NO、:conntray、:3D_SJRY 等）
 **验证**: ✅ 来自 RoomCheck / SearchDif / conntray 等真实工具
+**preferred_tool**: `get_attributes` / `modify` — 读用 get_attributes，写用 modify
 
 ## 读取自定义属性
 

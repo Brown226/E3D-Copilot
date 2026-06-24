@@ -34,6 +34,10 @@ namespace E3DCopilot.WebHost
         private readonly ConcurrentDictionary<string, string> _pendingRequestIds
             = new ConcurrentDictionary<string, string>();
 
+        // 工具执行耗时追踪
+        private readonly ConcurrentDictionary<string, long> _toolStartTimes
+            = new ConcurrentDictionary<string, long>();
+
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -99,7 +103,7 @@ namespace E3DCopilot.WebHost
                         break;
 
                     case MessageTypes.Ping:
-                        SendToFrontend(MessageTypes.Pong, new { timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }, MessageTypes.Ping);
+                        SendToFrontend(MessageTypes.Pong, new { timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }, TakeRequestId(MessageTypes.Ping));
                         break;
 
                     // === Provider / Model 管理 ===
@@ -131,6 +135,47 @@ namespace E3DCopilot.WebHost
                         HandleProviderSetKey(payload);
                         break;
 
+                    // ── Skills 管理 ──
+                    case MessageTypes.SkillsList:
+                        HandleSkillsList(requestId);
+                        break;
+                    case MessageTypes.SkillsToggle:
+                        HandleSkillsToggle(payload, requestId);
+                        break;
+                    case MessageTypes.SkillsAddSource:
+                        HandleSkillsAddSource(payload, requestId);
+                        break;
+                    case MessageTypes.SkillsRemoveSource:
+                        HandleSkillsRemoveSource(payload, requestId);
+                        break;
+                    case MessageTypes.SkillsRefresh:
+                        HandleSkillsRefresh(requestId);
+                        break;
+
+                    // ── Memory 管理 ──
+                    case MessageTypes.MemoryList:
+                        HandleMemoryList(requestId);
+                        break;
+                    case MessageTypes.MemorySave:
+                        HandleMemorySave(payload, requestId);
+                        break;
+                    case MessageTypes.MemoryDelete:
+                        HandleMemoryDelete(payload, requestId);
+                        break;
+
+                    // ── Settings 管理 ──
+                    case MessageTypes.SettingsSave:
+                        HandleSettingsSave(payload, requestId);
+                        break;
+
+                    // ── Sessions 管理 ──
+                    case MessageTypes.SessionsList:
+                        HandleSessionsList(requestId);
+                        break;
+                    case MessageTypes.SessionsDelete:
+                        HandleSessionsDelete(payload, requestId);
+                        break;
+
                     default:
                         // 未知消息类型 — 静默忽略
                         break;
@@ -149,24 +194,30 @@ namespace E3DCopilot.WebHost
         private void HandleUserMessage(JsonElement? payload)
         {
             string text = null;
-            if (payload.HasValue && payload.Value.TryGetProperty("text", out var textProp))
-                text = textProp.GetString();
+            string tabId = null;
+            if (payload.HasValue)
+            {
+                if (payload.Value.TryGetProperty("text", out var textProp))
+                    text = textProp.GetString();
+                if (payload.Value.TryGetProperty("tabId", out var tabIdProp))
+                    tabId = tabIdProp.GetString();
+            }
 
             if (string.IsNullOrWhiteSpace(text))
             {
-                // 空消息只发 Error，不发 Notice（Notice 会污染消息流）
                 SendToFrontend(MessageTypes.Error, new { message = "[Bridge] 收到空消息，已忽略" });
                 return;
             }
 
-            // 异步发送，不阻塞 UI 线程；不再发诊断 Notice
+            // 设置活跃 tab（多 tab 支持）
+            if (!string.IsNullOrEmpty(tabId))
+                _controller.SetActiveTab(tabId);
+
             _ = Task.Run(async () =>
             {
                 try
                 {
                     await _controller.SendAsync(text);
-                    // LLM 调用完成后会通过 AgentLoop 的 TurnDone 事件通知前端
-                    // 这里不再发"[Bridge] LLM 调用完成"Notice
                 }
                 catch (Exception ex)
                 {
@@ -279,62 +330,65 @@ namespace E3DCopilot.WebHost
         /// </summary>
         public void DispatchEvent(CopilotEvent evt)
         {
+            // 获取当前活跃 tab ID（用于多 tab 路由）
+            var tabId = _controller.ActiveTabId;
+
             switch (evt.Kind)
             {
-                // ── 轮次开始：前端据此插入 api_req_started 消息 ──
                 case EventKind.TurnStarted:
-                    SendToFrontend(MessageTypes.LlmTurnStarted, new { request = evt.Text ?? "" });
+                    SendToFrontend(MessageTypes.LlmTurnStarted, new { request = evt.Text ?? "", tabId });
                     break;
 
-                // ── 流式文本（Text 和 StreamDelta 共用） ──
                 case EventKind.Text:
                 case EventKind.StreamDelta:
-                    SendToFrontend(MessageTypes.LlmStreamDelta, new { delta = evt.Text });
+                    SendToFrontend(MessageTypes.LlmStreamDelta, new { delta = evt.Text, tabId });
                     break;
 
                 case EventKind.StreamEnd:
-                    SendToFrontend(MessageTypes.LlmStreamEnd, new { usage = evt.Data });
+                    SendToFrontend(MessageTypes.LlmStreamEnd, new { usage = evt.Data, tabId });
                     break;
 
-                // ── Reasoning：与 Thinking 区分，都映射到 LlmThinking ──
                 case EventKind.Reasoning:
-                    SendToFrontend(MessageTypes.LlmThinking, new { text = evt.Text });
-                    break;
-
                 case EventKind.Thinking:
-                    SendToFrontend(MessageTypes.LlmThinking, new { text = evt.Text });
+                    SendToFrontend(MessageTypes.LlmThinking, new { text = evt.Text, tabId });
                     break;
 
                 case EventKind.TurnDone:
-                    SendToFrontend(MessageTypes.TurnDone, new { });
+                    SendToFrontend(MessageTypes.TurnDone, new { tabId });
                     break;
 
                 case EventKind.ToolDispatch:
-                    SendToFrontend(MessageTypes.ToolDispatch, new { id = evt.ToolId, name = evt.Text, args = evt.Data, coreToolName = evt.CoreToolName });
+                    _toolStartTimes[evt.ToolId] = evt.Timestamp;
+                    SendToFrontend(MessageTypes.ToolDispatch, new { id = evt.ToolId, name = evt.Text, args = evt.Data, coreToolName = evt.CoreToolName, tabId });
                     break;
 
                 case EventKind.ToolResult:
-                    SendToFrontend(MessageTypes.ToolResult, new { id = evt.ToolId, result = evt.Data?.ToString(), meta = evt.Meta });
+                    long durationMs = 0;
+                    if (_toolStartTimes.TryRemove(evt.ToolId, out var startTime))
+                        durationMs = evt.Timestamp - startTime;
+                    SendToFrontend(MessageTypes.ToolResult, new { id = evt.ToolId, result = evt.Data?.ToString(), meta = evt.Meta, tabId, durationMs });
                     break;
 
                 case EventKind.ToolError:
-                    SendToFrontend(MessageTypes.ToolError, new { id = evt.ToolId, error = evt.Text });
+                    long errDurationMs = 0;
+                    if (_toolStartTimes.TryRemove(evt.ToolId, out var errStartTime))
+                        errDurationMs = evt.Timestamp - errStartTime;
+                    SendToFrontend(MessageTypes.ToolError, new { id = evt.ToolId, error = evt.Text, tabId, durationMs = errDurationMs });
                     break;
 
-                // ── 工具执行进度（长时操作） ──
                 case EventKind.ToolProgress:
-                    SendToFrontend(MessageTypes.ToolProgress, new { id = evt.ToolId, text = evt.Text, progress = evt.Data });
+                    SendToFrontend(MessageTypes.ToolProgress, new { id = evt.ToolId, text = evt.Text, progress = evt.Data, tabId });
                     break;
 
                 case EventKind.ApprovalRequest:
-                    SendToFrontend(MessageTypes.ToolApproval, new { id = evt.ToolId, name = evt.Text, args = evt.Data?.ToString(), description = evt.Text });
+                    SendToFrontend(MessageTypes.ToolApproval, new { id = evt.ToolId, name = evt.Text, args = evt.Data?.ToString(), description = evt.Text, tabId });
                     break;
 
                 case EventKind.AskUser:
                     var question = evt.Data is System.Text.Json.JsonElement jo
                         ? jo.GetProperty("question").GetString()
                         : evt.Text;
-                    SendToFrontend(MessageTypes.AskUser, new { questionId = evt.ToolId, question = question, data = evt.Data });
+                    SendToFrontend(MessageTypes.AskUser, new { questionId = evt.ToolId, question = question, data = evt.Data, tabId });
                     break;
 
                 case EventKind.PlanModeChanged:
@@ -499,6 +553,274 @@ namespace E3DCopilot.WebHost
             catch (Exception ex)
             {
                 SendToFrontend(MessageTypes.Error, new { message = $"设置 Key 失败: {ex.Message}" }, rid);
+            }
+        }
+
+        // ════════════════════════════════════════
+        //  Skills 管理
+        // ════════════════════════════════════════
+
+        private void HandleSkillsList(string requestId)
+        {
+            try
+            {
+                var skills = _controller.Skills.ListSkills();
+                var sources = _controller.Skills.ListSources();
+                SendToFrontend(MessageTypes.SkillsList, new { skills, sources }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"获取技能列表失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        private void HandleSkillsToggle(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                string name = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("name", out var n))
+                    name = n.GetString();
+
+                if (string.IsNullOrEmpty(name))
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少技能名称" }, requestId);
+                    return;
+                }
+
+                var enabled = _controller.Skills.ToggleSkill(name);
+                SendToFrontend(MessageTypes.SkillsToggle, new { name, enabled }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"切换技能失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        private void HandleSkillsAddSource(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                string path = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("path", out var p))
+                    path = p.GetString();
+
+                if (string.IsNullOrEmpty(path))
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少路径" }, requestId);
+                    return;
+                }
+
+                var added = _controller.Skills.AddSource(path);
+                var sources = _controller.Skills.ListSources();
+                SendToFrontend(MessageTypes.SkillsAddSource, new { added, sources }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"添加来源失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        private void HandleSkillsRemoveSource(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                string path = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("path", out var p))
+                    path = p.GetString();
+
+                var removed = _controller.Skills.RemoveSource(path ?? "");
+                var sources = _controller.Skills.ListSources();
+                SendToFrontend(MessageTypes.SkillsRemoveSource, new { removed, sources }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"移除来源失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        private void HandleSkillsRefresh(string requestId)
+        {
+            try
+            {
+                _controller.Skills.Refresh();
+                var skills = _controller.Skills.ListSkills();
+                var sources = _controller.Skills.ListSources();
+                SendToFrontend(MessageTypes.SkillsList, new { skills, sources }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"刷新技能失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        // ════════════════════════════════════════
+        //  Memory 管理
+        // ════════════════════════════════════════
+
+        private void HandleMemoryList(string requestId)
+        {
+            try
+            {
+                var memories = _controller.Memory.List();
+                SendToFrontend(MessageTypes.MemoryList, new { memories }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"获取记忆列表失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        private void HandleMemorySave(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                if (!payload.HasValue)
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少记忆数据" }, requestId);
+                    return;
+                }
+
+                var entry = new E3DCopilot.Core.Memory.MemoryEntry();
+                if (payload.Value.TryGetProperty("title", out var t)) entry.Title = t.GetString();
+                if (payload.Value.TryGetProperty("content", out var c)) entry.Content = c.GetString();
+                if (payload.Value.TryGetProperty("kind", out var k)) entry.Kind = k.GetString();
+                if (payload.Value.TryGetProperty("id", out var id)) entry.Id = id.GetString();
+
+                if (payload.Value.TryGetProperty("tags", out var tagsArr) && tagsArr.ValueKind == JsonValueKind.Array)
+                {
+                    var tags = new List<string>();
+                    foreach (var tag in tagsArr.EnumerateArray())
+                        tags.Add(tag.GetString());
+                    entry.Tags = tags.ToArray();
+                }
+
+                var saved = _controller.Memory.Save(entry);
+                SendToFrontend(MessageTypes.MemorySave, new { memory = saved }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"保存记忆失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        private void HandleMemoryDelete(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                string id = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("id", out var idProp))
+                    id = idProp.GetString();
+
+                if (string.IsNullOrEmpty(id))
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少记忆 ID" }, requestId);
+                    return;
+                }
+
+                var deleted = _controller.Memory.Delete(id);
+                SendToFrontend(MessageTypes.MemoryDelete, new { id, deleted }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"删除记忆失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        // ════════════════════════════════════════
+        //  Settings 管理
+        // ════════════════════════════════════════
+
+        private void HandleSettingsSave(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                if (!payload.HasValue)
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少设置数据" }, requestId);
+                    return;
+                }
+
+                string key = null, value = null;
+                if (payload.Value.TryGetProperty("key", out var k)) key = k.GetString();
+                if (payload.Value.TryGetProperty("value", out var v)) value = v.GetString();
+
+                if (string.IsNullOrEmpty(key))
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少设置键" }, requestId);
+                    return;
+                }
+
+                // 持久化到 Config
+                var config = _controller.Config;
+                switch (key)
+                {
+                    case "language":
+                        config.Ui.Language = value ?? "zh-CN";
+                        break;
+                    case "theme":
+                        config.Ui.Theme = value ?? "light";
+                        break;
+                    case "fontSize":
+                        if (int.TryParse(value, out var fontSize))
+                            config.Ui.FontSize = fontSize;
+                        break;
+                    default:
+                        // 自定义键值对 — 存储到 Safety 配置的扩展字段
+                        break;
+                }
+
+                config.Save();
+                SendToFrontend(MessageTypes.SettingsSave, new { key, value, saved = true }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"保存设置失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        // ════════════════════════════════════════
+        //  Sessions 管理
+        // ════════════════════════════════════════
+
+        private void HandleSessionsList(string requestId)
+        {
+            try
+            {
+                // 返回当前会话信息（简单实现：只返回当前活跃 session）
+                var sessions = new object[]
+                {
+                    new {
+                        id = _controller.Session?.SessionId ?? "default",
+                        title = "当前会话",
+                        messageCount = _controller.Session?.Messages?.Count ?? 0,
+                        createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        lastActivityAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    }
+                };
+                SendToFrontend(MessageTypes.SessionsList, new { sessions }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"获取会话列表失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        private void HandleSessionsDelete(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                string id = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("id", out var idProp))
+                    id = idProp.GetString();
+
+                // 当前实现只支持清空当前会话
+                _controller.NewSession();
+                SendToFrontend(MessageTypes.SessionsDelete, new { id, deleted = true }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"删除会话失败: {ex.Message}" }, requestId);
             }
         }
 

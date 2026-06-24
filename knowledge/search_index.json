@@ -97,6 +97,35 @@
       ],
       "summary": "常见 E3D 错误信息和调试技巧"
     },
+    "domain/tool_selection_guide.md": {
+      "title": "工具选择决策指南",
+      "tags": [
+        "tool",
+        "selection",
+        "decision",
+        "guide",
+        "get_attributes",
+        "query",
+        "modify",
+        "check",
+        "design",
+        "piping",
+        "geometry",
+        "calculate",
+        "export",
+        "execute_pml",
+        "ask_user",
+        "task",
+        "read_file",
+        "search_knowledge",
+        "工具选择",
+        "决策",
+        "选型",
+        "优先级",
+        "什么时候用"
+      ],
+      "summary": "AI 工具选择决策树：什么场景用什么工具，优先级规则，常见错误选型"
+    },
     "api/API-corrections.md": {
       "title": "⚠️ API 修正清单",
       "tags": [
@@ -1530,55 +1559,7 @@
     "Aveva.Core": [
       "api/API-corrections.md"
     ],
-    "all": [
-      "domain/element_types.md",
-      "domain/attribute_map.md",
-      "domain/coordinate_systems.md",
-      "domain/error_codes.md",
-      "api/API-corrections.md",
-      "api/ApplicationFramework/Addin.md",
-      "api/ApplicationFramework/WindowManager.md",
-      "api/ApplicationFramework/Command.md",
-      "api/ApplicationFramework/ServiceManager.md",
-      "api/ApplicationFramework/SettingsManager.md",
-      "api/ApplicationFramework/DockedWindow.md",
-      "api/ApplicationFramework/CommandBarManager.md",
-      "api/Database/DbElement.md",
-      "api/Database/Db.md",
-      "api/Database/DbAttribute.md",
-      "api/Database/DbTransaction.md",
-      "api/Database/DbFilter.md",
-      "api/Shared/CurrentElement.md",
-      "api/Shared/Clipboard.md",
-      "api/Geometry/Position.md",
-      "api/Geometry/Direction.md",
-      "api/Geometry/Orientation.md",
-      "api/Geometry/D2Angle.md",
-      "api/Geometry/D2Arc.md",
-      "api/Graphics/Colour.md",
-      "api/Graphics/DrawList.md",
-      "api/Design/Aid.md",
-      "api/Piping/Piping.md",
-      "api/Utilities/Command.md",
-      "pml/commands.md",
-      "pml/functions.md",
-      "pml/expressions.md",
-      "pml/forms.md",
-      "patterns/query_elements.md",
-      "patterns/modify_attributes.md",
-      "patterns/check_exists.md",
-      "patterns/check_distance.md",
-      "patterns/check_bore_consistency.md",
-      "patterns/check_attribute_complete.md",
-      "patterns/export_report.md",
-      "patterns/rename_elements.md",
-      "patterns/virtual_conn.md",
-      "patterns/net_integration.md",
-      "patterns/geometry_operations.md",
-      "patterns/collection_query.md",
-      "patterns/element_type_dispatch.md",
-      "patterns/error_handling.md"
-    ],
+
     "file browser": [
       "patterns/file_io.md"
     ],
@@ -1919,6 +1900,57 @@
       "pml/objects_ui.md",
       "pml/objects_system.md",
       "pml/objects_grid.md"
+    ],
+    "工具选择": [
+      "domain/tool_selection_guide.md"
+    ],
+    "决策树": [
+      "domain/tool_selection_guide.md"
+    ],
+    "什么时候用": [
+      "domain/tool_selection_guide.md"
+    ],
+    "tool selection": [
+      "domain/tool_selection_guide.md"
+    ],
+    "优先级": [
+      "domain/tool_selection_guide.md"
+    ],
+    "错误选型": [
+      "domain/tool_selection_guide.md"
+    ],
+    "get_attributes": [
+      "domain/tool_selection_guide.md",
+      "api/Database/DbElement.md",
+      "domain/attribute_map.md"
+    ],
+    "execute_pml": [
+      "domain/tool_selection_guide.md",
+      "api/Utilities/Command.md",
+      "pml/commands.md"
+    ],
+    "design": [
+      "domain/tool_selection_guide.md",
+      "api/Design/Aid.md"
+    ],
+    "piping": [
+      "domain/tool_selection_guide.md",
+      "api/Piping/Piping.md"
+    ],
+    "geometry": [
+      "domain/tool_selection_guide.md",
+      "patterns/geometry_operations.md",
+      "api/Geometry/Position.md"
+    ],
+    "calculate": [
+      "domain/tool_selection_guide.md",
+      "patterns/check_distance.md",
+      "patterns/geometry_operations.md"
+    ],
+    "export": [
+      "domain/tool_selection_guide.md",
+      "patterns/export_report.md",
+      "patterns/file_io.md"
     ]
   }
 }

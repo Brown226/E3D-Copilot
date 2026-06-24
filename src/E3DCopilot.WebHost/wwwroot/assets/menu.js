@@ -1,1 +1,0 @@
-import{g as e}from"./index.js";var t=[[`path`,{d:`M4 12h16`,key:`1lakjw`}],[`path`,{d:`M4 18h16`,key:`19g7jn`}],[`path`,{d:`M4 6h16`,key:`1o0s65`}]],n=e(`menu`,t);export{t as __iconNode,n as default};

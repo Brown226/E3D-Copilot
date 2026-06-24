@@ -2,6 +2,7 @@
 
 **用途**: 从 PML 中调用 .NET DLL 启动 WinForms 窗口或 E3D 嵌入式插件
 **验证**: ✅ 来自 ElecInfo / cnpedrawlist / modelCheck / ddzdistancecheck 等真实工具
+**preferred_tool**: `execute_pml` — .NET 集成仅在 PML 脚本中使用
 
 ## 层级1：独立窗口启动（PmlNetCall）
 

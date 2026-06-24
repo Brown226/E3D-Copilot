@@ -54,17 +54,18 @@ copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\Microsoft.Web.WebView2.W
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\WebView2Loader.dll" "%E3D_DIR%\" >nul 2>nul
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\WebView2Loader32.dll" "%E3D_DIR%\" >nul 2>nul
 
-echo [7/7] 复制 React 前端 (wwwroot)...
-if not exist "%E3D_DIR%\wwwroot" mkdir "%E3D_DIR%\wwwroot"
-REM 优先从项目目录复制（最新构建输出）
-if exist "%~dp0src\E3DCopilot.WebHost\wwwroot\assets" (
-    echo 从项目目录复制最新前端...
-    if exist "%E3D_DIR%\wwwroot\assets" rmdir /s /q "%E3D_DIR%\wwwroot\assets"
-    xcopy /y /e /i /q "%~dp0src\E3DCopilot.WebHost\wwwroot\*" "%E3D_DIR%\wwwroot\" >nul
-) else (
-    echo 从构建输出目录复制...
-    xcopy /y /e /i /q "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\wwwroot\*" "%E3D_DIR%\wwwroot\" >nul
+echo [7/7] 构建并复制 React 前端 (e3d-ui)...
+echo 构建新 e3d-ui 前端...
+cd /d "%~dp0e3d-ui"
+call npm run build >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [警告] e3d-ui 构建失败，请检查构建错误
 )
+
+echo 复制前端到 E3D wwwroot 目录...
+if not exist "%E3D_DIR%\wwwroot" mkdir "%E3D_DIR%\wwwroot"
+if exist "%E3D_DIR%\wwwroot\assets" rmdir /s /q "%E3D_DIR%\wwwroot\assets"
+xcopy /y /e /i /q "%~dp0src\E3DCopilot.WebHost\wwwroot\*" "%E3D_DIR%\wwwroot\" >nul
 
 echo.
 echo ========================================

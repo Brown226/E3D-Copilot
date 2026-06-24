@@ -1,1 +1,0 @@
-import{g as e}from"./index.js";var t=[[`circle`,{cx:`12`,cy:`12`,r:`10`,key:`1mglay`}],[`polyline`,{points:`12 6 12 12 9.5 16`,key:`ka3394`}]],n=e(`clock-7`,t);export{t as __iconNode,n as default};

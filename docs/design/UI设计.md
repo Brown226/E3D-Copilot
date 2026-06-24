@@ -1,445 +1,363 @@
 # E小智 — UI 设计
 
-> 版本：v2.0（基于 cline-chinese-main webview-ui 适配）
-> 状态：WinForms UI 旧方案已废弃，全面转向 WebView2 + React SPA
-> 参考：`参考开源项目/cline-chinese-main/webview-ui/`（直接适配对象）
+> 版本：v3.0（实际实现，自研 React SPA）
+> 状态：✅ 已实现，WebView2 + React 18 + Tailwind CSS v4
+> 前端项目：`e3d-ui/`（独立 Vite 项目，非 cline-chinese-main fork）
 
 ---
 
 ## 一、设计决策
 
-### 1.1 为什么采用 cline-chinese-main 的前端
+### 1.1 技术栈（实际实现）
 
-| 维度 | 自建 React UI | 适配 cline-chinese-main |
-|------|-------------|----------------------|
-| 聊天视图 | 需从头实现 | ✅ 完整 ChatView + 虚拟滚动 + 流式打字机 |
-| 消息类型 | 基础文本 | ✅ 20+ 消息类型（text/reasoning/tool/command/diff/browser 等） |
-| 工具卡片 | 基础 | ✅ 可折叠参数/输出/进度/错误 + 自动分组 |
-| 思考过程 | 基础 | ✅ ThinkingRow + 推理过程流式渲染 |
-| 设置面板 | 需自建 | ✅ 完整设置页（API/模型/审批/主题/MCP） |
-| 历史记录 | 需自建 | ✅ 搜索/过滤/右键菜单 |
-| Message 协议 | 需定义 | ✅ ExtensionMessage/WebviewMessage 契约 |
-| 主题 | 手工 CSS | ✅ Tailwind + CSS 变量 + 暗色主题 |
-| 测试 | 无 | ✅ Storybook + 组件测试 |
-| 开发体验 | 一般 | ✅ Vite HMR 热更新 |
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| React | 18.3 | UI 框架 |
+| Vite | 6.0 | 构建工具 + HMR |
+| Tailwind CSS | v4 (`@tailwindcss/vite`) | 原子化 CSS |
+| zustand | 5.0 | 状态管理 |
+| @tanstack/react-virtual | 3.14 | 虚拟滚动 |
+| react-markdown | 9.0 | Markdown 渲染 |
+| rehype-highlight | 7.0 | 代码高亮 |
+| remark-gfm | 4.0 | GFM 表格/任务列表 |
+| remark-math + rehype-katex | 6.0 / 0.17 | LaTeX 公式 |
+| lucide-react | 0.468 | 图标库 |
+| rollup-plugin-visualizer | 7.0 | 构建分析 |
 
-**结论**：直接在 cline-chinese-main 的 webview-ui 基础上修改，比从零开始构建节省 80%+ 的 UI 开发工作量。
+### 1.2 架构特点
 
-### 1.2 VS Code 扩展 → E3D Addin 架构对应
-
-cline-chinese-main 是 VS Code 扩展，其插件端架构与 E3D Addin **高度吻合**：
-
-| cline-chinese-main (VS Code) | E3D 对应 | 适配方式 |
-|---|---|---|
-| `extension.ts` activate/deactivate | `AddinBoot.cs` Start/Stop | 直接对应 |
-| `VscodeWebviewProvider` | `WebViewForm` (UserControl + WebView2) | C# 端适配 |
-| `webview.postMessage()` | `CoreWebView2.PostWebMessageAsString()` | 直接对应 |
-| `webview.onDidReceiveMessage()` | `WebMessageReceived` 事件 | 直接对应 |
-| `Controller` + `Task` | `CopilotController` + `AgentLoop` | 已有，微调 |
-| `ToolExecutor` + `IToolHandler` | `ToolExecutor` + `IToolHandler` | 已有，完全一致 |
-| protobuf gRPC 消息 | JSON `{ type, payload }` | 简化协议 |
-| `webview-ui/` React SPA | 适配后的 E小智 前端 | 前端侧修改 |
-
-### 1.3 适配策略
-
-```
-cline-chinese-main webview-ui/
-├── src/
-│   ├── components/
-│   │   ├── chat/       → 保留 + 修改消息类型映射 + 添加 E3D 工具渲染
-│   │   ├── settings/   → 保留 + 替换模型提供商配置（vLLM）
-│   │   ├── history/    → 保留
-│   │   ├── welcome/    → 保留 + E3D 品牌化
-│   │   ├── mcp/        → 保留（后续扩展 MCP 工具）
-│   │   ├── common/     → 保留（MarkdownBlock, CodeBlock）
-│   │   └── ui/         → 保留（button, dialog, switch...）
-│   ├── hooks/          → 保留 + 适配 E3D 特有逻辑
-│   ├── context/        → 保留 + 适配 E3D 状态
-│   ├── services/       → 保留 + 替换通信层（bridgeClient.ts）
-│   ├── i18n/           → 保留 + 补充 E3D 专业术语
-│   └── lib/            → 保留
-├── package.json        → 保留 + 添加 E3D 专用依赖
-├── vite.config.ts      → 保留 + 适配 E3D 构建输出路径
-└── tailwind.config.mjs → 保留 + E3D 主题色
-```
-
-| 改动类别 | 比例 | 说明 |
-|---------|:---:|------|
-| 完全保留 | ~60% | 核心聊天框架、UI 组件、hooks、构建工具 |
-| 修改适配 | ~30% | 消息协议、通信层、模型配置、主题色、E3D 工具渲染 |
-| 移除 | ~5% | BrowserSessionRow（E3D 无网页浏览需求）|
-| 新增 | ~5% | E3D 特定工具卡片渲染、PML diff 提交、审批流程增强 |
+- **自研 SPA**：非 cline-chinese-main fork，完全独立实现
+- **多 Tab 支持**：每个 Tab 独立消息流、流式状态、审批状态
+- **Bridge 通信层**：JSON over `window.chrome.webview`，支持请求/响应 + 通知双模式
+- **Standalone Mock 模式**：脱离 E3D 宿主时自动激活，模拟完整 AI 回复流程
+- **会话持久化**：localStorage 保存/恢复会话历史
 
 ---
 
 ## 二、核心组件架构
 
-### 2.1 组件树
+### 2.1 组件树（实际实现）
 
 ```
 App (App.tsx)
- └─ Providers (ExtensionStateContextProvider + HeroUIProvider)
-     └─ AppContent
-         ├─ [条件] SettingsView    ← 设置面板（覆盖层）
-         ├─ [条件] HistoryView     ← 历史记录（覆盖层）
-         ├─ [条件] McpView         ← MCP 配置（覆盖层）
-         └─ ChatView               ← 主聊天（始终挂载，通过 isHidden 控制显示）
-             └─ ChatLayout
-                 ├─ MessagesArea   ← 虚拟滚动消息列表
-                 │   └─ Virtuoso
-                 │       └─ MessageRenderer
-                 │           ├─ ToolGroupRenderer  ← 低风险工具折叠
-                 │           ├─ ──  (移除 BrowserSessionRow)
-                 │           └─ ChatRow            ← 单条消息
-                 │               └─ ChatRowContent
-                 │                   ├─ "text"          → MarkdownRow
-                 │                   ├─ "reasoning"     → ThinkingRow
-                 │                   ├─ "command"       → CommandOutputRow (PML 输出)
-                 │                   ├─ "tool"          → ToolCard (E3D 工具)
-                 │                   ├─ "api_req_started" → RequestStartRow
-                 │                   ├─ "completion_result" → CompletionOutputRow
-                 │                   ├─ "diff_error"    → ErrorRow
-                 │                   ├─ "error"         → ErrorRow
-                 │                   └─ "use_mcp_server" → McpResponseDisplay
-                 │
-                 ├─ AutoApproveBar     ← 自动审批栏
-                 ├─ ActionButtons      ← 操作按钮（批准/拒绝/取消）
-                 └─ InputSection       ← 输入区
-                     └─ ChatTextArea   ← 多行输入（@提及 + 发送）
+ └─ ErrorBoundary
+     └─ AppInner
+         ├─ useHeartbeat()          ← 心跳检测
+         ├─ useKeyboardShortcuts()  ← 快捷键
+         ├─ DisconnectScreen         ← 断连遮罩（bridge 断连时显示）
+         ├─ Header                   ← Logo + 标题 + 模型名 + 新建/历史/设置
+         ├─ TabBar                   ← 多 Tab 切换栏
+         ├─ [条件] WelcomeScreen     ← 无消息时显示欢迎页
+         ├─ [条件] MessageList       ← 有消息时显示（虚拟滚动）
+         │   └─ useVirtualizer (react-virtual)
+         │       └─ MessageRow       ← 消息分发器
+         │           ├─ UserBubble          ← 用户消息（右对齐蓝色气泡）
+         │           ├─ AssistantBubble     ← AI 回复（左对齐白色气泡 + Markdown）
+         │           │   ├─ MarkdownBlock   ← react-markdown + 代码高亮 + LaTeX
+         │           │   └─ TurnActions     ← 回复操作栏（复制等）
+         │           ├─ ThinkingBlock       ← 推理过程（可折叠灰色块）
+         │           ├─ ToolCard            ← 工具调用 + 结果（可折叠卡片）
+         │           │   ├─ 状态图标（running/done/error）
+         │           │   ├─ 参数预览（可展开 JSON）
+         │           │   ├─ DiffView        ← modify 工具的 diff 展示
+         │           │   ├─ Shell 输出预览（前 10 行 + "显示全部"）
+         │           │   └─ SubToolRow[]    ← 子代理嵌套调用
+         │           └─ ErrorCard           ← 错误信息
+         ├─ InputBar                 ← 输入区（底部固定）
+         │   ├─ 附件预览区（图片/文件）
+         │   ├─ 粘贴块预览（长文本折叠）
+         │   ├─ ModelSwitcher        ← 模型选择器
+         │   ├─ textarea（自动伸缩 + IME 兼容）
+         │   └─ 发送/取消按钮
+         ├─ HistoryPanel             ← 会话历史面板
+         ├─ SettingsPanel (lazy)     ← 设置面板（React.lazy 懒加载）
+         ├─ ToastContainer           ← Toast 通知
+         └─ CommandPalette           ← 命令面板（Ctrl+K）
 ```
 
-### 2.2 消息类型映射（cline-chinese-main → E小智）
+### 2.2 消息类型映射（实际实现）
 
-cline-chinese-main 有 20+ 消息 `say`/`ask` 类型，E小智 保留大部分，修改小部分：
+| role 值 | 组件 | 说明 |
+|---------|------|------|
+| `user` | UserBubble | 用户消息，右对齐蓝色气泡，支持附件 |
+| `assistant` | AssistantBubble | AI 回复，左对齐白色气泡，Markdown 渲染 + 闪烁光标 |
+| `thinking` | ThinkingBlock | 推理过程，可折叠灰色块 |
+| `tool_call` | ToolCard | 工具调用中（running 状态，旋转图标） |
+| `tool_result` | ToolCard | 工具完成（done/error 状态，可展开参数+结果） |
+| `error` | ErrorCard | 系统错误信息 |
 
-| Cline 消息类型 | say/ask | E3D 适配 | 说明 |
-|---|---|---|---|
-| `"text"` | say | ✅ 保留 | AI 回复文本 |
-| `"reasoning"` | say | ✅ 保留 | 推理过程 |
-| `"command"` | say | ✅ 保留 | PML 命令输出 |
-| `"api_req_started"` | say | ✅ 保留 | LLM 请求开始 |
-| `"completion_result"` | say | ✅ 保留 | 任务完成 |
-| `"tool"` | ask/say | ✅ **修改** | E3D 工具渲染（PML 预览/参数展示） |
-| `"use_mcp_server"` | ask/say | ✅ 保留 | MCP 工具调用 |
-| `"browser_action"` / `"browser_session"` | ask/say | ❌ **移除** | E3D 无网页浏览需求 |
-| `"diffic_error"` | say | ✅ **修改** | PML 代码 diff 错误 |
-| `"user_feedback"` | say | ✅ 保留 | 用户反馈 |
-| `"error"` | say | ✅ 保留 | 错误信息 |
-| `"followup"` | ask | ✅ 保留 | AI 追问 |
-| `"mistake_limit_reached"` | say | ✅ 保留 | 错误限制 |
-| `"plan_mode_respond"` | ask | ✅ 保留 | Plan Mode |
-| `"new_task"` | ask | ✅ 保留 | 新任务确认 |
-| `"hook_status"` | say | ✅ 保留 | 钩子状态 |
-| `"task_progress"` | say | ✅ 保留 | 任务进度 |
-| `"subagent"` | say | ✅ 保留 | 子代理 |
-| `"checkpoint"` / `"checkpoint_diff"` | say | ❌ **移除** | E3D 无 git checkpoint |
+---
 
-### 2.3 需要修改的关键组件
+## 三、关键组件说明
 
-#### ChatRowContent.tsx（消息分发核心）
+### 3.1 MessageList — 虚拟滚动消息列表
 
-修改 `type` 的 switch 分发：
+- 使用 `@tanstack/react-virtual` 实现虚拟滚动（非 Virtuoso）
+- 自动滚动到底部 + 手动上滚时暂停
+- 滚动到底部浮动按钮
+- 子调用关系计算：`task/explore/research/review` 工具的子调用嵌套展示
 
-```typescript
-// 修改前（cline-chinese-main）
-case "browser_action_result":
-  return <BrowserSessionRow />
-case "browser_action_launch":
-  return <BrowserSessionRow />
+### 3.2 InputBar — 智能输入框
 
-// 修改后（E小智）
-// 移除 browser 相关 case
-// 保留其他所有 case
-```
+| 功能 | 说明 |
+|------|------|
+| 自动伸缩 | textarea 高度随内容变化，上限为视口 35% |
+| 输入历史 | ↑/↓ 箭头切换历史输入（最多 100 条，localStorage 持久化） |
+| 长粘贴折叠 | >2000 字符或 >20 行自动折叠为 `[Pasted block 1]` 引用 |
+| IME 兼容 | compositionStart/End 事件，100ms grace period |
+| 拖拽上传 | 支持拖拽图片/文件到输入框 |
+| 附件管理 | 图片预览 + 文件大小 + 删除按钮 |
+| 快捷键 | Enter 发送，Shift+Enter 换行，Escape 清空 |
 
-#### CommandOutputRow.tsx（PML 命令输出适配）
+### 3.3 ToolCard — 统一工具卡片
 
-E3D 的 PML 命令输出格式与 shell 命令不同，需要：
+- 状态三态：running（蓝色旋转）/ done（绿色勾选）/ error（红色叉号）
+- 工具名 + 智能摘要（根据工具名解析参数生成中文摘要）
+- 可折叠展开参数（JSON 格式化）和结果
+- 子代理嵌套：task/explore 等工具的子调用以紫色边框嵌套展示
+- Shell 输出预览：前 10 行 + "显示全部 N 行"
+- DiffView：modify 工具的 oldValue/newValue diff 展示
+- 复制按钮：一键复制结果
 
-```typescript
-// 修改渲染逻辑：PML 输出的行号前缀、错误高亮、结果表格
-function PmlOutputFormatter(output: string) {
-  // PML $p 消息行 → 灰色
-  // PML handle/code 错误 → 红色高亮
-  // PML 表格输出 → 识别表格边界并渲染
-  // 执行状态（ok/fail）→ 图标 + 颜色
-}
-```
-
-#### ToolCard.tsx / ToolGroupRenderer.tsx（E3D 工具渲染增强）
-
-新增 E3D 工具专用的渲染逻辑：
-
-| E3D 工具类型 | 渲染方式 |
-|---|---|
-| `query_elements` | 结果表格 + 元素类型图标 + 数量统计 |
-| `get_attributes` | 属性名=值 键值对展示 |
-| `execute_pml` | PML 代码预览 + 执行状态 + 输出 |
-| `modify` / `set_attribute` | 修改摘要 + 回滚按钮 |
-| `check_*` | 通过/失败状态 + 错误列表 |
-| `calculate_*` | 数值结果 + 单位 + 几何图示（后续） |
-| `export_*` | 文件路径 + 记录数统计 |
-
-#### 新增：PmlDiffViewRow.tsx
-
-专为 PML 脚本预览设计的 diff 组件，展示 PML 代码的插入/删除/修改：
-
-```typescript
-interface PmlDiffViewProps {
-  oldScript: string  // 原始 PML
-  newScript: string  // 修改后的 PML
-  onApprove: () => void
-  onReject: () => void
-}
-```
-
-#### 新增：E3DStatusBar.tsx（可选）
-
-在 StatusBar 基础上添加 E3D 特有信息：
+### 3.4 bridgeService — WebView2 通信桥
 
 ```
-[模型名称: ProjectX] [当前元素: PIPE-001] [CE: /WORLD/.../PIPE-001]
+Bridge 类
+├─ send(type, payload)           → JSON → chrome.webview.postMessage
+├─ sendAndWait(type, payload)    → 带 _requestId 的请求/响应模式
+├─ on(callback)                  → 注册消息监听器
+├─ once(type)                    → 等待特定消息
+├─ isAvailable()                 → 检测 chrome.webview 是否可用
+│
+├─ 类型化方法：
+│   ├─ sendUserMessage / sendApproval / sendAskResponse
+│   ├─ cancel / newSession / ping
+│   ├─ listModels / switchModel
+│   ├─ listProviders / saveProvider / deleteProvider / fetchProviderModels
+│   ├─ listSkills / toggleSkill / addSkillSource / removeSkillSource
+│   ├─ listMemories / saveMemory / deleteMemory
+│   ├─ listSessions / deleteSession
+│   └─ saveSetting
+│
+├─ Store 映射（registerStoreMappings）：
+│   ├─ host:ready        → setBridgeConnected(true)
+│   ├─ config:sync       → setConfig (providers/model)
+│   ├─ llm:turn_started  → startStreaming
+│   ├─ llm:stream:delta  → appendAssistantDelta
+│   ├─ llm:stream:end    → finalizeAssistantMessage
+│   ├─ llm:thinking      → handleThinkingDelta
+│   ├─ tool:dispatch     → appendMessage (tool_call)
+│   ├─ tool:result       → handleToolResult
+│   ├─ tool:approval     → setPendingApproval
+│   ├─ turn:done         → stopStreaming
+│   ├─ error             → appendMessage + Toast
+│   └─ notice            → Toast
+│
+└─ Standalone Mock 模式：
+    ├─ startMock()          → 模拟 host:ready + config:sync
+    └─ mockStreamResponse() → 模拟完整 AI 回复（thinking + stream + tool）
 ```
 
 ---
 
-## 三、通信协议
+## 四、状态管理（zustand）
 
-### 3.1 协议格式
+### 4.1 多 Tab 架构
 
-所有通信使用 JSON over `WebView2.PostWebMessageAsString()`，而非 cline-chinese-main 的 protobuf gRPC。
+```
+ChatStore
+├─ tabs: Tab[]           ← 每个 Tab 独立状态
+│   └─ Tab {
+│       id, title, messages[],
+│       isStreaming, currentAssistantMsgId,
+│       currentThinkingMsgId, pendingApproval
+│   }
+├─ activeTabId: string
+├─ inputValue: string
+├─ currentProvider / currentModel / providers[]
+├─ bridgeConnected: boolean
+├─ showSettings / showHistory / showCommandPalette
+├─ sessions: SessionMeta[]  ← localStorage 持久化
+└─ 操作：createTab / closeTab / setActiveTab / ...
+```
+
+### 4.2 会话持久化
+
+- 会话元数据（标题、预览、消息数、时间戳）保存到 localStorage
+- 最多保存 100 个会话
+- 新建会话时自动保存当前会话
+- HistoryPanel 展示历史会话列表，支持删除
+
+---
+
+## 五、通信协议
+
+### 5.1 协议格式
+
+JSON over `window.chrome.webview.postMessage()` / `addEventListener('message')`
 
 ```typescript
-// 前端 JS Bridge (bridge.ts)
-class Bridge {
-  send(type: string, payload: any): void
-  on(callback: (msg: Message) => void): () => void  // 返回 unsubscribe
+// 前端 → C#
+interface OutgoingMessage {
+  type: string       // 如 "user:message"
+  payload?: unknown
+  _requestId?: string // 请求/响应模式
 }
 
-interface Message {
-  type: string
-  payload: any
-}
-```
-
-```csharp
-// C# Bridge (Bridge.cs)
-public class Bridge
-{
-    public void SendToFrontend(string type, object payload);
-    private void OnWebMessageReceived(string rawJson);
-    // 消息路由：
-    // "user:message"    → Controller.SendAsync(payload.text)
-    // "user:cancel"     → Controller.CancelAsync()
-    // "user:approve"    → Controller.Approve(payload.toolId, payload.allow)
-    // "user:settings"   → Controller.UpdateSettings(payload)
-    // "user:new_session"→ Controller.NewSession()
+// C# → 前端
+interface IncomingMessage {
+  type: string       // 如 "llm:stream:delta"
+  payload?: unknown
+  _requestId?: string // 匹配请求的响应
 }
 ```
 
-### 3.2 消息类型
+### 5.2 消息类型
 
-**C# → 前端（后端驱动 UI 更新）**：
+**C# → 前端（后端推送）**：
 
 | type | payload | 触发时机 |
 |------|---------|---------|
-| `host:ready` | `{ version, model, platform }` | WebView2 加载完成 |
-| `state:update` | `{ messages, settings, isRunning, ... }` | 状态变更（完整推） |
-| `llm:stream:delta` | `{ delta }` | LLM 流式 token |
+| `host:ready` | `{ version, platform, timestamp }` | WebView2 加载完成 |
+| `config:sync` | `{ provider, model, baseUrl, providers[] }` | 配置同步 |
+| `llm:turn_started` | `{}` | LLM 开始回复 |
+| `llm:stream:delta` | `{ delta }` | 流式 token |
 | `llm:stream:end` | `{ usage }` | 流结束 |
 | `llm:thinking` | `{ text }` | 推理过程 |
 | `tool:dispatch` | `{ id, name, args }` | 工具触发展示 |
 | `tool:result` | `{ id, result, error? }` | 工具完成 |
-| `tool:progress` | `{ id, progress }` | 进度更新 |
+| `tool:error` | `{ id, error }` | 工具失败 |
 | `tool:approval` | `{ id, name, args, description }` | 请求审批 |
+| `ask_user` | `{ questionId, question, data? }` | AI 提问用户 |
+| `notice` | `{ text }` | 信息通知 |
 | `error` | `{ message, code? }` | 错误通知 |
+| `pong` | `{ timestamp }` | 心跳响应 |
+| `turn:done` | `{}` | 一轮对话完成 |
+| `models:list:result` | `{ models[], currentProvider, currentModel }` | 模型列表 |
+| `providers:list:result` | `{ providers[], currentProvider, currentModel }` | 供应商列表 |
+| `bridge:disconnected` | — | 连接断开 |
+| `bridge:reconnected` | — | 连接恢复 |
 
 **前端 → C#（用户操作）**：
 
 | type | payload | 说明 |
 |------|---------|------|
-| `user:message` | `{ text, images?, files? }` | 用户发送消息 |
-| `user:cancel` | `{}` | 取消当前处理 |
+| `user:message` | `{ text, images?, files?, tabId? }` | 发送消息 |
+| `user:cancel` | `{}` | 取消生成 |
 | `user:new_session` | `{}` | 新建会话 |
-| `user:approve` | `{ toolId, allow, persist? }` | 审批工具 |
-| `user:settings` | `{ key, value }` | 保存设置 |
-| `user:export` | `{ format }` | 导出会话 |
-| `ping` | `{}` | 心跳 |
-
-### 3.3 与 cline-chinese-main 消息协议的差异
-
-| 维度 | cline-chinese-main | E小智（简化） |
-|------|-------------------|-------------|
-| 序列化 | protobuf | JSON |
-| 消息路由 | service + method (gRPC) | type (直接路由) |
-| 请求关联 | request_id (UUID) | 异步无等待（fire-and-forget）|
-| 流式 | gRPC server-streaming | 多次 send (type 区分) |
-| 状态推送 | 全量 ExtensionState | 全量 + 增量 |
-| 前端 SDK | 自动生成 gRPC 客户端 | 手动 Bridge 封装 |
-
----
-
-## 四、主题设计
-
-基于 cline-chinese-main 的 `theme.css` 适配 E3D 暗色风格：
-
-### 4.1 颜色系统
-
-| Token | E小智 值 | Cline 原值 | 用途 |
-|-------|---------|-----------|------|
-| `--bg-primary` | `#0c0c14` | VSCode 变量 | 主背景 |
-| `--bg-secondary` | `#141420` | VSCode 变量 | 次级背景 |
-| `--bg-tertiary` | `#1c1c2a` | VSCode 变量 | 卡片/气泡 |
-| `--text-primary` | `#e8e8f0` | VSCode 变量 | 主文字 |
-| `--text-secondary` | `#9898b0` | VSCode 变量 | 次要文字 |
-| `--text-muted` | `#686880` | VSCode 变量 | 弱化文字 |
-| `--accent-blue` | `#3b82f6` | VSCode 变量 | 品牌色（E3D 蓝） |
-| `--accent-green` | `#22c55e` | VSCode 变量 | 成功（PML 执行通过）|
-| `--accent-orange` | `#f59e0b` | VSCode 变量 | 警告 |
-| `--accent-red` | `#ef4444` | VSCode 变量 | 错误（PML 执行失败）|
-| `--font-sans` | `Inter, system-ui` | VSCode 变量 | UI 字体 |
-| `--font-mono` | `'JetBrains Mono', Consolas` | VSCode 变量 | 代码字体 |
-
-### 4.2 主题文件结构
-
-```
-web-ui/src/
-├── theme.css          ← 替换 cline-chinese-main 的 VSCode 变量 → E3D 硬编码变量
-├── index.css          ← Tailwind 入口 + 全局样式
-└── main.css           ← 应用特定样式
-```
-
-`theme.css` 将 cline-chinese-main 的 `--vscode-*` CSS 变量引用替换为固定值，因为 E3D 不提供 VSCode 主题变量：
-
-```css
-/* cline-chinese-main（引用 VSCode 变量） */
-:root {
-  --vscode-editor-background: var(--vscode-editor-background);
-  --vscode-editor-foreground: var(--vscode-editor-foreground);
-}
-
-/* E小智（固定值，无需外部主题） */
-:root {
-  --bg-primary: #0c0c14;
-  --bg-secondary: #141420;
-  --bg-tertiary: #1c1c2a;
-  --text-primary: #e8e8f0;
-  --text-secondary: #9898b0;
-  --text-muted: #686880;
-  --accent-blue: #3b82f6;
-  /* ...更多 E3D 主题色 */
-}
-```
+| `user:approve` | `{ id, allow }` | 审批工具 |
+| `user:ask_response` | `{ questionId, answer }` | 回答 AI 提问 |
+| `ping` | `null` | 心跳检测 |
+| `models:list` | `null` | 获取模型列表 |
+| `model:switch` | `{ ref }` | 切换模型 |
+| `providers:list` | `null` | 获取供应商列表 |
+| `provider:save` | `{ ... }` | 保存供应商 |
+| `provider:delete` | `{ name }` | 删除供应商 |
+| `provider:fetch_models` | `{ name }` | 拉取供应商模型 |
+| `provider:set_key` | `{ name, apiKey }` | 设置 API Key |
+| `skills:list` / `skills:toggle` / `skills:add_source` | ... | 技能管理 |
+| `memory:list` / `memory:save` / `memory:delete` | ... | 记忆管理 |
+| `settings:save` | `{ key, value }` | 保存设置 |
+| `sessions:list` / `sessions:delete` | ... | 会话管理 |
 
 ---
 
-## 五、开发与构建
+## 六、主题设计
 
-### 5.1 开发模式
+### 6.1 Tailwind v4 暗色主题
 
-```
-# 终端 1: 启动 React 开发服务器 (HMR)
-cd web-ui && npm run dev
-→ http://localhost:5173
+使用 Tailwind CSS v4 的 `dark:` 变体实现明暗主题切换：
 
-# 终端 2: 在 E3D 中加载 Addin
-#   WebViewForm 检测到 E3D_COPILOT_DEV_URL 环境变量
-#   或 wwwroot/index.html 不存在时，自动指向 localhost:5173
-```
+- 背景渐变：`bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800`
+- 用户气泡：蓝色（`bg-blue-600`）
+- AI 气泡：白色/暗灰（`bg-white dark:bg-slate-800`）
+- 工具卡片：`bg-slate-50 dark:bg-slate-800/50`
+- 状态色：绿色（成功）/ 蓝色（运行中）/ 红色（错误）
 
-### 5.2 构建流程
+### 6.2 构建输出
 
 ```
+# 开发模式
+cd e3d-ui && npm run dev     → http://localhost:5173（HMR 热更新）
+
 # 生产构建
-cd web-ui && npm run build
-→ 输出到 src/E3DCopilot.WebHost/wwwroot/
-
-# 构建 C# 解决方案
-msbuild E3DCopilot.sln
-→ 输出 DLL 到 E3DCopilot.Addin/bin/Debug/net48/
+cd e3d-ui && npm run build   → 输出到 src/E3DCopilot.WebHost/wwwroot/
 ```
 
-### 5.3 目录结构
+Vite 配置 `build.outDir = '../src/E3DCopilot.WebHost/wwwroot'`，构建产物直接被 C# WebHost 服务。
+
+---
+
+## 七、目录结构（实际）
 
 ```
-web-ui/
-├── package.json        ← 依赖: react 18, tailwind 4, @heroui/react,
-│                          lucide-react, react-markdown, react-virtuoso
-├── vite.config.ts      ← build.outDir = ../src/E3DCopilot.WebHost/wwwroot
+e3d-ui/
+├── package.json              ← react 18 + tailwind v4 + zustand + virtual
+├── vite.config.ts            ← 输出到 WebHost/wwwroot
 ├── tsconfig.json
 ├── index.html
-├── tailwind.config.mjs
 │
 └── src/
-    ├── main.tsx        ← ReactDOM.createRoot
-    ├── App.tsx         ← 根组件（视图路由）
-    ├── bridge.ts       ← WebView2 通信桥
-    ├── index.css / theme.css / main.css
+    ├── main.tsx              ← createRoot + bridgeService 导入
+    ├── App.tsx               ← 根组件（ErrorBoundary + TabBar + 条件渲染）
+    ├── index.css             ← Tailwind 入口 + 全局样式
+    │
+    ├── types.ts              ← Message / MessageRole / Attachment 类型定义
+    │
+    ├── store/
+    │   ├── useChatStore.ts   ← Zustand 多 Tab 状态管理（532 行）
+    │   └── useToastStore.ts  ← Toast 通知状态
+    │
+    ├── services/
+    │   ├── bridgeService.ts  ← WebView2 通信桥（693 行）
+    │   └── messageContracts.ts ← 消息类型契约定义
+    │
+    ├── hooks/
+    │   ├── useHeartbeat.ts   ← 心跳检测（定时 ping）
+    │   └── useKeyboardShortcuts.ts ← 快捷键（Ctrl+K 命令面板等）
+    │
     ├── components/
-    │   ├── chat/       ← 核心聊天组件（源自 cline-chinese-main）
-    │   ├── settings/   ← 设置面板
-    │   ├── history/    ← 历史记录
-    │   ├── welcome/    ← 欢迎页
-    │   ├── mcp/        ← MCP 配置
-    │   ├── common/     ← MarkdownBlock, CodeBlock...
-    │   └── ui/         ← 基础 UI 组件
-    ├── hooks/          ← 自定义 hooks
-    ├── context/        ← React Context
-    ├── services/       ← bridgeClient.ts
-    ├── i18n/           ← 国际化配置
-    └── locales/        ← zh-CN / en 语言包
+    │   ├── chat/
+    │   │   ├── MessageList.tsx     ← 虚拟滚动 + 子调用关系计算
+    │   │   ├── MessageRow.tsx      ← 消息类型分发器
+    │   │   ├── UserBubble.tsx      ← 用户消息气泡
+    │   │   ├── AssistantBubble.tsx ← AI 回复（Markdown + 复制 + 操作栏）
+    │   │   ├── ThinkingBlock.tsx   ← 推理过程
+    │   │   ├── ToolCard.tsx        ← 工具卡片（状态/参数/结果/子调用）
+    │   │   ├── DiffView.tsx        ← 修改 diff 展示
+    │   │   ├── ErrorCard.tsx       ← 错误信息
+    │   │   ├── WelcomeScreen.tsx   ← 欢迎页
+    │   │   ├── InputBar.tsx        ← 输入框（伸缩/历史/粘贴/拖拽）
+    │   │   ├── ModelSwitcher.tsx   ← 模型切换下拉
+    │   │   └── TurnActions.tsx     ← 回复操作栏
+    │   ├── common/
+    │   │   ├── MarkdownBlock.tsx   ← react-markdown + highlight + katex
+    │   │   └── Toast.tsx           ← Toast 通知容器
+    │   ├── settings/
+    │   │   └── SettingsPanel.tsx   ← 设置面板（lazy 加载）
+    │   ├── Header.tsx              ← 顶栏（Logo + 模型名 + 按钮）
+    │   ├── TabBar.tsx              ← 多 Tab 切换栏
+    │   ├── HistoryPanel.tsx        ← 会话历史
+    │   ├── CommandPalette.tsx      ← 命令面板（Ctrl+K）
+    │   ├── DisconnectScreen.tsx    ← 断连遮罩
+    │   └── ErrorBoundary.tsx       ← 错误边界
+    │
+    └── locales/              ← zh-CN / en 语言包（如已实现）
 ```
 
 ---
 
-## 六、适配工作清单
+## 八、与旧文档差异说明
 
-### Phase 1 — 基础适配（核心功能可用）
-
-- [ ] fork cline-chinese-main webview-ui 到 web-ui/
-- [ ] 替换 VSCode postMessage API 为 `window.chrome.webview.postMessage`
-- [ ] 实现 bridge.ts（WebView2 通信桥）
-- [ ] 实现 bridgeClient.ts（上层 API 封装）
-- [ ] 替换 `theme.css` 的 VSCode 变量为 E3D 固定值
-- [ ] 移除 BrowserSessionRow 及相关 browser 组件
-- [ ] 修改 vite.config.ts 输出路径
-- [ ] 修改 package.json 依赖（去掉 VSCode 特有依赖）
-- [ ] 替换设置页的模型提供商配置为 vLLM
-- [ ] 实现 `state:update` / `llm:stream:*` / `tool:*` 消息的处理
-- [ ] 验证：输入消息 → AI 流式回复 → 正常显示
-
-### Phase 2 — E3D 工具渲染
-
-- [ ] CommandOutputRow 适配 PML 输出格式
-- [ ] ToolCard 扩展 E3D 工具渲染（表格/属性/PML 代码）
-- [ ] 添加 PML diff 渲染组件
-- [ ] 添加 E3D 状态栏（当前元素/模型名）
-- [ ] 审批对话框适配 E3D 工具参数显示
-- [ ] 添加 E3D 专业词汇国际化
-
-### Phase 3 — 完善
-
-- [ ] E3D 品牌化：Logo、标题、欢迎页
-- [ ] 主题微调：E3D 设计规范颜色
-- [ ] 性能优化：大量 PML 输出的虚拟滚动
-- [ ] 错误边界适配 E3D 场景
-- [ ] 快捷键适配（E3D 快捷键不冲突）
-
----
-
-## 七、与旧方案（WinForms）的对比
-
-| 维度 | WinForms（已废弃） | WebView2 + React（现方案） |
-|------|-------------------|--------------------------|
-| 开发语言 | C# WinForms | TypeScript + React |
-| UI 能力 | GDI+ 基础绘图 | CSS 全能力 + GPU 渲染 |
-| 动画 | Timer 插值 | CSS transitions + framer-motion |
-| 虚拟滚动 | 自建 VirtualScrollPanel | react-virtuoso 成熟库 |
-| Markdown | 自建解析器 | react-markdown 生态 |
-| 代码高亮 | 自建 SyntaxHighlighter | rehype-highlight + shiki |
-| 开发体验 | 编译才能看变化 | Vite HMR 即时生效 |
-| 组件库 | 自建 29 个控件 | cline-chinese-main 20+ 成熟组件 |
-| 主题 | 手写暗色调 | Tailwind 设计系统 |
-| 维护成本 | 高 | 低（跟随上游更新） |
-
-**结论**：WebView2 + React 方案在 UI 能力、开发效率、维护成本上全面优于 WinForms 方案。
+| 旧文档描述 | 实际实现 |
+|-----------|---------|
+| 基于 cline-chinese-main webview-ui 适配 | 自研 React SPA，独立实现 |
+| 使用 VS Code `postMessage` API | `window.chrome.webview` 直接通信 |
+| `ChatRowContent` + Virtuoso | `MessageRow` + `@tanstack/react-virtual` |
+| cline 的 20+ 消息类型 | 6 种 role（user/assistant/thinking/tool_call/tool_result/error） |
+| `ChatTextArea` 输入组件 | `InputBar` 自研（含历史/粘贴折叠/IME/拖拽） |
+| `AutoApproveBar` 审批栏 | `PendingApproval` 状态 + 审批响应 |
+| `ExtensionStateContextProvider` | `useChatStore` (zustand) |
+| `web-ui/` 目录 | `e3d-ui/` 目录 |
+| HeroUI 组件库 | Tailwind CSS 原子化样式（无 UI 组件库依赖） |
+| 工作清单（Phase 1-3 待完成） | ✅ 已实现核心功能 |

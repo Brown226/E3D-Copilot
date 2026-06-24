@@ -1,11 +1,14 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Config;
 using E3DCopilot.Core.Events;
+using E3DCopilot.Core.Memory;
 using E3DCopilot.Core.Providers;
 using E3DCopilot.Core.Security;
+using E3DCopilot.Core.Skills;
 using E3DCopilot.Core.Tools;
 
 namespace E3DCopilot.Core
@@ -21,12 +24,48 @@ namespace E3DCopilot.Core
         private AgentLoop _agent;
         private CopilotSession _session;
 
+        // ── 多 Tab 会话管理 ──
+        private readonly ConcurrentDictionary<string, CopilotSession> _tabSessions
+            = new ConcurrentDictionary<string, CopilotSession>();
+        private string _activeTabId = "";
+
+        /// <summary>
+        /// 获取或创建指定 tab 的 session
+        /// </summary>
+        public CopilotSession GetOrCreateTabSession(string tabId)
+        {
+            if (string.IsNullOrEmpty(tabId))
+                return _session;
+            return _tabSessions.GetOrAdd(tabId, _ => new CopilotSession());
+        }
+
+        /// <summary>
+        /// 设置当前活跃 tab
+        /// </summary>
+        public void SetActiveTab(string tabId)
+        {
+            if (string.IsNullOrEmpty(tabId)) return;
+            _activeTabId = tabId;
+            // 切换 _session 到对应 tab 的 session
+            _session = GetOrCreateTabSession(tabId);
+        }
+
+        /// <summary>
+        /// 移除指定 tab 的 session
+        /// </summary>
+        public void RemoveTabSession(string tabId)
+        {
+            _tabSessions.TryRemove(tabId, out _);
+        }
+
         // ── Aggregated services ──
         private ICopilotProvider _provider;
         public ICopilotProvider Provider => _provider;
         public ToolExecutor Executor { get; }
         public CommandPermissionController Permission { get; }
         public CopilotConfig Config { get; }
+        public SkillManager Skills { get; }
+        public MemoryManager Memory { get; }
         
         // ── Current model ──
         public string CurrentModelName { get; private set; }
@@ -49,6 +88,7 @@ namespace E3DCopilot.Core
         public bool IsRunning => _isRunning;
         public CopilotSession Session => _session;
         public bool IsPlanMode => _session?.IsPlanMode ?? false;
+        public string ActiveTabId => _activeTabId;
 
         /// <summary>
         /// Full constructor
@@ -64,6 +104,15 @@ namespace E3DCopilot.Core
             Executor = executor ?? throw new ArgumentNullException(nameof(executor));
             Permission = permission ?? CommandPermissionController.CreateDefault();
             Config = config ?? CopilotConfig.Load();
+
+            // 初始化技能管理器
+            var skillStatePath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "E3DCopilot", "skills-state.json");
+            Skills = new SkillManager(skillStatePath);
+
+            // 初始化记忆管理器
+            Memory = new MemoryManager();
 
             _session = new CopilotSession();
 

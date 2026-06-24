@@ -413,7 +413,17 @@ namespace E3DCopilot.Core
             request.Tools = toolSchemas;
 
             // History messages (last 20)
-            request.Messages.AddRange(session.GetRecentMessages(20));
+            var history = session.GetRecentMessages(20);
+
+            // 安全守卫：截断可能导致 tool 消息变成"孤儿"（前面的 assistant 消息被切掉了）
+            // DeepSeek 会因为 tool_call_id 无匹配而报错
+            // 从头部开始，删除所有前面没有 assistant(tool_calls) 的 tool 消息
+            while (history.Count > 0 && history[0].Role == MessageRole.Tool)
+            {
+                history.RemoveAt(0);
+            }
+
+            request.Messages.AddRange(history);
 
             return request;
         }

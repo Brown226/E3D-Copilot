@@ -2,6 +2,7 @@
 
 **用途**: 检查指定名称的元素是否存在
 **验证**: ✅ 24 次命中，7/33 个真实工具使用
+**preferred_tool**: `check(type=exists)` — 优先用 check 工具
 
 ## PML 骨架
 

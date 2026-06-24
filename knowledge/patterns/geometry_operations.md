@@ -2,6 +2,7 @@
 
 **用途**: 读写元素位置、端口点、坐标偏移和线段绘制
 **验证**: ✅ 来自 ddzcablewaysupporteditor / drawConn / RotateElecSuppo 等真实工具
+**preferred_tool**: `geometry` + `calculate` — 读坐标用 geometry，数学计算用 calculate
 
 ## 位置读取
 

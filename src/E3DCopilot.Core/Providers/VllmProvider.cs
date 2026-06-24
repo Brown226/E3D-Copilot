@@ -343,10 +343,10 @@ namespace E3DCopilot.Core.Providers
                 msg["content"] = null;
             }
 
-            // Tool result message: inject tool_call_id (associate result to call)
-            if (m.Role == MessageRole.Tool && !string.IsNullOrEmpty(m.ToolCallId))
+            // Tool result message: always include tool_call_id (DeepSeek requires it for all tool messages)
+            if (m.Role == MessageRole.Tool)
             {
-                msg["tool_call_id"] = m.ToolCallId;
+                msg["tool_call_id"] = m.ToolCallId ?? "";
             }
 
             return msg;

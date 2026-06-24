@@ -2,6 +2,7 @@
 
 **用途**: 批量修改 E3D 元素属性值
 **验证**: ✅ 198 次命中，22/33 个真实工具使用
+**preferred_tool**: `modify` — 优先用 modify 工具，不要手写 execute_pml 赋值
 
 ## PML 骨架
 

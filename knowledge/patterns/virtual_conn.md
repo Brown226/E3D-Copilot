@@ -2,6 +2,7 @@
 
 **用途**: 检查虚拟管嘴连接状态
 **验证**: ✅ 来自 VirtualConn 真实工具（完整 Form + Function 实现）
+**preferred_tool**: `execute_pml` — 虚拟连接是领域特定操作，需 PML 脚本实现
 
 ## PML 骨架
 

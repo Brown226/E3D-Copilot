@@ -2,6 +2,7 @@
 
 **用途**: 计算两个元素之间的距离
 **验证**: ✅ 来自 distancecheck 真实工具
+**preferred_tool**: `geometry` + `calculate` — 先 geometry 取坐标，再 calculate 算距离
 
 ## PML 骨架
 

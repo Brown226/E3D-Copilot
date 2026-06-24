@@ -2,6 +2,7 @@
 
 **用途**: 将查询结果导出为报表或文件
 **验证**: ✅ 使用 PML REPORT 对象
+**preferred_tool**: `export` — 优先用 export 工具，复杂报表才用 execute_pml + REPORT
 
 ## PML REPORT 原生报表
 

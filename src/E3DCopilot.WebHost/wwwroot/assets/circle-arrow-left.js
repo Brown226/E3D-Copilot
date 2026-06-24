@@ -1,1 +1,0 @@
-import{g as e}from"./index.js";var t=[[`circle`,{cx:`12`,cy:`12`,r:`10`,key:`1mglay`}],[`path`,{d:`M16 12H8`,key:`1fr5h0`}],[`path`,{d:`m12 8-4 4 4 4`,key:`15vm53`}]],n=e(`circle-arrow-left`,t);export{t as __iconNode,n as default};

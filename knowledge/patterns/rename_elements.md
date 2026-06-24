@@ -2,6 +2,7 @@
 
 **用途**: 批量修改元素名称
 **验证**: ✅ 来自 mrename.pmlfrm 真实工具
+**preferred_tool**: `modify` — 用 modify 工具修改 NAME 属性
 
 ## PML 骨架
 

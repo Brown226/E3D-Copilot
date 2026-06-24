@@ -2,6 +2,7 @@
 
 **用途**: 使用 Collection 对象（而非 coll all 语法）查询元素
 **验证**: ✅ 来自 CheckName / ReWriteElecWidth 真实工具
+**preferred_tool**: `query` — 优先用 query 工具
 
 ## 对象式查询（替代 coll all）
 
