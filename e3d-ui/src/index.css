@@ -85,6 +85,12 @@ body {
   margin: 0;
   min-width: 320px;
   height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* Focus ring 全局样式 */
