@@ -286,12 +286,12 @@ export function InputBar() {
         dragOver
           ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-900/20'
           : 'border-slate-200 bg-white/80 dark:bg-slate-900/80 dark:border-slate-700'
-      } backdrop-blur-sm px-4 py-3 sm:px-6`}
+      } backdrop-blur-sm px-2.5 py-2 sm:px-3`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="max-w-4xl mx-auto space-y-2">
+      <div className="space-y-1.5">
         {/* ═══════ 区域 1：附件/粘贴块 ═══════ */}
         {(attachments.length > 0 || pastedBlocks.length > 0) && (
           <div className="flex flex-wrap gap-2">
@@ -356,7 +356,7 @@ export function InputBar() {
               }
               disabled={!bridgeConnected}
               rows={1}
-              className="flex-1 px-4 py-3 bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-base resize-none leading-6 disabled:opacity-50 min-h-[48px]"
+              className="flex-1 px-3 py-2 bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-sm resize-none leading-5 disabled:opacity-50 min-h-[40px]"
               style={{ maxHeight: `${composerMaxHeight()}px` }}
             />
 
@@ -382,7 +382,7 @@ export function InputBar() {
           </div>
 
           {/* ═══════ 区域 3：底部工具栏 ═══════ */}
-          <div className="flex items-center gap-1 px-2 py-1.5 border-t border-slate-100 dark:border-slate-700/50">
+          <div className="flex items-center gap-0.5 px-1.5 py-1 border-t border-slate-100 dark:border-slate-700/50">
             {/* 附件按钮 */}
             <button
               onClick={handleFileSelect}
@@ -414,7 +414,7 @@ export function InputBar() {
               title={isPlanMode ? '规划模式：AI 只分析不执行' : '执行模式：AI 可直接操作'}
             >
               {isPlanMode ? <List className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
-              <span>{isPlanMode ? '规划' : '执行'}</span>
+              <span className="hidden min-[400px]:inline">{isPlanMode ? '规划' : '执行'}</span>
             </button>
 
             {/* 分隔线 */}

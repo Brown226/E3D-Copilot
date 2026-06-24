@@ -71,15 +71,15 @@ export default function ModelsSection() {
   return (
     <div className="space-y-4">
       {/* 子 Tab 切换 */}
-      <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+      <div className="flex gap-1 p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
         {([
-          { id: 'usage' as SubTab, label: '模型使用', icon: <Zap className="w-3.5 h-3.5" /> },
-          { id: 'access' as SubTab, label: '接入管理', icon: <Key className="w-3.5 h-3.5" /> },
+          { id: 'usage' as SubTab, label: '模型使用', icon: <Zap className="w-3 h-3" /> },
+          { id: 'access' as SubTab, label: '接入管理', icon: <Key className="w-3 h-3" /> },
         ]).map((tab) => (
           <button
             key={tab.id}
             onClick={() => setSubtab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
               subtab === tab.id
                 ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
@@ -133,30 +133,18 @@ function UsageTab() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* 当前模型状态 */}
-      <div className="p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-            <Box className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-              当前模型
-            </p>
-            <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
-              {currentModel || '未选择'}
-            </p>
-          </div>
-          {activeProvider && (
-            <div className="text-right">
-              <p className="text-xs text-slate-500 dark:text-slate-400">Provider</p>
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{activeProvider.name}</p>
-            </div>
-          )}
+    <div className="space-y-4">
+      {/* 当前模型状态（紧凑） */}
+      <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+        <Box className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-slate-500 dark:text-slate-400">当前模型</p>
+          <p className="text-sm font-semibold text-blue-700 dark:text-blue-300 truncate">
+            {currentModel || '未选择'}
+            {activeProvider && <span className="text-xs font-normal text-slate-400 ml-1.5">({activeProvider.name})</span>}
+          </p>
         </div>
       </div>
-
       {/* 默认模型选择器 */}
       <div>
         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
@@ -165,7 +153,7 @@ function UsageTab() {
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
           选择 AI 对话时使用的模型。不同模型在能力和速度上有所差异。
         </p>
-        <div className="space-y-1.5 max-h-[240px] overflow-y-auto">
+        <div className="space-y-1 max-h-[200px] overflow-y-auto">
           {allModels.length === 0 ? (
             <div className="text-center py-6 text-sm text-slate-400">
               暂无可用模型，请先在"接入管理"中配置 Provider
@@ -189,18 +177,16 @@ function UsageTab() {
                     <button
                       key={m.ref}
                       onClick={() => handleSwitchModel(m.ref)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all ${
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-left transition-all ${
                         isActive
                           ? 'bg-blue-100 dark:bg-blue-900/40 border border-blue-300 dark:border-blue-700'
                           : 'hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm ${isActive ? 'font-medium text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'}`}>
-                          {m.model}
-                        </span>
-                      </div>
-                      {isActive && <Check className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+                      <span className={`text-xs ${isActive ? 'font-medium text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                        {m.model}
+                      </span>
+                      {isActive && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
                     </button>
                   )
                 })}

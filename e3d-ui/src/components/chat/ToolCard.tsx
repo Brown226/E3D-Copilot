@@ -84,14 +84,27 @@ function subcallSummary(subcalls: Message[]): string {
   return parts.join(' · ') || `${subcalls.length} 个子调用`
 }
 
+/** 默认展开的工具（修改类 + 出错 + 运行中） */
+const AUTO_EXPAND_TOOLS = new Set(['write_file', 'edit_file', 'multi_edit', 'modify', 'move_file', 'delete_range', 'notebook_edit'])
+
+function shouldAutoExpand(toolName: string | undefined, isError: boolean, isRunning: boolean): boolean {
+  if (isError) return true
+  if (isRunning) return true
+  return AUTO_EXPAND_TOOLS.has(toolName || '')
+}
+
 export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [userOpen, setUserOpen] = useState<boolean | null>(null)
   const [showAll, setShowAll] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const isRunning = !msg.finalized
   const isError = !!msg.toolError
   const hasSubcalls = subcalls.length > 0
+
+  // 智能默认：用户操作后尊重用户意图
+  const expanded = userOpen ?? shouldAutoExpand(msg.toolName, isError, isRunning)
+  const toggleExpand = () => setUserOpen((prev) => prev === null ? !shouldAutoExpand(msg.toolName, isError, isRunning) : !prev)
 
   // 解析参数和结果
   const argsStr = useMemo(() => {
@@ -166,8 +179,8 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
       <div className="max-w-[85%] w-full">
         {/* 卡片头部 */}
         <button
-          onClick={() => hasBody && setExpanded(!expanded)}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-all group ${
+          onClick={() => hasBody && toggleExpand()}
+          className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-left transition-all group ${
             expanded
               ? 'bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700'
               : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
@@ -176,16 +189,16 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
           {/* 状态图标 */}
           <div className="shrink-0">
             {isRunning ? (
-              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
             ) : isError ? (
-              <XCircle className="w-4 h-4 text-red-500" />
+              <XCircle className="w-3.5 h-3.5 text-red-500" />
             ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
             )}
           </div>
 
           {/* 工具名 */}
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300 font-mono shrink-0">
+          <span className="text-xs font-medium text-slate-700 dark:text-slate-300 font-mono shrink-0">
             {msg.toolName || 'tool_call'}
           </span>
 
@@ -209,19 +222,28 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
             </span>
           )}
 
-          {/* 展开箭头 */}
-          {(hasBody || hasSubcalls) && (
-            <ChevronRight
-              className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${
-                expanded ? 'rotate-90' : ''
-              }`}
-            />
-          )}
+          {/* 展开箭头 + 状态圆点 */}
+          <div className="flex items-center gap-1 shrink-0">
+            {!expanded && (
+              <span className={`w-2 h-2 rounded-full ${
+                isRunning ? 'bg-blue-500 animate-pulse' :
+                isError ? 'bg-red-500' :
+                'bg-emerald-500'
+              }`} />
+            )}
+            {(hasBody || hasSubcalls) && (
+              <ChevronRight
+                className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                  expanded ? 'rotate-90' : ''
+                }`}
+              />
+            )}
+          </div>
         </button>
 
-        {/* 展开内容 */}
+        {/* 展开内容（带平滑动画） */}
         {expanded && (
-          <div className="mt-1 ml-6 space-y-2">
+          <div className="mt-1 ml-4 space-y-1.5 tool-card-body">
             {/* 参数 */}
             {argsStr && (
               <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">

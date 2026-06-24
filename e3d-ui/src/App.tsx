@@ -26,7 +26,7 @@ function AppInner() {
   const showWelcome = messages.length === 0 && !isStreaming
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800 flex flex-col">
+    <div className="h-full bg-slate-50 dark:bg-slate-900 flex flex-col overflow-hidden">
       <DisconnectScreen />
       <Header />
       <TabBar />
@@ -39,7 +39,7 @@ function AppInner() {
       )}
       <InputBar />
       <HistoryPanel />
-      <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm"><span className="text-slate-500 dark:text-slate-400 text-sm">加载中...</span></div>}>
+      <Suspense fallback={<div className="absolute inset-0 z-[var(--z-modal)] flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm"><span className="text-slate-500 dark:text-slate-400 text-sm">加载中...</span></div>}>
         <SettingsPanel />
       </Suspense>
       <ToastContainer />

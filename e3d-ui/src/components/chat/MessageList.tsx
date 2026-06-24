@@ -1,14 +1,14 @@
 /**
  * MessageList 组件
- * 可滚动消息容器，虚拟滚动 + 自动滚动 + 滚动到底部按钮
- * 增加：计算子调用关系，传递给 ToolCard
+ * 可滚动消息容器 + ToolGroup 分组 + 自动滚动
  */
 
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { useVirtualizer } from '@tanstack/react-virtual'
 import { useChatStore } from '@/store/useChatStore'
 import { MessageRow } from './MessageRow'
+import { ToolGroup, groupConsecutiveTools } from './ToolGroup'
+import type { Message } from '@/types'
 
 export function MessageList() {
   const messages = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.messages ?? [])
@@ -18,7 +18,7 @@ export function MessageList() {
 
   // 计算子调用关系
   const subcallMap = useMemo(() => {
-    const map = new Map<string, typeof messages>()
+    const map = new Map<string, Message[]>()
     let currentParent: string | null = null
     const SUBAGENT_TOOLS = new Set(['task', 'explore', 'research', 'review'])
 
@@ -39,22 +39,35 @@ export function MessageList() {
     return map
   }, [messages])
 
-  // 过滤掉已被归为子调用的消息
-  const topLevelMessages = useMemo(() => {
+  // 过滤掉已被归为子调用的消息 + thinking 消息（内联到 assistant 中）
+  const { topLevelMessages, thinkingMap } = useMemo(() => {
     const childIds = new Set<string>()
     for (const children of subcallMap.values()) {
       for (const child of children) childIds.add(child.id)
     }
-    return messages.filter((msg) => !childIds.has(msg.id))
+
+    // 建立 thinking → assistant 的映射
+    const tMap = new Map<string, Message>()
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i]
+      if (m.role === 'thinking' && i + 1 < messages.length) {
+        const next = messages[i + 1]
+        if (next.role === 'assistant') {
+          tMap.set(next.id, m)
+        }
+      }
+    }
+
+    // 过滤掉 thinking 和 child 消息
+    const filtered = messages.filter(
+      (msg) => !childIds.has(msg.id) && msg.role !== 'thinking'
+    )
+
+    return { topLevelMessages: filtered, thinkingMap: tMap }
   }, [messages, subcallMap])
 
-  // 虚拟滚动
-  const virtualizer = useVirtualizer({
-    count: topLevelMessages.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 80, // 估计每条消息高度
-    overscan: 5,
-  })
+  // ToolGroup 分组
+  const displayItems = useMemo(() => groupConsecutiveTools(topLevelMessages), [topLevelMessages])
 
   // 检测用户是否手动上滚
   const handleScroll = useCallback(() => {
@@ -67,22 +80,20 @@ export function MessageList() {
 
   // 新消息到达时自动滚动到底部
   useEffect(() => {
-    if (autoScrollRef.current && topLevelMessages.length > 0) {
-      virtualizer.scrollToIndex(topLevelMessages.length - 1, { align: 'end' })
+    if (autoScrollRef.current && displayItems.length > 0) {
+      parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: 'smooth' })
     }
-  }, [topLevelMessages.length, virtualizer])
+  }, [displayItems.length])
 
   useEffect(() => {
-    if (topLevelMessages.length === 0) {
+    if (displayItems.length === 0) {
       autoScrollRef.current = true
       setShowScrollBtn(false)
     }
-  }, [topLevelMessages.length])
+  }, [displayItems.length])
 
   const scrollToBottom = () => {
-    if (topLevelMessages.length > 0) {
-      virtualizer.scrollToIndex(topLevelMessages.length - 1, { align: 'end' })
-    }
+    parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: 'smooth' })
     autoScrollRef.current = true
     setShowScrollBtn(false)
   }
@@ -92,41 +103,36 @@ export function MessageList() {
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto px-6 py-4"
+        className="h-full overflow-y-auto px-3 py-2"
       >
-        {/* 虚拟滚动容器 */}
-        <div
-          style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
-        >
-          <div className="max-w-4xl mx-auto">
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const msg = topLevelMessages[virtualRow.index]
-              const toolId = msg.toolId || msg.id
-              const subcalls = subcallMap.get(toolId)
+        <div className="space-y-0.5">
+          {displayItems.map((item, index) => {
+            if (item.kind === 'group') {
               return (
-                <div
-                  key={msg.id}
-                  data-index={virtualRow.index}
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  <div className="pb-4">
-                    <MessageRow
-                      msg={msg}
-                      subcalls={subcalls}
-                      allMessages={messages}
-                    />
-                  </div>
-                </div>
+                <ToolGroup
+                  key={`group-${index}`}
+                  kind={item.groupKind}
+                  messages={item.messages}
+                  subcalls={subcallMap}
+                  allMessages={messages}
+                />
               )
-            })}
-          </div>
+            }
+
+            const msg = item.msg
+            const toolId = msg.toolId || msg.id
+            const subcalls = subcallMap.get(toolId)
+
+            return (
+              <MessageRow
+                key={msg.id}
+                msg={msg}
+                subcalls={subcalls}
+                allMessages={messages}
+                thinkingMsg={thinkingMap.get(msg.id)}
+              />
+            )
+          })}
         </div>
       </div>
 

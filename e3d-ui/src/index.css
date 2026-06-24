@@ -5,7 +5,7 @@
    E小智 v2.0 — 全局样式
    ============================================ */
 
-/* E3D 品牌色 */
+/* E3D 品牌色 + 设计系统 tokens */
 :root {
   --e3d-primary: #3b82f6;
   --e3d-primary-hover: #2563eb;
@@ -13,6 +13,30 @@
   --e3d-success: #10b981;
   --e3d-warning: #f59e0b;
   --e3d-error: #ef4444;
+
+  /* Elevation 层级 */
+  --bg-soft: #f8fafc;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #f1f5f9;
+
+  /* Border 分级 */
+  --border: #e2e8f0;
+  --border-soft: #f1f5f9;
+
+  /* Focus ring 无障碍 */
+  --focus-ring: 0 0 0 2px rgba(59, 130, 246, 0.5);
+
+  /* Z-index 层级 */
+  --z-dropdown: 50;
+  --z-modal: 100;
+  --z-toast: 150;
+  --z-overlay: 200;
+
+  /* Motion 动效 */
+  --dur-fast: 100ms;
+  --dur-base: 200ms;
+  --dur-slow: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* 基础排版 */
@@ -40,12 +64,33 @@
   --e3d-success: #34d399;
   --e3d-warning: #fbbf24;
   --e3d-error: #f87171;
+
+  --bg-soft: #1e293b;
+  --bg-elev: #1e293b;
+  --bg-elev-2: #334155;
+  --border: #334155;
+  --border-soft: #1e293b;
+}
+
+/* 无障碍：减少动画 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  height: 100vh;
+}
+
+/* Focus ring 全局样式 */
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* 流式光标闪烁动画 */
@@ -91,4 +136,100 @@ body {
 }
 .dark .katex .mord.text {
   color: #e2e8f0;
+}
+
+/* ============================================
+   Reasoning Block — 同款 Reasonix 风格
+   ============================================ */
+.reasoning-block {
+  @apply mb-2 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden;
+  @apply bg-slate-50/50 dark:bg-slate-800/50;
+}
+
+.reasoning-block__head {
+  @apply flex items-center gap-2 w-full px-3 py-2 text-left;
+  @apply text-xs text-slate-500 dark:text-slate-400;
+  @apply hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors;
+}
+.reasoning-block__head[data-running] {
+  @apply text-blue-500 dark:text-blue-400;
+}
+
+.reasoning-block__icon {
+  @apply text-sm shrink-0;
+}
+.reasoning-block__icon--pulse {
+  animation: reasoning-pulse 1.5s ease-in-out infinite;
+}
+@keyframes reasoning-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.reasoning-block__label {
+  @apply flex-1 font-medium;
+}
+
+.reasoning-block__chevron {
+  @apply w-3.5 h-3.5 shrink-0 transition-transform duration-200;
+}
+.reasoning-block__chevron--open {
+  @apply rotate-90;
+}
+
+.reasoning-block__body {
+  @apply px-3 pb-2 pt-0 border-t border-slate-200/50 dark:border-slate-700/50;
+  @apply max-h-[300px] overflow-y-auto;
+}
+
+/* ============================================
+   Message 消息样式 — Reasonix 纯文本风格
+   ============================================ */
+.msg-user {
+  @apply py-3;
+}
+.msg-assistant {
+  @apply py-2;
+}
+.msg-assistant__body {
+  @apply text-sm text-slate-800 dark:text-slate-200 leading-relaxed;
+}
+
+/* ============================================
+   ToolGroup — 同款 Reasonix 分组折叠
+   ============================================ */
+.tool-group {
+  @apply my-2 rounded-lg border border-slate-200/60 dark:border-slate-700/60 overflow-hidden;
+  @apply bg-slate-50/30 dark:bg-slate-800/30;
+}
+
+.tool-group__head {
+  @apply flex items-center gap-2 w-full px-3 py-2 text-left;
+  @apply text-xs text-slate-500 dark:text-slate-400 font-medium;
+  @apply hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors;
+}
+
+.tool-group__label {
+  @apply flex-1;
+}
+
+.tool-group__chevron {
+  @apply w-3.5 h-3.5 shrink-0 transition-transform duration-200;
+}
+.tool-group__chevron--open {
+  @apply rotate-90;
+}
+
+.tool-group__body {
+  @apply divide-y divide-slate-100 dark:divide-slate-800;
+}
+
+/* ToolCard 展开动画 */
+.tool-card-body {
+  animation: tool-slide-down var(--dur-base) var(--ease-out);
+  overflow: hidden;
+}
+@keyframes tool-slide-down {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 2000px; }
 }

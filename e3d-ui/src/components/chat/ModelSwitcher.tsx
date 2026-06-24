@@ -90,26 +90,26 @@ export function ModelSwitcher() {
       <button
         ref={buttonRef}
         onClick={handleToggle}
-        className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl border border-slate-200 bg-white/80 hover:bg-white transition-colors dark:bg-slate-800/80 dark:border-slate-600 dark:hover:bg-slate-700 dark:text-slate-200"
+        className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white/80 hover:bg-white transition-colors dark:bg-slate-800/80 dark:border-slate-600 dark:hover:bg-slate-700 dark:text-slate-200"
         title="切换模型"
       >
         {isLoadingModels ? (
-          <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+          <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
         ) : (
-          <Brain className="w-4 h-4 text-blue-500" />
+          <Brain className="w-3 h-3 text-blue-500" />
         )}
-        <span className="max-w-[160px] truncate text-slate-700 dark:text-slate-200">
+        <span className="max-w-[120px] truncate text-slate-700 dark:text-slate-200">
           {displayLabel}
         </span>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`w-3 h-3 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
       {open && (
         <div
           ref={panelRef}
-          className="absolute left-0 bottom-full mb-2 w-80 max-h-96 overflow-y-auto bg-white rounded-2xl shadow-2xl shadow-slate-200/60 border border-slate-200 z-50 dark:bg-slate-800 dark:border-slate-600 dark:shadow-slate-900/60"
+          className="absolute left-0 bottom-full mb-1.5 w-64 max-h-80 overflow-y-auto bg-white rounded-xl shadow-xl shadow-slate-200/60 border border-slate-200 z-[var(--z-dropdown)] dark:bg-slate-800 dark:border-slate-600 dark:shadow-slate-900/60"
         >
           {isLoadingModels ? (
             <div className="flex items-center justify-center py-8">
@@ -127,8 +127,8 @@ export function ModelSwitcher() {
               {visibleGroups.map(({ provider, modelEntries }) => (
                 <div key={provider.name}>
                   {/* Provider 分组头 */}
-                  <div className="px-4 pt-3 pb-1 flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <div className="px-3 pt-2 pb-0.5 flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                       {provider.name}
                     </span>
                     {provider.name === currentProvider && (
@@ -143,14 +143,14 @@ export function ModelSwitcher() {
                     <button
                       key={ref}
                       onClick={() => handleSelectModel(ref)}
-                      className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between transition-colors
+                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors
                         ${isActive
                           ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                           : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50'
                         }`}
                     >
                       <span className="truncate">{model}</span>
-                      {isActive && <Check className="w-4 h-4 text-blue-500 shrink-0 ml-2" />}
+                      {isActive && <Check className="w-3.5 h-3.5 text-blue-500 shrink-0 ml-1.5" />}
                     </button>
                   ))}
                 </div>
@@ -160,9 +160,9 @@ export function ModelSwitcher() {
               <div className="border-t border-slate-100 dark:border-slate-700 mt-1">
                 <button
                   onClick={() => { toggleSettings(); setOpen(false) }}
-                  className="w-full text-left px-4 py-3 text-sm text-slate-500 hover:text-blue-600 hover:bg-slate-50 flex items-center gap-2 transition-colors dark:text-slate-400 dark:hover:text-blue-400 dark:hover:bg-slate-700/50"
+                  className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:text-blue-600 hover:bg-slate-50 flex items-center gap-1.5 transition-colors dark:text-slate-400 dark:hover:text-blue-400 dark:hover:bg-slate-700/50"
                 >
-                  <Settings className="w-4 h-4" />
+                  <Settings className="w-3.5 h-3.5" />
                   <span>管理 Provider →</span>
                 </button>
               </div>

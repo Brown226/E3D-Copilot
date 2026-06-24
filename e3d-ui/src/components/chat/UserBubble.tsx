@@ -116,7 +116,7 @@ export function UserBubble({ msg }: UserBubbleProps) {
 
             {/* 文本内容 */}
             {msg.content && (
-              <p className="text-base text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
+              <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
                 {msg.content}
               </p>
             )}
