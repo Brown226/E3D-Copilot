@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Trash2, RefreshCw, Brain, Clock, Tag, Plus, X, Save } from 'lucide-react'
+import { Search, Trash2, RefreshCw, Brain, Clock, Tag, Save } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import { useToastStore } from '@/store/useToastStore'
 import type { MemoryEntry } from '@/services/messageContracts'
@@ -22,6 +22,31 @@ export default function MemorySection() {
   const [newContent, setNewContent] = useState('')
   const [newKind, setNewKind] = useState('project_context')
   const [saving, setSaving] = useState(false)
+
+  // 保存新记忆
+  const handleSave = async () => {
+    if (!newTitle.trim() || !newContent.trim()) return
+    setSaving(true)
+    try {
+      const { default: bridge } = await import('@/services/bridgeService')
+      const result = await bridge.saveMemory({
+        title: newTitle,
+        content: newContent,
+        kind: newKind as any
+      }) as { success?: boolean } | null
+      if (result?.success) {
+        addToast('success', '记忆已保存')
+        setNewTitle('')
+        setNewContent('')
+        setShowAddForm(false)
+        loadMemories()
+      }
+    } catch {
+      addToast('error', '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // 加载记忆列表
   const loadMemories = useCallback(async () => {

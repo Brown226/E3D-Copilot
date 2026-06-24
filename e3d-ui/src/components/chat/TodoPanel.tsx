@@ -32,7 +32,7 @@ function extractTodos(messages: Message[]): TodoItem[] {
 
 export const TodoPanel = memo(function TodoPanel() {
   const messages = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.messages ?? [])
-  const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
+  // const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
   const [collapsed, setCollapsed] = useState(false)
 
   const todos = useMemo(() => extractTodos(messages), [messages])
@@ -40,7 +40,7 @@ export const TodoPanel = memo(function TodoPanel() {
   if (todos.length === 0) return null
 
   const completedCount = todos.filter((t) => t.status === 'completed').length
-  const inProgressCount = todos.filter((t) => t.status === 'in_progress').length
+  // const inProgressCount = todos.filter((t) => t.status === 'in_progress').length
   const progress = Math.round((completedCount / todos.length) * 100)
 
   return (

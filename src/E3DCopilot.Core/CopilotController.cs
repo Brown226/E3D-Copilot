@@ -89,6 +89,9 @@ namespace E3DCopilot.Core
         // ── Current model ──
         public string CurrentModelName { get; private set; }
 
+        // ── Tool approval mode: "ask" | "auto" | "yolo" ──
+        public string ToolApprovalMode { get; private set; } = "auto";
+
         // ── Infrastructure ──
         private readonly IEventSink _sink;
         private CancellationTokenSource _cts;
@@ -261,6 +264,20 @@ namespace E3DCopilot.Core
                 Kind = EventKind.PlanModeChanged,
                 Text = enabled ? "Plan Mode enabled" : "Plan Mode disabled"
             });
+        }
+
+        /// <summary>
+        /// Set tool approval mode: "ask" (all tools need approval),
+        /// "auto" (read-only auto, write needs approval), "yolo" (all auto)
+        /// </summary>
+        public void SetApprovalMode(string mode)
+        {
+            if (string.IsNullOrEmpty(mode)) return;
+            mode = mode.ToLowerInvariant();
+            if (mode != "ask" && mode != "auto" && mode != "yolo") return;
+
+            ToolApprovalMode = mode;
+            _sink.Emit(CopilotEvent.Notice($"Tool approval mode: {mode}"));
         }
 
         /// <summary>

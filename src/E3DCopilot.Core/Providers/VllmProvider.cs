@@ -102,6 +102,39 @@ namespace E3DCopilot.Core.Providers
                         ["max_tokens"] = request.MaxTokens,
                         ["messages"] = new JArray(request.Messages.Select(SerializeMessage))
                     };
+
+                    // DeepSeek/其他模型特殊优化（参考 Reasonix 设计）
+                    var modelName = request.Model ?? _model;
+                    
+                    // DeepSeek 适配
+                    if (IsDeepSeekModel(modelName))
+                    {
+                        // DeepSeek Reasoner 系列禁用 temperature，使用 effort 控制
+                        if (IsDeepSeekReasoningModel(modelName))
+                        {
+                            bodyObj.Remove("temperature");
+                            
+                            // DeepSeek Reasoner 支持两种推理模式
+                            // 1. thinking.type=enabled (推荐) 2. reasoning_effort=high
+                            bodyObj["thinking"] = new JObject
+                            {
+                                ["type"] = "enabled"
+                            };
+                        }
+                        else
+                        {
+                            // DeepSeek Chat 系列支持 standard reasoning_effort
+                            bodyObj["reasoning_effort"] = "high";
+                        }
+                    }
+                    // MiniMax 适配（可选）
+                    else if (IsMiniMaxModel(modelName))
+                    {
+                        bodyObj["thinking"] = new JObject
+                        {
+                            ["type"] = "adaptive"
+                        };
+                    }
         
                     // Inject tool definitions (OpenAI-compatible format)
                     if (request.Tools != null && request.Tools.Count > 0)
@@ -375,5 +408,29 @@ namespace E3DCopilot.Core.Providers
                 default: return "user";
             }
         }
+
+        // ── DeepSeek 模型检测 ──
+    private static bool IsDeepSeekModel(string modelName)
+    {
+        if (string.IsNullOrEmpty(modelName)) return false;
+        return modelName.IndexOf("deepseek", StringComparison.OrdinalIgnoreCase) >= 0
+            || modelName.IndexOf("DeepSeek", StringComparison.Ordinal) >= 0;
+    }
+
+    private static bool IsDeepSeekReasoningModel(string modelName)
+    {
+        if (string.IsNullOrEmpty(modelName)) return false;
+        return modelName.IndexOf("reasoner", StringComparison.OrdinalIgnoreCase) >= 0
+            || modelName.IndexOf("DeepSeek-R1", StringComparison.Ordinal) >= 0
+            || modelName.IndexOf("reasoning", StringComparison.OrdinalIgnoreCase) >= 0
+            || modelName.IndexOf("deepseek-v4", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool IsMiniMaxModel(string modelName)
+    {
+        if (string.IsNullOrEmpty(modelName)) return false;
+        return modelName.IndexOf("minimax", StringComparison.OrdinalIgnoreCase) >= 0
+            || modelName.IndexOf("minimax-m3", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
     }
 }

@@ -240,7 +240,9 @@ namespace E3DCopilot.Core.Providers
 
         private static bool IsBuiltIn(string name)
         {
-            return name == "qwen" || name == "qwen37" || name == "mimo" || name == "local";
+            // 只保留核心的三个内置 Provider：mimo、qwen37、local
+            // deepseek 系列需要用户自行添加（支持 DeepSeek 特有的 effort/reasoning 配置）
+            return name == "mimo" || name == "qwen37" || name == "local";
         }
 
         private static string MaskKey(string key)

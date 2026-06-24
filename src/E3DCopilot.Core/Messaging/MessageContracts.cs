@@ -18,6 +18,7 @@ namespace E3DCopilot.Core.Messaging
         public const string UserApprove = "user:approve";
         public const string UserAskResponse = "user:ask_response";
         public const string UserSetPlanMode = "user:set_plan_mode";
+        public const string UserSetApprovalMode = "user:set_approval_mode";
         public const string UserCloseTab = "tab:close";
         public const string Ping = "ping";
 

@@ -5,7 +5,7 @@
 import { useState } from 'react'
 import { Copy, Check, Pencil } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
-import type { Message, Attachment } from '@/types'
+import type { Message } from '@/types'
 
 interface UserBubbleProps {
   msg: Message

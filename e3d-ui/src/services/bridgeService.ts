@@ -4,6 +4,7 @@
  */
 
 import { useChatStore } from '../store/useChatStore';
+import type { ToolApprovalMode } from '../store/useChatStore';
 import type {
   UserMessagePayload,
   ApprovalPayload,
@@ -721,6 +722,15 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         const p = msg.payload as { enabled?: boolean; mode?: string };
         const enabled = p?.enabled ?? (p?.mode === 'plan');
         s.setPlanMode(enabled);
+        break;
+      }
+
+      case 'user:set_approval_mode': {
+        // 后端确认工具审批模式切换
+        const p = msg.payload as { mode?: string };
+        if (p?.mode) {
+          useChatStore.setState({ toolApprovalMode: p.mode as ToolApprovalMode });
+        }
         break;
       }
 

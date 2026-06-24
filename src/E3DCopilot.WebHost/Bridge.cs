@@ -103,6 +103,10 @@ namespace E3DCopilot.WebHost
                         HandleSetPlanMode(payload);
                         break;
 
+                    case MessageTypes.UserSetApprovalMode:
+                        HandleSetApprovalMode(payload);
+                        break;
+
                     case MessageTypes.UserCloseTab:
                         HandleCloseTab(payload);
                         break;
@@ -277,6 +281,21 @@ namespace E3DCopilot.WebHost
 
             // 通知前端模式已切换
             SendToFrontend(MessageTypes.UserSetPlanMode, new { enabled, mode });
+        }
+
+        /// <summary>
+        /// 处理工具审批模式切换（ask / auto / yolo）
+        /// </summary>
+        private void HandleSetApprovalMode(JsonElement? payload)
+        {
+            string mode = "auto";
+            if (payload.HasValue && payload.Value.TryGetProperty("mode", out var modeProp))
+                mode = modeProp.GetString() ?? "auto";
+
+            _controller.SetApprovalMode(mode);
+
+            // 通知前端模式已切换
+            SendToFrontend(MessageTypes.UserSetApprovalMode, new { mode });
         }
 
         /// <summary>
@@ -866,9 +885,9 @@ namespace E3DCopilot.WebHost
                         id = _controller.Session.SessionId,
                         tabId = _controller.ActiveTabId ?? "default",
                         title = "当前会话",
-                        messageCount = (object)(_controller.Session.Messages?.Count ?? 0),
-                        isPlanMode = (object)_controller.Session.IsPlanMode,
-                        isActive = (object)true,
+                        messageCount = _controller.Session.Messages?.Count ?? 0,
+                        isPlanMode = _controller.Session.IsPlanMode,
+                        isActive = true,
                     });
                 }
 

@@ -189,7 +189,7 @@ namespace E3DCopilot.Core.Config
                     Name = "mimo",
                     Kind = "openai",
                     BaseUrl = "https://token-plan-cn.xiaomimimo.com/v1",
-                    ApiKey = "tp-c6vbxwk3ttizyn5z97ua2to1szxz3eso49r11x65nwoi4r2e",
+                    ApiKey = "",  // 运行环境变量或内网部署时配置
                     Models = new List<string> { "mimo-v2.5", "mimo-v2-flash" },
                     DefaultModel = "mimo-v2.5",
                     Temperature = 0.1,
@@ -200,7 +200,7 @@ namespace E3DCopilot.Core.Config
                     Name = "local",
                     Kind = "openai",
                     BaseUrl = "http://localhost:8000/v1",
-                    ApiKey = "",
+                    ApiKey = "",  // 本地 API，无需密钥
                     Models = new List<string> { "Qwen3.5-32B", "Qwen3-32B" },
                     DefaultModel = "Qwen3.5-32B",
                     Temperature = 0.1,
@@ -211,7 +211,7 @@ namespace E3DCopilot.Core.Config
                     Name = "qwen37",
                     Kind = "openai",
                     BaseUrl = "https://opencode.ai/zen/go/v1",
-                    ApiKey = "sk-jnDafVDYkBqpd6X81cWbkNuocNQtgHcaaiwm08fU6EtQcavJV97iPr6J1SgPq1pe",
+                    ApiKey = "",  // 运行环境变量或内网部署时配置
                     Models = new List<string> { "Qwen3.7-Plus" },
                     DefaultModel = "Qwen3.7-Plus",
                     Temperature = 0.1,
@@ -219,8 +219,8 @@ namespace E3DCopilot.Core.Config
                 }
             };
             
-            DefaultProvider = "qwen37";
-            DefaultModel = "qwen37/Qwen3.7-Plus";
+            DefaultProvider = "local";  // 内网优先使用 local
+            DefaultModel = "local/Qwen3.5-32B";
         }
 
         /// <summary>

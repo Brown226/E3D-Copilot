@@ -70,7 +70,7 @@ function buildTurnGroups(messages: Message[]): TurnGroup[] {
 // ── 将消息转换为 DisplayItem，含 Compact 折叠 ──
 function buildDisplayItems(
   messages: Message[],
-  subcallMap: Map<string, Message[]>,
+  _subcallMap: Map<string, Message[]>,
   isStreaming: boolean,
 ): DisplayItem[] {
   // 先用 groupConsecutiveTools 分组
@@ -323,7 +323,7 @@ export function MessageList() {
           )}
 
           {/* ═══════ Warm zone：折叠的历史轮次 ═══════ */}
-          {warmTurns.map((group, idx) => {
+          {warmTurns.map((group, _idx) => {
             const turnIdx = turnGroups.indexOf(group)
             const expanded = expandedWarmTurns.has(turnIdx)
             const warmMessages = messages.slice(group.startIdx, group.endIdx)

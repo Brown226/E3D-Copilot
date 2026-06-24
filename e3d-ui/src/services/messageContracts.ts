@@ -18,6 +18,7 @@ export const MessageTypes = {
   UserApprove: 'user:approve',
   UserAskResponse: 'user:ask_response',
   UserSetPlanMode: 'user:set_plan_mode',
+  UserSetApprovalMode: 'user:set_approval_mode',
   TabClose: 'tab:close',
   Ping: 'ping',
   ModelsList: 'models:list',

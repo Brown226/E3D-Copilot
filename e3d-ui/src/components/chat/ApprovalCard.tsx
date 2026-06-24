@@ -67,17 +67,16 @@ export function ApprovalCard({ approval, onAnswer }: ApprovalCardProps) {
         </div>
       </div>
 
-      {/* 描述 / 参数预览 */}
-      {approval.description && (
+      {approval.description ? (
         <div className="px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300 border-b border-amber-100 dark:border-amber-800/50">
           {approval.description}
         </div>
-      )}
-      {approval.args && (
+      ) : null}
+      {approval.args ? (
         <pre className="px-3 py-1.5 text-[11px] font-mono text-amber-600/80 dark:text-amber-400/70 bg-amber-50/50 dark:bg-amber-900/10 overflow-x-auto max-h-24 border-b border-amber-100 dark:border-amber-800/50">
           {typeof approval.args === 'string' ? approval.args : JSON.stringify(approval.args, null, 2)}
         </pre>
-      )}
+      ) : null}
 
       {/* 操作按钮 */}
       <div className="flex gap-1 p-2">

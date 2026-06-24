@@ -46,24 +46,58 @@ namespace E3DCopilot.Core
 
         /// <summary>
         /// 创建默认工具策略（匹配 CommandPermissionController.CreateDefault 的规则）
+        /// 根据 Controller 的 ToolApprovalMode 动态构建：
+        ///   "ask"  → 所有工具都需审批
+        ///   "auto" → 只读工具自动，写工具需审批（默认）
+        ///   "yolo" → 所有工具自动执行
         /// </summary>
-        private static ToolPolicy CreateDefaultToolPolicy()
+        private ToolPolicy CreateDefaultToolPolicy()
         {
             var policy = new ToolPolicy();
-            policy.ApplyPreset(ToolPreset.Confirm);
-            // 只读工具自动执行
-            policy.Set("query", ApprovalMode.Auto);
-            policy.Set("get_attributes", ApprovalMode.Auto);
-            policy.Set("check", ApprovalMode.Auto);
-            policy.Set("calculate", ApprovalMode.Auto);
-            policy.Set("export", ApprovalMode.Auto);
-            policy.Set("ask_user", ApprovalMode.Auto);
-            policy.Set("task", ApprovalMode.Auto);
-            policy.Set("read_file", ApprovalMode.Auto);
-            policy.Set("search_knowledge", ApprovalMode.Auto);
-            // 写工具需确认
-            policy.Set("modify", ApprovalMode.Ask);
-            policy.Set("execute_pml", ApprovalMode.Ask);
+            string mode = _controller?.ToolApprovalMode ?? "auto";
+
+            if (mode == "yolo")
+            {
+                // 所有工具自动执行，无需审批
+                policy.ApplyPreset(ToolPreset.Auto);
+                policy.Set("ask_user", ApprovalMode.Auto);
+                policy.Set("task", ApprovalMode.Auto);
+                policy.Set("read_file", ApprovalMode.Auto);
+                policy.Set("search_knowledge", ApprovalMode.Auto);
+            }
+            else if (mode == "ask")
+            {
+                // 所有工具都需审批
+                policy.ApplyPreset(ToolPreset.Confirm);
+                policy.Set("query", ApprovalMode.Ask);
+                policy.Set("get_attributes", ApprovalMode.Ask);
+                policy.Set("check", ApprovalMode.Ask);
+                policy.Set("calculate", ApprovalMode.Ask);
+                policy.Set("export", ApprovalMode.Ask);
+                policy.Set("ask_user", ApprovalMode.Auto);  // 用户交互工具不需要审批
+                policy.Set("task", ApprovalMode.Auto);
+                policy.Set("read_file", ApprovalMode.Ask);
+                policy.Set("search_knowledge", ApprovalMode.Ask);
+                policy.Set("modify", ApprovalMode.Ask);
+                policy.Set("execute_pml", ApprovalMode.Ask);
+            }
+            else
+            {
+                // "auto"：只读工具自动执行，写工具需确认（默认行为）
+                policy.ApplyPreset(ToolPreset.Confirm);
+                policy.Set("query", ApprovalMode.Auto);
+                policy.Set("get_attributes", ApprovalMode.Auto);
+                policy.Set("check", ApprovalMode.Auto);
+                policy.Set("calculate", ApprovalMode.Auto);
+                policy.Set("export", ApprovalMode.Auto);
+                policy.Set("ask_user", ApprovalMode.Auto);
+                policy.Set("task", ApprovalMode.Auto);
+                policy.Set("read_file", ApprovalMode.Auto);
+                policy.Set("search_knowledge", ApprovalMode.Auto);
+                policy.Set("modify", ApprovalMode.Ask);
+                policy.Set("execute_pml", ApprovalMode.Ask);
+            }
+
             return policy;
         }
 
