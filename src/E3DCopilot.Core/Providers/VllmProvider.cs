@@ -20,7 +20,12 @@ namespace E3DCopilot.Core.Providers
         private readonly string _baseUrl;
         private readonly string _model;
         private readonly string _apiKey;
-        
+
+        /// <summary>
+        /// 重试回调（由 CopilotController 注入，通知前端重试状态）
+        /// </summary>
+        public Action<string, int> OnRetry { get; set; }
+
         /// <summary>
         /// Provider 名称
         /// </summary>
@@ -216,6 +221,7 @@ namespace E3DCopilot.Core.Providers
                 {
                     int delayMs = (int)Math.Pow(2, attempt) * 1000;
                     onChunk(Chunk.FromText($"\n[LLM 连接失败 (第{attempt + 1}次), {delayMs}ms 后重试: {ex.GetType().Name}]"));
+                    OnRetry?.Invoke(ex.GetType().Name, attempt + 1);
                     await Task.Delay(delayMs, ct);
                 }
             }
@@ -292,7 +298,9 @@ namespace E3DCopilot.Core.Providers
                 }
 
                 // Consume accumulated tool calls when finish_reason signals completion
-                if (finishReason == "tool_calls" && _toolCallAccumulators.Count > 0)
+                // 注意：部分模型（Qwen3等）在有 tool_calls 时仍返回 finish_reason="stop"
+                // 所以用 !string.IsNullOrEmpty(finishReason) 而非仅 "tool_calls"
+                if (!string.IsNullOrEmpty(finishReason) && _toolCallAccumulators.Count > 0)
                 {
                     foreach (var kvp in _toolCallAccumulators)
                     {

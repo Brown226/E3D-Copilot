@@ -75,6 +75,14 @@ namespace E3DCopilot.Core.Messaging
         public const string LlmUsage = "llm:usage";
         public const string LlmRetry = "llm:retry";
         public const string ToolProgress = "tool:progress";
+
+        // === CAD 导入相关 ===
+        public const string UserCadImport = "user:cad_import";
+        public const string CadProgress = "cad:progress";
+        public const string CadResult = "cad:result";
+        public const string CadPreview = "cad:preview";
+        public const string CadConfirmBatch = "cad:confirm_batch";
+        public const string CadCancel = "cad:cancel";
     }
     
     #endregion
@@ -164,6 +172,9 @@ namespace E3DCopilot.Core.Messaging
     {
         [JsonProperty("usage")]
         public object Usage { get; set; }
+        
+        [JsonProperty("error", NullValueHandling = NullValueHandling.Ignore)]
+        public string Error { get; set; }
     }
     
     /// <summary>
@@ -330,6 +341,12 @@ namespace E3DCopilot.Core.Messaging
 
         [JsonProperty("builtIn")]
         public bool BuiltIn { get; set; } = false;
+
+        [JsonProperty("contextWindow")]
+        public int ContextWindow { get; set; } = 0;
+
+        [JsonProperty("visionModels")]
+        public string[] VisionModels { get; set; } = new string[0];
     }
 
     /// <summary>
@@ -426,6 +443,12 @@ namespace E3DCopilot.Core.Messaging
 
         [JsonProperty("builtIn")]
         public bool BuiltIn { get; set; } = false;
+
+        [JsonProperty("contextWindow")]
+        public int ContextWindow { get; set; } = 0;
+
+        [JsonProperty("visionModels")]
+        public string[] VisionModels { get; set; } = new string[0];
     }
 
     public class ProviderDeletePayload
@@ -441,6 +464,118 @@ namespace E3DCopilot.Core.Messaging
 
         [JsonProperty("apiKey")]
         public string ApiKey { get; set; }
+    }
+
+    #endregion
+
+    #region CAD 导入消息
+
+    /// <summary>
+    /// CAD 导入请求
+    /// </summary>
+    public class CadImportPayload
+    {
+        [JsonProperty("action")]
+        public string Action { get; set; } = "import"; // import, preview, parse_file, parse_paths
+
+        [JsonProperty("filePath")]
+        public string FilePath { get; set; }
+
+        [JsonProperty("pathsString")]
+        public string PathsString { get; set; }
+
+        [JsonProperty("owner")]
+        public string Owner { get; set; } = "/IMPORT_ZONE";
+
+        [JsonProperty("wallHeight")]
+        public double WallHeight { get; set; } = 3000;
+
+        [JsonProperty("wallThickness")]
+        public double WallThickness { get; set; } = 200;
+
+        [JsonProperty("autoName")]
+        public bool AutoName { get; set; } = true;
+    }
+
+    /// <summary>
+    /// CAD 解析进度
+    /// </summary>
+    public class CadProgressPayload
+    {
+        [JsonProperty("phase")]
+        public string Phase { get; set; } = ""; // parsing, classifying, creating
+
+        [JsonProperty("current")]
+        public int Current { get; set; }
+
+        [JsonProperty("total")]
+        public int Total { get; set; }
+
+        [JsonProperty("percentage")]
+        public double Percentage => Total > 0 ? (double)Current / Total * 100 : 0;
+
+        [JsonProperty("message")]
+        public string Message { get; set; } = "";
+    }
+
+    /// <summary>
+    /// CAD 导入结果
+    /// </summary>
+    public class CadResultPayload
+    {
+        [JsonProperty("success")]
+        public bool Success { get; set; }
+
+        [JsonProperty("segmentCount")]
+        public int SegmentCount { get; set; }
+
+        [JsonProperty("elementCount")]
+        public int ElementCount { get; set; }
+
+        [JsonProperty("pmlScript")]
+        public string PmlScript { get; set; }
+
+        [JsonProperty("elements")]
+        public object[] Elements { get; set; }
+
+        [JsonProperty("error")]
+        public string Error { get; set; }
+    }
+
+    /// <summary>
+    /// CAD 预览结果
+    /// </summary>
+    public class CadPreviewPayload
+    {
+        [JsonProperty("segmentCount")]
+        public int SegmentCount { get; set; }
+
+        [JsonProperty("elementCount")]
+        public int ElementCount { get; set; }
+
+        [JsonProperty("wallHeight")]
+        public double WallHeight { get; set; }
+
+        [JsonProperty("wallThickness")]
+        public double WallThickness { get; set; }
+
+        [JsonProperty("preview")]
+        public object[] Preview { get; set; }
+    }
+
+    /// <summary>
+    /// 批量确认请求
+    /// </summary>
+    public class CadConfirmBatchPayload
+    {
+        [JsonProperty("elements")]
+        public object[] Elements { get; set; }
+
+        [JsonProperty("owner")]
+        public string Owner { get; set; } = "/IMPORT_ZONE";
+
+        [JsonProperty("execute")]
+        public bool Execute { get; set; } = true;
     }
 
     #endregion

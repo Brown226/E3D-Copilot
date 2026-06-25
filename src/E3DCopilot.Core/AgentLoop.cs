@@ -36,7 +36,7 @@ namespace E3DCopilot.Core
         private readonly CopilotController _controller;
         private readonly SkillManager _skillManager;
 
-        private const int MaxSteps = 20;
+        private int MaxSteps => _config?.Ui?.MaxSteps > 0 ? _config.Ui.MaxSteps : 20;
 
         // ── Storm Breaker 状态（由 CopilotController 跨 turn 持久化注入） ──
         public string StormSig { get; set; } = "";
@@ -73,8 +73,10 @@ namespace E3DCopilot.Core
                 policy.Set("task", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Auto);
                 policy.Set("write_file", ApprovalMode.Auto);
-                policy.Set("search_knowledge", ApprovalMode.Auto);
                 policy.Set("run_skill", ApprovalMode.Auto);
+                policy.Set("cad_import", ApprovalMode.Auto);
+                policy.Set("autocad", ApprovalMode.Auto);
+                policy.Set("search_knowledge", ApprovalMode.Auto);
             }
             else if (mode == "ask")
             {
@@ -84,14 +86,24 @@ namespace E3DCopilot.Core
                 policy.Set("check", ApprovalMode.Ask);
                 policy.Set("calculate", ApprovalMode.Ask);
                 policy.Set("export", ApprovalMode.Ask);
+                policy.Set("geometry", ApprovalMode.Ask);
                 policy.Set("ask_user", ApprovalMode.Auto);
                 policy.Set("task", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Ask);
                 policy.Set("write_file", ApprovalMode.Ask);
-                policy.Set("search_knowledge", ApprovalMode.Ask);
                 policy.Set("run_skill", ApprovalMode.Ask);
                 policy.Set("modify", ApprovalMode.Ask);
                 policy.Set("execute_pml", ApprovalMode.Ask);
+                policy.Set("design", ApprovalMode.Ask);
+                policy.Set("piping", ApprovalMode.Ask);
+                policy.Set("undo_redo", ApprovalMode.Auto);
+                policy.Set("report", ApprovalMode.Auto);
+                policy.Set("compare", ApprovalMode.Auto);
+                policy.Set("hierarchy", ApprovalMode.Auto);
+                policy.Set("batch", ApprovalMode.Ask);
+                policy.Set("cad_import", ApprovalMode.Ask);
+                policy.Set("autocad", ApprovalMode.Ask);
+                policy.Set("search_knowledge", ApprovalMode.Auto);
             }
             else
             {
@@ -102,14 +114,24 @@ namespace E3DCopilot.Core
                 policy.Set("check", ApprovalMode.Auto);
                 policy.Set("calculate", ApprovalMode.Auto);
                 policy.Set("export", ApprovalMode.Auto);
+                policy.Set("geometry", ApprovalMode.Auto);
                 policy.Set("ask_user", ApprovalMode.Auto);
                 policy.Set("task", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Auto);
-                policy.Set("search_knowledge", ApprovalMode.Auto);
                 policy.Set("run_skill", ApprovalMode.Auto);
+                policy.Set("undo_redo", ApprovalMode.Auto);
+                policy.Set("report", ApprovalMode.Auto);
+                policy.Set("compare", ApprovalMode.Auto);
+                policy.Set("hierarchy", ApprovalMode.Auto);
                 policy.Set("write_file", ApprovalMode.Ask);
                 policy.Set("modify", ApprovalMode.Ask);
                 policy.Set("execute_pml", ApprovalMode.Ask);
+                policy.Set("design", ApprovalMode.Ask);
+                policy.Set("piping", ApprovalMode.Ask);
+                policy.Set("batch", ApprovalMode.Ask);
+                policy.Set("cad_import", ApprovalMode.Auto);
+                policy.Set("autocad", ApprovalMode.Auto);
+                policy.Set("search_knowledge", ApprovalMode.Auto);
             }
 
             return policy;
@@ -122,12 +144,7 @@ namespace E3DCopilot.Core
             CancellationToken ct = default)
         {
             session.AddUserMessage(input);
-
-            _sink.Emit(new CopilotEvent
-            {
-                Kind = EventKind.TurnStarted,
-                Text = $"Processing: {input}"
-            });
+            CopilotLogger.Info("AgentLoop.RunAsync 开始: input='{0}', session messages={1}", input?.Substring(0, Math.Min(50, input?.Length ?? 0)), session.Messages.Count);
 
             // ── 记忆注入：每 turn 只计算一次，后续步骤复用 ──
             string memoryContext = ComputeMemoryContext(session);
@@ -156,12 +173,19 @@ namespace E3DCopilot.Core
                             session.AddSystemMessage(
                                 $"[user steer] The user has provided mid-run guidance: \"{steer}\"\n" +
                                 "Please adjust your approach accordingly.");
-                            _sink?.Emit(CopilotEvent.Notice($"Steer injected: {steer}"));
+                            _sink?.Emit(CopilotEvent.Notice($"已注入用户引导: {steer}"));
                         }
                     }
 
                     // 1. Build request (including available tool definitions)
                     var request = BuildRequest(session, memoryContext);
+
+                    // 1.5 每轮 LLM 调用前发射 TurnStarted（前端 startStreaming 幂等，不会重复创建 assistant 消息）
+                    _sink.Emit(new CopilotEvent
+                    {
+                        Kind = EventKind.TurnStarted,
+                        Text = $"Step {step + 1}"
+                    });
 
                     // 2. Call LLM (streaming)
                     var result = await StreamLlmAsync(request, ct);
@@ -172,8 +196,8 @@ namespace E3DCopilot.Core
                     // 4. No tool calls → done
                     if (result.ToolCalls == null || result.ToolCalls.Count == 0)
                     {
-                        _sink.Emit(CopilotEvent.TurnDone());
-                        return;
+                        CopilotLogger.Info("AgentLoop step {0}: 无工具调用，对话结束", step);
+                        return;  // TurnDone 由 Controller 统一发射
                     }
 
                     // 5. Execute tools — read-only parallel, writer serial（对齐 Reasonix executeBatch）
@@ -184,25 +208,22 @@ namespace E3DCopilot.Core
                 }
                 catch (OperationCanceledException)
                 {
-                    _sink.Emit(CopilotEvent.Notice("Cancelled"));
-                    _sink.Emit(CopilotEvent.TurnDone());
-                    return;
+                    _sink.Emit(CopilotEvent.Notice("已取消"));
+                    return;  // TurnDone 由 Controller 统一发射
                 }
                 catch (Exception ex)
                 {
                     try { CopilotLogger.Error(ex, "AgentLoop step {0} failed", step); } catch { }
 
-                    string msg = "Error encountered";
-                    try { msg = $"Error: {ex.GetType().Name}: {ex.Message}"; } catch { }
+                    string msg = "遇到错误";
+                    try { msg = $"错误: {ex.GetType().Name}: {ex.Message}"; } catch { }
 
                     _sink?.Emit(CopilotEvent.Error(msg));
-                    _sink?.Emit(CopilotEvent.TurnDone());
-                    return;
+                    return;  // TurnDone 由 Controller 统一发射
                 }
             }
 
-            _sink.Emit(CopilotEvent.Notice($"Reached max steps {MaxSteps}"));
-            _sink.Emit(CopilotEvent.TurnDone());
+            _sink.Emit(CopilotEvent.Notice($"已达到最大步数限制 {MaxSteps}"));
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -290,16 +311,20 @@ namespace E3DCopilot.Core
             // 跳过空工具调用
             if (string.IsNullOrWhiteSpace(call.Name))
             {
-                _sink.Emit(CopilotEvent.Notice($"Skipped tool call with empty name"));
-                return ("Skipped: empty tool name", "empty name");
+                _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name ?? "unknown", call.Arguments));
+                _sink?.Emit(CopilotEvent.Notice($"已跳过空工具名称的调用"));
+                _sink?.Emit(CopilotEvent.ToolFail(call.Id, "empty name"));
+                return ("已跳过: 工具名称为空", "empty name");
             }
 
             // ── 1. 危险模式检测 ──
             if (_permission.HasDangerousPattern(call.Arguments))
             {
                 string msg = $"Tool {call.Name} 参数包含危险模式，已阻止";
-                _sink.Emit(CopilotEvent.Error(msg));
-                return (msg, "dangerous pattern blocked");
+                _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
+                _sink?.Emit(CopilotEvent.Error(msg));
+                _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
+                return (msg, "危险模式已阻止");
             }
 
             // ── 2. Plan Mode 门控（对齐 Reasonix planModeBlocked） ──
@@ -309,7 +334,9 @@ namespace E3DCopilot.Core
                 string msg = isPlanMode
                     ? $"blocked: \"{call.Name}\" is a writer tool and plan mode is read-only. Keep exploring with read-only tools."
                     : $"Tool {call.Name} blocked by tool policy";
-                _sink.Emit(CopilotEvent.Error(msg));
+                _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
+                _sink?.Emit(CopilotEvent.Error(msg));
+                _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
                 return (msg, "blocked by plan mode");
             }
 
@@ -318,6 +345,9 @@ namespace E3DCopilot.Core
 
             // ── 4. 审批检查 ──
             bool needsApproval = _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask || isBatch;
+
+            // ── 4.1 通知前端工具开始（审批前就发射，让 ToolCard 先显示）──
+            _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
 
             if (needsApproval)
             {
@@ -346,28 +376,35 @@ namespace E3DCopilot.Core
                 if (!approvalResult.Allow)
                 {
                     string msg = $"User rejected {call.Name}";
+                    _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
                     return (msg, "user rejected");
                 }
             }
 
-            // ── 5. 实际执行 ──
+            // ── 5. 实际执行（ToolStart 已在第 4 步发射）──
+            CopilotLogger.Info("工具执行开始: {0}, args={1}", call.Name, call.Arguments?.Substring(0, Math.Min(200, call.Arguments?.Length ?? 0)));
             try
             {
                 var toolResult = await _executor.ExecuteAsync(call.Name, call.Arguments, ct);
+                CopilotLogger.Info("工具执行完成: {0}, success={1}, duration={2}ms, resultLen={3}", call.Name, toolResult.Success, toolResult.DurationMs, toolResult.Text?.Length ?? 0);
                 if (toolResult.Success)
                 {
                     string output = TruncateToolResult(toolResult.Text, call.Name);
+                    _sink?.Emit(CopilotEvent.ToolComplete(call.Id, output));
                     return (output, null);
                 }
                 else
                 {
-                    string output = TruncateToolResult(toolResult.Error ?? toolResult.Text, call.Name);
-                    return (output, toolResult.Error ?? "execution failed");
+                    string errOutput = TruncateToolResult(toolResult.Error ?? toolResult.Text, call.Name);
+                    _sink?.Emit(CopilotEvent.ToolFail(call.Id, toolResult.Error ?? "execution failed"));
+                    return (errOutput, toolResult.Error ?? "execution failed");
                 }
             }
             catch (Exception ex)
             {
                 string err = $"{ex.GetType().Name}: {ex.Message}";
+                CopilotLogger.Error(ex, "工具执行异常: {0}", call.Name);
+                _sink?.Emit(CopilotEvent.ToolFail(call.Id, err));
                 return ($"Error: {err}", err);
             }
         }
@@ -425,10 +462,10 @@ namespace E3DCopilot.Core
                 ? calls[0].Name
                 : $"a batch of {calls.Count} calls";
 
-            results[0] = results[0] + $"\n\n[loop guard] {subject} has now failed {StormCount} times in a row with the same error. Re-sending it — even with the wording changed — will not help. Change approach: if an argument is being truncated, write less in one call; otherwise fix the arguments, use a different tool, or explain the blocker in your final answer.";
+            results[0] = results[0] + $"\n\n[循环守卫] {subject} 已连续 {StormCount} 次因相同错误失败。重新发送此调用（即使修改措辞）也不会有帮助。请更换策略：如果参数被截断，请在单次调用中写入更少内容；否则修正参数、使用其他工具，或在最终回复中解释阻塞原因。";
 
             _sink.Emit(CopilotEvent.Notice(
-                $"loop guard: {shortMsg} failed {StormCount}× the same way — nudging model to change approach"));
+                $"循环守卫: {shortMsg} 已连续 {StormCount} 次因相同方式失败 — 提示模型更换策略"));
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -439,6 +476,7 @@ namespace E3DCopilot.Core
             CopilotRequest request, CancellationToken ct)
         {
             string text = "";
+            string reasoningText = "";  // 累积 reasoning 内容，用于后续工具调用提取
             var toolCalls = new List<ToolCall>();
 
             await _provider.StreamAsync(request, chunk =>
@@ -446,7 +484,8 @@ namespace E3DCopilot.Core
                 switch (chunk.Type)
                 {
                     case ChunkType.Reasoning:
-                        text += chunk.Content;
+                        reasoningText += chunk.Content;
+                        // 只发射给前端，不累积到 text（text 用于 assistant 回复和 XML fallback）
                         _sink.Emit(CopilotEvent.Reasoning(chunk.Content));
                         break;
                     case ChunkType.Text:
@@ -466,6 +505,19 @@ namespace E3DCopilot.Core
                 }
             }, ct);
 
+            // ── Reasoning 工具调用提取（适配 MiMo v2.5 等推理模型）──
+            // 这些模型不返回结构化 delta.tool_calls，而是在 reasoning 中描述工具调用
+            if (toolCalls.Count == 0 && !string.IsNullOrEmpty(reasoningText))
+            {
+                var reasoningCalls = Providers.ReasoningToolCallExtractor.Extract(reasoningText);
+                if (reasoningCalls.Count > 0)
+                {
+                    toolCalls.AddRange(reasoningCalls);
+                    _sink.Emit(CopilotEvent.Notice(
+                        $"已从推理内容中提取 {reasoningCalls.Count} 个工具调用（推理回退模式）"));
+                }
+            }
+
             // ── XML fallback ──
             if (toolCalls.Count == 0 && !string.IsNullOrEmpty(text)
                 && Providers.ToolInvocationParser.ContainsToolInvocation(text))
@@ -476,11 +528,19 @@ namespace E3DCopilot.Core
                     toolCalls.AddRange(xmlCalls);
                     text = Providers.ToolInvocationParser.StripToolInvocationTags(text);
                     _sink.Emit(CopilotEvent.Notice(
-                        $"Parsed {xmlCalls.Count} XML format tool calls from text (fallback mode)"));
+                        $"已从文本中解析 {xmlCalls.Count} 个 XML 格式工具调用（回退模式）"));
                 }
             }
 
-            _sink.Emit(CopilotEvent.StreamEnd());
+            // ─ 检查空回复并传递错误信息 ──
+            string errorMessage = null;
+            if (string.IsNullOrWhiteSpace(text) && toolCalls.Count == 0)
+            {
+                errorMessage = "LLM 返回了空响应（无内容且无工具调用）";
+                _sink.Emit(CopilotEvent.Notice("警告: LLM 返回了空响应"));
+            }
+
+            _sink.Emit(CopilotEvent.StreamEnd(errorMessage: errorMessage));
             return (text, toolCalls);
         }
 
@@ -523,8 +583,9 @@ namespace E3DCopilot.Core
             // 静态基础享受 vLLM 前缀缓存
             string currentElement = _executor.GetCurrentElementName();
             var selectedElements = _executor.GetSelectedElementNames();
+            string currentZone = DeriveZoneFromElement(currentElement);
             request.Messages.Add(new ChatMessage(MessageRole.System,
-                SystemPrompt.Build(currentElement, null, selectedElements, _skillManager)));
+                SystemPrompt.Build(currentElement, currentZone, selectedElements, _skillManager)));
 
             // Tool definitions — 暴露给 LLM 的工具
             var toolSchemas = new List<ToolSchema>();
@@ -532,8 +593,11 @@ namespace E3DCopilot.Core
             {
                 "query", "modify", "check", "calculate", "export", "execute_pml",
                 "get_attributes",
-                "ask_user", "task", "todo_write", "read_file", "write_file", "search_knowledge",
-                "run_skill", "grep", "glob", "memory"
+                "design", "piping", "geometry",
+                "undo_redo", "report", "compare", "hierarchy", "batch",
+                "ask_user", "task", "todo_write", "read_file", "write_file",
+                "run_skill", "grep", "glob", "memory",
+                "cad_import", "autocad", "search_knowledge"
             };
             foreach (var handler in _executor.GetAllHandlers())
             {
@@ -603,7 +667,7 @@ namespace E3DCopilot.Core
             msgs.AddRange(tail);
 
             _sink.Emit(CopilotEvent.Notice(
-                $"Context compacted: {oldMsgs.Count} messages → summary, {tail.Count} kept verbatim"));
+                $"上下文已压缩: {oldMsgs.Count} 条消息 → 摘要, {tail.Count} 条原样保留"));
         }
 
         private string BuildCompactSummary(List<ChatMessage> messages)
@@ -727,7 +791,7 @@ namespace E3DCopilot.Core
                 }
                 sb.AppendLine("</relevant-memories>");
 
-                _sink?.Emit(CopilotEvent.Notice($"Memory context: {top.Count} relevant memories will be injected"));
+                _sink?.Emit(CopilotEvent.Notice($"记忆上下文: {top.Count} 条相关记忆已注入"));
                 return sb.ToString();
             }
             catch
@@ -751,8 +815,29 @@ namespace E3DCopilot.Core
             string truncated = text.Substring(0, MaxToolResultChars);
             string hint = $"\n\n[truncated: {toolName} result was {text.Length} chars, showing first {MaxToolResultChars}. " +
                           "Use a more specific query or add filters to reduce results.]";
-            _sink?.Emit(CopilotEvent.Notice($"Token budget: {toolName} result truncated {text.Length}→{MaxToolResultChars} chars"));
+            _sink?.Emit(CopilotEvent.Notice($"Token 预算: {toolName} 结果已截断 {text.Length}→{MaxToolResultChars} 字符"));
             return truncated + hint;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  Zone 推导 — 从元素路径提取 zone 名称
+        // ═══════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 从元素路径推导 zone 名称。
+        /// E3D 路径格式: /ZONE/SUBZONE/.../ELEMENT
+        /// 返回第一级 zone，如 /MDS/FRAMES/VT18 → /MDS
+        /// </summary>
+        private static string DeriveZoneFromElement(string elementName)
+        {
+            if (string.IsNullOrWhiteSpace(elementName)) return null;
+            // /MDS/FRAMES/VT18 → segments = ["", "MDS", "FRAMES", "VT18"]
+            var parts = elementName.Split('/');
+            if (parts.Length >= 3 && !string.IsNullOrEmpty(parts[1]))
+            {
+                return "/" + parts[1]; // /MDS
+            }
+            return elementName; // 太短就原样返回
         }
     }
 }

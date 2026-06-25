@@ -23,6 +23,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="CNPE.ISO.E3D.Core">
+      <HintPath>..\..\lib\iso\CNPE.ISO.E3D.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="CNPE.ISO.Model">
+      <HintPath>..\..\lib\iso\CNPE.ISO.Model.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="CNPE.ISO.CAD.Core">
+      <HintPath>..\..\lib\iso\CNPE.ISO.CAD.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\SharedAssemblyInfo.cs" />
   </ItemGroup>
 

@@ -48,23 +48,43 @@ namespace E3DCopilot.Core
 "8. 读取单个元素属性时，必须用 get_attributes(element=元素名)，严禁调用 execute_pml\n\n" +
 
 "## Available Tools\n" +
-"- query: Query elements list by type/name/scope. 按类型/名称/范围查询元素列表。**不要用于读取单个元素的属性**——用 get_attributes。\n" +
+"- query: Query elements list by type/name/scope. 按类型/名称/范围查询元素列表。**scope 参数强烈建议指定**，通常是当前 zone（如 /MDS），否则可能返回空结果。不要用于读取单个元素的属性——用 get_attributes。\n" +
 "- get_attributes: Read attributes of a specific element by name (fast C# API). 读取指定元素的属性，比 execute_pml 更快更稳定。\n" +
 "- modify: Modify attributes (single or batch — requires user confirmation)\n" +
 "- check: Check existence/attribute/clearance/naming/bore_consistency/change_status/room_number\n" +
 "- calculate: Pure math geometry calculations (distance, angle, vector operations) — provide coordinates as arrays\n" +
 "- export: Import/Export data (Excel/CSV/PML script/report)\n" +
 "- execute_pml: Execute PML scripts（仅用于复杂集合查询、报表、几何计算等 C# 工具无法处理的情况）\n" +
+"- design: Create/modify/delete equipment and structural elements (EQUI/STRU). 创建、修改、删除设备和结构元件\n" +
+"- piping: Create/modify piping elements (PIPE/BRAN/FTUB/BEND/TEE). 创建、修改管道、管段、管件\n" +
+"- geometry: Spatial queries: position, orientation, bounding box. 查询元素的空间位置、朝向、包围盒\n" +
+"- undo_redo: Undo/redo the last modification. 撤销/重做最近一次修改操作\n" +
+"- report: Generate reports: material lists, attribute summaries, statistics. 生成报表：材料清单、属性汇总\n" +
+"- compare: Compare attributes of two elements. 对比两个元素的属性差异\n" +
+"- hierarchy: Browse element hierarchy: parent, children, zone. 浏览元素层级结构\n" +
+"- batch: Batch modify: query + apply changes to all matches with dry-run. 批量修改，支持预览\n" +
 "- ask_user: Ask the user a question and wait for response — use when you need clarification or confirmation before proceeding\n" +
-"- task: Create and track sub-tasks for complex multi-step operations\n" +
+"- task: (deprecated) Sub-task tracking — use todo_write instead for structured task lists with progress tracking\n" +
 "- read_file: Read local files (API documentation, config, reference materials)\n" +
 "- write_file: Write content to a file (create PML scripts, export reports, save config)\n" +
-"- grep: Search file contents using text or regex — use for finding PML references, API usage, config patterns\n" +
+"- grep: Search file contents with regex. Use for code/config/log search. For E3D API docs, use search_knowledge instead.\n" +
 "- glob: Find files by name pattern (*.pml, **/*.cs) — use for locating project files\n" +
-"- todo_write: Create and manage structured task lists — use for complex multi-step operations\n" +
+"- todo_write: Structured task list with progress tracking — primary tool for multi-step operations\n" +
+"- search_knowledge: Search E3D knowledge base (API signatures, PML syntax, golden patterns) — primary knowledge lookup tool\n" +
 "- memory: Save/search/retrieve cross-session memories — use when user says \"remember this\" or to recall saved knowledge\n" +
-"- search_knowledge: Search the local E3D API documentation knowledge base\n" +
-"- run_skill: Load an E3D skill playbook — use for domain-specific guidance (PML macros, piping standards, design specs)\n\n" +
+"- run_skill: Load an E3D skill playbook — use for domain-specific guidance (PML macros, piping standards, design specs)\n" +
+"- generate_iso_drawing: Generate ISO isometric drawings from E3D pipe data. 从E3D管道数据生成ISO等轴测图。支持单个和批量生成。\n" +
+"- query_material: Query pipe material codes and specifications. 查询管道材料编码和规格信息。支持按编码、类型、项目查询。\n" +
+"- get_pipe_info: Extract detailed pipe information from E3D. 从E3D中提取管道详细信息，包括属性、分支、管件、支吊架等。\n" +
+"- cad_import: Import CAD drawings from DWG files or coordinate strings to E3D. 从DWG文件或坐标字符串导入建筑模型到E3D。支持parse预览和import生成PML脚本。\n" +
+"- autocad: Connect to running AutoCAD, get selected objects and import to E3D. 连接运行中的AutoCAD，获取选中对象并导入E3D。前置条件：AutoCAD已启动并打开图纸。\n\n" +
+
+"## E3D Database Hierarchy\n" +
+"E3D uses a hierarchical database: Project → Zone → SubZone → Element.\n" +
+"- Zone is the top-level container (e.g., /MDS, /PIPING). Current zone is shown in Context above.\n" +
+"- When querying, always set scope to the current zone (e.g., scope=\"/MDS\") to get results.\n" +
+"- Example: query(type=\"STRU\", scope=\"/MDS\") finds all structures under zone MDS.\n" +
+"- If query returns empty, try a broader scope or check if the element type exists in that zone.\n\n" +
 
 "## PML Quick Reference\n" +
 "| Operation | Syntax |\n" +

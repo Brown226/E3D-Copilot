@@ -186,6 +186,13 @@ namespace E3DCopilot.Core
             // Resolve default model (supports provider/model format)
             var (providerConfig, modelName) = config.ResolveModel(config.DefaultModel);
             
+            // 如果没有找到 Provider，使用默认配置
+            if (providerConfig == null)
+            {
+                config.InitDefaultProviders();
+                (providerConfig, modelName) = config.ResolveModel(config.DefaultModel);
+            }
+            
             // Create corresponding provider based on Provider type
             ICopilotProvider provider;
             if (providerConfig.Kind == "anthropic")
@@ -238,6 +245,8 @@ namespace E3DCopilot.Core
                 // 回写 Storm Breaker 状态（AgentLoop 内部可能已更新）
                 StormSig = _agent.StormSig;
                 StormCount = _agent.StormCount;
+                // 正常完成时也要触发 TurnDone
+                try { _sink?.Emit(CopilotEvent.TurnDone()); } catch { }
             }
             catch (Exception ex)
             {
@@ -298,7 +307,7 @@ namespace E3DCopilot.Core
             if (mode != "ask" && mode != "auto" && mode != "yolo") return;
 
             ToolApprovalMode = mode;
-            _sink.Emit(CopilotEvent.Notice($"Tool approval mode: {mode}"));
+            _sink.Emit(CopilotEvent.Notice($"工具审批模式: {mode}"));
         }
 
         /// <summary>
@@ -365,7 +374,7 @@ namespace E3DCopilot.Core
             }
             _pendingApprovals.Clear();
             _session = new CopilotSession();
-            _sink.Emit(CopilotEvent.Notice("New session created"));
+            _sink.Emit(CopilotEvent.Notice("已创建新会话"));
         }
 
         /// <summary>

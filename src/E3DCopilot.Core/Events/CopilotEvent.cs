@@ -59,8 +59,8 @@ namespace E3DCopilot.Core.Events
         public static CopilotEvent StreamDelta(string delta) =>
             new CopilotEvent { Kind = EventKind.StreamDelta, Text = delta };
 
-        public static CopilotEvent StreamEnd(object usage = null) =>
-            new CopilotEvent { Kind = EventKind.StreamEnd, Data = usage };
+        public static CopilotEvent StreamEnd(object usage = null, string errorMessage = null) =>
+            new CopilotEvent { Kind = EventKind.StreamEnd, Data = usage, Text = errorMessage };
 
         public static CopilotEvent ToolStart(string toolId, string name, object args = null, string coreToolName = null) =>
             new CopilotEvent { Kind = EventKind.ToolDispatch, ToolId = toolId, Text = name, Data = args, CoreToolName = coreToolName };
@@ -70,6 +70,9 @@ namespace E3DCopilot.Core.Events
 
         public static CopilotEvent ToolFail(string toolId, string error) =>
             new CopilotEvent { Kind = EventKind.ToolError, ToolId = toolId, Text = error };
+
+        public static CopilotEvent ToolProgressEvent(string toolId, string text, long elapsedMs) =>
+            new CopilotEvent { Kind = EventKind.ToolProgress, ToolId = toolId, Text = text, Data = new { elapsedMs } };
 
         public static CopilotEvent ApprovalReq(string toolId, string description, object args = null) =>
             new CopilotEvent { Kind = EventKind.ApprovalRequest, ToolId = toolId, Text = description, Data = args };

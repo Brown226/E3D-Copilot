@@ -40,7 +40,9 @@ namespace E3DCopilot.Core.Providers
                     Models = p.Models != null ? p.Models.ToArray() : new string[0],
                     Default = p.DefaultModel ?? "",
                     Enabled = true,
-                    BuiltIn = IsBuiltIn(p.Name)
+                    BuiltIn = IsBuiltIn(p.Name),
+                    ContextWindow = p.ContextWindow,
+                    VisionModels = p.VisionModels != null ? p.VisionModels.ToArray() : new string[0]
                 })
                 .ToArray();
 
@@ -116,7 +118,9 @@ namespace E3DCopilot.Core.Providers
                     Kind = payload.Kind ?? "openai",
                     BaseUrl = payload.BaseUrl ?? "",
                     Models = new List<string>(payload.Models ?? new string[0]),
-                    DefaultModel = payload.Default ?? ""
+                    DefaultModel = payload.Default ?? "",
+                    ContextWindow = payload.ContextWindow,
+                    VisionModels = new List<string>(payload.VisionModels ?? new string[0])
                 };
                 config.Providers.Add(existing);
             }
@@ -126,6 +130,8 @@ namespace E3DCopilot.Core.Providers
                 if (!string.IsNullOrEmpty(payload.BaseUrl)) existing.BaseUrl = payload.BaseUrl;
                 if (payload.Models != null) existing.Models = payload.Models.ToList();
                 if (!string.IsNullOrEmpty(payload.Default)) existing.DefaultModel = payload.Default;
+                existing.ContextWindow = payload.ContextWindow;
+                if (payload.VisionModels != null) existing.VisionModels = payload.VisionModels.ToList();
             }
 
             // 如果前端传了 apiKey（非空字符串），更新
@@ -142,7 +148,6 @@ namespace E3DCopilot.Core.Providers
         public static bool DeleteProvider(CopilotConfig config, string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return false;
-            if (IsBuiltIn(name)) return false; // 内置 provider 不允许删
 
             var removed = config.Providers.RemoveAll(p => p.Name == name);
             if (removed > 0)
