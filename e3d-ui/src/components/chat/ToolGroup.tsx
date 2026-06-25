@@ -4,7 +4,7 @@
  */
 
 import { memo, useState } from 'react'
-import { ChevronRight, Search, Edit3, Zap, Terminal } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import type { Message } from '@/types'
 import { ToolCard } from './ToolCard'
 
@@ -22,15 +22,6 @@ export function toolGroupKind(msg: Message): ToolGroupKind | null {
   if (MODIFY_TOOLS.has(name)) return 'modify'
   if (DELEGATE_TOOLS.has(name)) return 'delegate'
   return null
-}
-
-function kindIcon(kind: ToolGroupKind) {
-  switch (kind) {
-    case 'explore': return <Search className="w-3.5 h-3.5" />
-    case 'modify': return <Edit3 className="w-3.5 h-3.5" />
-    case 'delegate': return <Zap className="w-3.5 h-3.5" />
-    case 'shell': return <Terminal className="w-3.5 h-3.5" />
-  }
 }
 
 function kindLabel(kind: ToolGroupKind, count: number) {

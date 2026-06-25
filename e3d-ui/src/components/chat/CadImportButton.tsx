@@ -65,13 +65,6 @@ export function CadImportButton() {
     sendMessage(bridge.sendUserMessage.bind(bridge), [], message)
   }, [sendMessage, togglePanel, state.coordinates, state.wallHeight, state.wallThickness])
 
-  // ── 从 AutoCAD 导入（发送消息让 AI 处理） ──
-  const importFromAutoCad = useCallback(() => {
-    togglePanel()
-    const message = `从 AutoCAD 导入选中的对象，墙高${state.wallHeight}mm，墙厚${state.wallThickness}mm`
-    sendMessage(bridge.sendUserMessage.bind(bridge), [], message)
-  }, [sendMessage, togglePanel, state.wallHeight, state.wallThickness])
-
   // ── 渲染状态图标 ──
   if (!state.isOpen) {
     return (

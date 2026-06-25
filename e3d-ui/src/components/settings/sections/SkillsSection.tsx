@@ -31,7 +31,6 @@ import type { SkillInfo, SkillSource } from '@/services/messageContracts'
 import { useToastStore } from '@/store/useToastStore'
 
 // ── 内置技能由后端动态生成，不再硬编码 ──
-const BUILTIN_SKILLS: SkillInfo[] = []
 
 // ── Helpers ──
 function summarizeDescription(desc: string, maxLen = 120): string {

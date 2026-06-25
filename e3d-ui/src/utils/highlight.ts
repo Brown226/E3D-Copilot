@@ -93,7 +93,7 @@ function cacheKey(lang: string, code: string): string {
   return `${lang}\0${djb2(code)}`
 }
 
-function cacheGet(key: string, code: string): string | undefined {
+function cacheGet(key: string, _code: string): string | undefined {
   const val = cache.get(key)
   // 碰撞防御：校验原始内容
   if (val !== undefined) {

@@ -1,0 +1,12 @@
+{
+  "solution": {
+    "path": "E3DCopilot.sln",
+    "projects": [
+      "{0831F35A-02F7-4F08-AFE4-5B6EAD942548}",
+      "{BC77A56A-61EA-44C3-8035-E5A7EDAFF8EE}",
+      "{0F8A6B88-12AF-4089-9C95-B1C46A589290}",
+      "{D5E6F7A8-B9C0-1234-DEF5-6789ABCDEF01}",
+      "{350142F0-3845-4749-BC5F-ED957F46E735}"
+    ]
+  }
+}

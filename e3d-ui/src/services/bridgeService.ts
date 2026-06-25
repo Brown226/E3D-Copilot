@@ -714,10 +714,10 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
       }
 
       case 'ask_user': {
-        const p = msg.payload as { questionId: string; question: string; data?: { options?: string[]; multiSelect?: boolean } };
+        const p = msg.payload as { questionId: string; question: string; data?: { question?: string; options?: string[]; multiSelect?: boolean } };
         s.setPendingQuestion({
           questionId: p.questionId,
-          question: p.question,
+          question: p.data?.question || p.question,
           options: p.data?.options,
           multiSelect: p.data?.multiSelect,
         }, tabId);

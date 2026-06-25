@@ -3,7 +3,7 @@
  * 快速执行常用操作：新会话、设置、历史、切换模型、切换主题
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Search, MessageSquarePlus, Settings, History, Bot, Moon, Sun } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 

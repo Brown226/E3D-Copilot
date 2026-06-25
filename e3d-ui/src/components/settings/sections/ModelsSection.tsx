@@ -30,10 +30,8 @@ import {
   ChevronRight,
   Zap,
   Key,
-  Globe,
   Box,
   Camera,
-  Hash,
 } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import type { ProviderInfo } from '@/services/messageContracts'
@@ -204,7 +202,7 @@ function UsageTab() {
                           {m.model}
                         </span>
                         {m.isVision && (
-                          <Camera className="w-3 h-3 text-purple-400" title="支持图片输入" />
+                          <Camera className="w-3 h-3 text-purple-400" />
                         )}
                       </div>
                       {isActive && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}

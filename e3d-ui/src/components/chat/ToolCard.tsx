@@ -12,10 +12,7 @@
 import { useState, useMemo } from 'react'
 import {
   Loader2,
-  Copy,
-  Check,
   ChevronRight,
-  Layers,
 } from 'lucide-react'
 import type { Message } from '@/types'
 import { DiffView } from './DiffView'
@@ -100,7 +97,6 @@ function formatDuration(ms?: number): string {
 export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null)
   const [showAll, setShowAll] = useState(false)
-  const [copied, setCopied] = useState(false)
 
   const isRunning = !msg.finalized
   const isError = !!msg.toolError
@@ -170,15 +166,6 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
 
   // 耗时
   const duration = isRunning ? '' : formatDuration(msg.durationMs)
-
-  // 复制结果
-  const handleCopy = () => {
-    const text = displayResult || ''
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }
 
   const hasBody = !!(argsStr || resultStr || hasSubcalls || diffData)
 

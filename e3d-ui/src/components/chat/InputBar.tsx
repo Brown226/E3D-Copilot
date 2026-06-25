@@ -12,7 +12,6 @@
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type CSSProperties } from 'react'
 import { Paperclip, ArrowUp, Square, Shield, ShieldCheck, List } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
-import type { ToolApprovalMode } from '@/store/useChatStore'
 import { ModelSwitcher } from '@/components/chat/ModelSwitcher'
 import { SlashMenu } from '@/components/chat/SlashMenu'
 import { CadImportButton } from '@/components/chat/CadImportButton'
@@ -120,7 +119,6 @@ export function InputBar() {
   const inputValue = useChatStore((s) => s.inputValue)
   const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
   const bridgeConnected = useChatStore((s) => s.bridgeConnected)
-  const currentModel = useChatStore((s) => s.currentModel)
   const toolApprovalMode = useChatStore((s) => s.toolApprovalMode)
   const setToolApprovalMode = useChatStore((s) => s.setToolApprovalMode)
   const isPlanMode = useChatStore((s) => s.isPlanMode)
