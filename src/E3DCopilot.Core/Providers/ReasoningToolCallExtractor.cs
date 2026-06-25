@@ -20,7 +20,7 @@ namespace E3DCopilot.Core.Providers
         private static readonly HashSet<string> KnownTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "query", "get_attributes", "modify", "check", "calculate", "export",
-            "execute_pml", "ask_user", "task", "read_file", "write_file",
+            "execute_pml", "ask", "read_file", "write_file",
             "run_skill", "grep", "glob", "todo_write", "memory",
             "design", "piping", "geometry",
             "undo_redo", "report", "compare", "hierarchy", "batch"

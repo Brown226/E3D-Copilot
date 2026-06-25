@@ -69,14 +69,14 @@ namespace E3DCopilot.Core
             if (mode == "yolo")
             {
                 policy.ApplyPreset(ToolPreset.Auto);
-                policy.Set("ask_user", ApprovalMode.Auto);
-                policy.Set("task", ApprovalMode.Auto);
+                policy.Set("ask", ApprovalMode.Auto);
+                policy.Set("todo_write", ApprovalMode.Auto);
+                policy.Set("complete_step", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Auto);
                 policy.Set("write_file", ApprovalMode.Auto);
                 policy.Set("run_skill", ApprovalMode.Auto);
                 policy.Set("cad_import", ApprovalMode.Auto);
                 policy.Set("autocad", ApprovalMode.Auto);
-                policy.Set("search_knowledge", ApprovalMode.Auto);
                 policy.Set("todo_write", ApprovalMode.Auto);
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
@@ -91,8 +91,9 @@ namespace E3DCopilot.Core
                 policy.Set("calculate", ApprovalMode.Ask);
                 policy.Set("export", ApprovalMode.Ask);
                 policy.Set("geometry", ApprovalMode.Ask);
-                policy.Set("ask_user", ApprovalMode.Auto);
-                policy.Set("task", ApprovalMode.Auto);
+                policy.Set("ask", ApprovalMode.Auto);
+                policy.Set("todo_write", ApprovalMode.Auto);
+                policy.Set("complete_step", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Ask);
                 policy.Set("write_file", ApprovalMode.Ask);
                 policy.Set("run_skill", ApprovalMode.Ask);
@@ -107,7 +108,6 @@ namespace E3DCopilot.Core
                 policy.Set("batch", ApprovalMode.Ask);
                 policy.Set("cad_import", ApprovalMode.Ask);
                 policy.Set("autocad", ApprovalMode.Ask);
-                policy.Set("search_knowledge", ApprovalMode.Auto);
                 policy.Set("todo_write", ApprovalMode.Auto);
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
@@ -123,8 +123,9 @@ namespace E3DCopilot.Core
                 policy.Set("calculate", ApprovalMode.Auto);
                 policy.Set("export", ApprovalMode.Auto);
                 policy.Set("geometry", ApprovalMode.Auto);
-                policy.Set("ask_user", ApprovalMode.Auto);
-                policy.Set("task", ApprovalMode.Auto);
+                policy.Set("ask", ApprovalMode.Auto);
+                policy.Set("todo_write", ApprovalMode.Auto);
+                policy.Set("complete_step", ApprovalMode.Auto);
                 policy.Set("read_file", ApprovalMode.Auto);
                 policy.Set("run_skill", ApprovalMode.Auto);
                 policy.Set("undo_redo", ApprovalMode.Auto);
@@ -139,7 +140,6 @@ namespace E3DCopilot.Core
                 policy.Set("batch", ApprovalMode.Ask);
                 policy.Set("cad_import", ApprovalMode.Auto);
                 policy.Set("autocad", ApprovalMode.Auto);
-                policy.Set("search_knowledge", ApprovalMode.Auto);
                 policy.Set("todo_write", ApprovalMode.Auto);
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
@@ -152,11 +152,14 @@ namespace E3DCopilot.Core
         /// <summary>
         /// Run Agent loop
         /// </summary>
-        public async Task RunAsync(CopilotSession session, string input,
+        public async Task RunAsync(CopilotSession session, string input, string[] images = null,
             CancellationToken ct = default)
         {
-            session.AddUserMessage(input);
-            CopilotLogger.Info("AgentLoop.RunAsync 开始: input='{0}', session messages={1}", input?.Substring(0, Math.Min(50, input?.Length ?? 0)), session.Messages.Count);
+            session.AddUserMessage(input, images);
+            CopilotLogger.Info("AgentLoop.RunAsync 开始: input='{0}', images={1}, session messages={2}", 
+                input?.Substring(0, Math.Min(50, input?.Length ?? 0)), 
+                images != null ? images.Length : 0, 
+                session.Messages.Count);
 
             // ── 记忆注入：每 turn 只计算一次，后续步骤复用 ──
             string memoryContext = ComputeMemoryContext(session);
@@ -249,25 +252,47 @@ namespace E3DCopilot.Core
             var results = new string[calls.Count];
             var errors = new string[calls.Count];
 
+            // ── 去重：同一轮中 Name+Arguments 完全相同的工具调用，只执行一次 ──
+            // LLM 有时会返回重复的 tool_calls（尤其是 ask），去重避免重复弹窗
+            var dedupeMap = new Dictionary<string, int>(); // signature → first index
+            var isDupe = new bool[calls.Count];
+            for (int j = 0; j < calls.Count; j++)
+            {
+                string sig = $"{calls[j].Name}\0{calls[j].Arguments}";
+                if (dedupeMap.ContainsKey(sig))
+                {
+                    isDupe[j] = true;
+                    CopilotLogger.Info("ExecuteBatchAsync: dedup tool call {0} (idx {1} → idx {2})",
+                        calls[j].Name, j, dedupeMap[sig]);
+                }
+                else
+                {
+                    dedupeMap[sig] = j;
+                }
+            }
+
             // 分区：连续只读 → parallel，写/未知 → serial
             int i = 0;
             while (i < calls.Count)
             {
                 if (ct.IsCancellationRequested) break;
 
+                // 跳过重复调用（结果会在下面从首个实例复制）
+                if (isDupe[i]) { i++; continue; }
+
                 if (IsParallelisable(calls[i].Name))
                 {
-                    // 收集连续只读段
+                    // 收集连续只读段（跳过重复）
                     int start = i;
                     i++;
-                    while (i < calls.Count && IsParallelisable(calls[i].Name))
+                    while (i < calls.Count && (IsParallelisable(calls[i].Name) || isDupe[i]))
                         i++;
 
                     // 并行执行只读段（对齐 Reasonix runParallel）
                     var tasks = new List<Task>();
                     for (int j = start; j < i; j++)
                     {
-                        if (ct.IsCancellationRequested) break;
+                        if (ct.IsCancellationRequested || isDupe[j]) continue;
                         int idx = j; // capture
                         tasks.Add(Task.Run(async () =>
                         {
@@ -285,6 +310,18 @@ namespace E3DCopilot.Core
                     results[i] = output;
                     errors[i] = err;
                     i++;
+                }
+            }
+
+            // 将去重调用的结果从首个实例复制过来
+            for (int j = 0; j < calls.Count; j++)
+            {
+                if (isDupe[j])
+                {
+                    string sig = $"{calls[j].Name}\0{calls[j].Arguments}";
+                    int firstIdx = dedupeMap[sig];
+                    results[j] = results[firstIdx];
+                    errors[j] = errors[firstIdx];
                 }
             }
 
@@ -312,6 +349,22 @@ namespace E3DCopilot.Core
             return handler != null && handler.IsReadOnly;
         }
 
+        /// <summary>
+        /// 元能力/只读工具不受危险模式检测限制（todo_write、complete_step 等）
+        /// 它们的 JSON 参数可能被误判（如包含 >、; 等字符），但实际不会执行 Shell/PML
+        /// </summary>
+        private static readonly HashSet<string> _dangerousExemptTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "todo_write", "complete_step", "memory", "run_skill",
+            "read_file", "write_file", "grep", "glob", "ask",
+            "report", "compare", "hierarchy"
+        };
+
+        private bool IsMetaToolDangerousExempt(string toolName)
+        {
+            return _dangerousExemptTools.Contains(toolName);
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  executeOne — 单工具执行（对齐 Reasonix executeOne）
         //  包含：权限检查 + 审批 + plan mode 门控 + 实际执行
@@ -329,8 +382,8 @@ namespace E3DCopilot.Core
                 return ("已跳过: 工具名称为空", "empty name");
             }
 
-            // ── 1. 危险模式检测 ──
-            if (_permission.HasDangerousPattern(call.Arguments))
+            // ── 1. 危险模式检测（仅对写/执行类工具检查，元能力只读工具始终安全）──
+            if (!IsMetaToolDangerousExempt(call.Name) && _permission.HasDangerousPattern(call.Arguments))
             {
                 string msg = $"Tool {call.Name} 参数包含危险模式，已阻止";
                 _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
@@ -607,9 +660,9 @@ namespace E3DCopilot.Core
                 "get_attributes",
                 "design", "piping", "geometry",
                 "undo_redo", "report", "compare", "hierarchy", "batch",
-                "ask_user", "task", "todo_write", "read_file", "write_file",
+                "ask", "todo_write", "complete_step", "read_file", "write_file",
                 "run_skill", "grep", "glob", "memory",
-                "cad_import", "autocad", "search_knowledge"
+                "cad_import", "autocad"
             };
             foreach (var handler in _executor.GetAllHandlers())
             {
@@ -635,6 +688,22 @@ namespace E3DCopilot.Core
             }
 
             request.Messages.AddRange(history);
+
+            // ── 多模态 Vision 门控：非视觉模型时剥离图片数据，避免 API 报错 ──
+            if (providerConfig.VisionModels != null && providerConfig.VisionModels.Count > 0)
+            {
+                bool isVisionModel = providerConfig.VisionModels.Exists(
+                    vm => !string.IsNullOrEmpty(vm) &&
+                          vm.Equals(modelName, StringComparison.OrdinalIgnoreCase));
+                if (!isVisionModel)
+                {
+                    foreach (var msg in request.Messages)
+                    {
+                        if (msg.Images != null && msg.Images.Length > 0)
+                            msg.Images = null;
+                    }
+                }
+            }
 
             // ── 记忆注入：放在历史之后、更靠近当前对话位置（每 turn 只计算一次）──
             if (!string.IsNullOrEmpty(memoryContext))

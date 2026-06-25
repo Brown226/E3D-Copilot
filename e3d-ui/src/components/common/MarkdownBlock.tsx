@@ -23,6 +23,7 @@ import { visit } from 'unist-util-visit'
 
 import { WithCopyButton } from '@/components/common/CopyButton'
 import { normalizeMath } from '@/components/chat/mathNormalize'
+import { normalizeMarkdown } from '@/utils/normalizeMarkdown'
 import { languages } from '@/utils/highlight'
 
 /* ─── 代码块解析（正则分割，替代 marked.lexer） ─── */
@@ -212,8 +213,10 @@ const MemoizedMarkdownBlock = memo(({ content }: { content: string }) => {
 MemoizedMarkdownBlock.displayName = 'MemoizedMarkdownBlock'
 
 const MemoizedMarkdown = memo(({ content }: { content: string }) => {
-  // 数学公式预处理：LLM 分隔符转换 + 分类器防误渲染
-  const normalized = useMemo(() => normalizeMath(content), [content])
+  // 1. Markdown 格式归一化：修复表格语法（||→|）、空白行规范化等
+  const formatFixed = useMemo(() => normalizeMarkdown(content), [content])
+  // 2. 数学公式预处理：LLM 分隔符转换 + 分类器防误渲染
+  const normalized = useMemo(() => normalizeMath(formatFixed), [formatFixed])
   const blocks = useMemo(() => parseMarkdownIntoBlocks(normalized), [normalized])
   return blocks.map((block, index) => (
     <MemoizedMarkdownBlock content={block} key={index} />

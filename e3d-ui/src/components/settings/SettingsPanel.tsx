@@ -63,8 +63,21 @@ export default function SettingsPanel() {
   useEffect(() => {
     if (!showSettings) return
     let cancelled = false
+    setSectionComponent(null)  // 切换时先显示 loading
     sectionLoaders[activeTab]().then((mod) => {
       if (!cancelled) setSectionComponent(() => mod.default)
+    }).catch((err) => {
+      console.error(`[Settings] Failed to load section: ${activeTab}`, err)
+      // 加载失败时显示 fallback 组件
+      if (!cancelled) {
+        const tab = activeTab
+        setSectionComponent(() => () => (
+          <div className="text-center py-12 text-slate-500">
+            <p className="text-sm">加载失败: {tab}</p>
+            <p className="text-xs mt-1 text-slate-400">{String(err)}</p>
+          </div>
+        ))
+      }
     })
     return () => { cancelled = true }
   }, [activeTab, showSettings])

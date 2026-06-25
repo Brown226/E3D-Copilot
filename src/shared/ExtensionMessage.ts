@@ -155,7 +155,6 @@ export type ClineAsk =
 	| "use_subagents"
 
 export type ClineSay =
-	| "task"
 	| "error"
 	| "error_retry"
 	| "api_req_started"
@@ -215,10 +214,10 @@ export interface ClineSayTool {
 		| "check"
 		| "calculate"
 		| "export"
-		| "ask_user"
-		| "task"
+		| "ask"
 		| "read_file"
-		| "search_knowledge"
+		| "todo_write"
+		| "complete_step"
 		| "e3d_generic"
 		// === E3D Router 路由后的专用工具 ===
 		| "get_current_element"

@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿﻿﻿using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -351,13 +351,13 @@ namespace E3DCopilot.Core.Providers
         /// <summary>
         /// Serialize ChatMessage to OpenAI message format
         /// Correctly handles assistant tool_calls and tool result responses
+        /// Supports multimodal content (text + images) for vision models
         /// </summary>
         private static JObject SerializeMessage(ChatMessage m)
         {
             var msg = new JObject
             {
                 ["role"] = RoleToString(m.Role),
-                ["content"] = m.Content
             };
 
             // Assistant message: inject tool_calls (required for multi-turn)
@@ -377,6 +377,45 @@ namespace E3DCopilot.Core.Providers
                 }));
                 // When there are tool_calls, content should be null (OpenAI spec)
                 msg["content"] = null;
+            }
+            // User/System messages with images: use array format for vision models
+            else if ((m.Role == MessageRole.User || m.Role == MessageRole.System) 
+                     && m.Images != null && m.Images.Length > 0)
+            {
+                var contentArray = new JArray();
+                
+                // Add text content first
+                if (!string.IsNullOrEmpty(m.Content))
+                {
+                    contentArray.Add(new JObject
+                    {
+                        ["type"] = "text",
+                        ["text"] = m.Content
+                    });
+                }
+                
+                // Add each image as image_url
+                foreach (var imageBase64 in m.Images)
+                {
+                    if (!string.IsNullOrEmpty(imageBase64))
+                    {
+                        contentArray.Add(new JObject
+                        {
+                            ["type"] = "image_url",
+                            ["image_url"] = new JObject
+                            {
+                                ["url"] = imageBase64
+                            }
+                        });
+                    }
+                }
+                
+                msg["content"] = contentArray;
+            }
+            // Regular text-only message
+            else
+            {
+                msg["content"] = m.Content;
             }
 
             // Tool result message: always include tool_call_id (DeepSeek requires it for all tool messages)

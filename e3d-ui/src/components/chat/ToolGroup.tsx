@@ -12,12 +12,12 @@ export type ToolGroupKind = 'explore' | 'modify' | 'delegate' | 'shell'
 
 const EXPLORE_TOOLS = new Set(['read_file', 'ls', 'grep', 'glob', 'web_fetch', 'code_index', 'read_skill', 'mcp__*', 'geometry', 'report', 'compare', 'hierarchy'])
 const MODIFY_TOOLS = new Set(['write_file', 'edit_file', 'multi_edit', 'move_file', 'delete_range', 'delete_symbol', 'notebook_edit', 'design', 'piping', 'batch', 'undo_redo'])
-const DELEGATE_TOOLS = new Set(['task', 'run_skill', 'explore', 'research', 'review', 'security_review'])
+const DELEGATE_TOOLS = new Set(['run_skill', 'explore', 'research', 'review', 'security_review'])
 
 export function toolGroupKind(msg: Message): ToolGroupKind | null {
   const name = msg.toolName || ''
   if (!name) return null
-  if (name === 'todo_write' || name === 'exit_plan_mode') return null
+  if (name === 'todo_write' || name === 'complete_step' || name === 'exit_plan_mode') return null
   if (EXPLORE_TOOLS.has(name) || name.startsWith('mcp__')) return 'explore'
   if (MODIFY_TOOLS.has(name)) return 'modify'
   if (DELEGATE_TOOLS.has(name)) return 'delegate'

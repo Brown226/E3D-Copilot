@@ -89,6 +89,18 @@ namespace E3DCopilot.Core.Tools
         public bool HasHandler(string name) => _handlers.ContainsKey(name);
 
         /// <summary>
+        /// 设置 Asker（延迟注入，Controller 创建晚于 ToolExecutor 时回填）
+        /// 对齐 Reasonix executor.SetAsker(as Asker)
+        /// </summary>
+        public void SetAsker(Handlers.AskUserHandler.IAsker asker)
+        {
+            if (_handlers.TryGetValue("ask", out var handler) && handler is Handlers.AskUserHandler askHandler)
+            {
+                askHandler.SetAsker(asker);
+            }
+        }
+
+        /// <summary>
         /// 执行工具（完整流程：路由 → 校验 → 分派 → 执行 → 结果）
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(string toolName, string args,
@@ -124,12 +136,8 @@ namespace E3DCopilot.Core.Tools
                 catch { return ToolResult.Fail($"Invalid JSON args for {toolName}"); }
             }
 
-            // 生成统一的 toolId，用于关联 Start/Complete/Fail 事件
-            var toolId = Guid.NewGuid().ToString("N");
-
-            // 分派事件（传原始 toolName 作为 coreToolName，effectiveName 作为实际执行的工具名）
-            _sink?.Emit(CopilotEvent.ToolStart(toolId, effectiveName, args, toolName));
-            CopilotLogger.Info("ToolExecutor: {0} (id={1}), args={2}", effectiveName, toolId.Substring(0, 8), args?.Substring(0, Math.Min(200, args?.Length ?? 0)));
+            // 事件发射统一由 AgentLoop.ExecuteOneAsync 负责，此处不再重复发射
+            CopilotLogger.Info("ToolExecutor: {0}, args={1}", effectiveName, args?.Substring(0, Math.Min(200, args?.Length ?? 0)));
 
             var sw = Stopwatch.StartNew();
 
@@ -149,8 +157,7 @@ namespace E3DCopilot.Core.Tools
                 {
                     if (sw.IsRunning && sw.ElapsedMilliseconds > 2000)
                     {
-                        _sink?.Emit(CopilotEvent.ToolProgressEvent(toolId,
-                            $"执行中... {sw.ElapsedMilliseconds}ms", sw.ElapsedMilliseconds));
+                        // 进度事件统一由 AgentLoop 负责，此处不再重复发射
                     }
                 }, null, 3000, 3000);
 
@@ -160,8 +167,6 @@ namespace E3DCopilot.Core.Tools
                     if (sw.IsRunning && !ct.IsCancellationRequested)
                     {
                         CopilotLogger.Warn("ToolExecutor: {0} 执行超时 ({1}ms)", effectiveName, timeoutMs);
-                        _sink?.Emit(CopilotEvent.ToolProgressEvent(toolId,
-                            $"⚠ 执行超时 ({timeoutMs/1000}秒)，正在取消...", sw.ElapsedMilliseconds));
                         timeoutCts.Cancel();
                     }
                 }, null, timeoutMs, Timeout.Infinite);
@@ -177,15 +182,9 @@ namespace E3DCopilot.Core.Tools
                 linkedCts.Dispose();
                 result.DurationMs = sw.ElapsedMilliseconds;
 
-                // 结果事件（使用相同 toolId 关联）
                 CopilotLogger.Info("ToolExecutor: {0} 完成, success={1}, duration={2}ms", effectiveName, result.Success, result.DurationMs);
-                if (result.Success)
-                    _sink?.Emit(CopilotEvent.ToolComplete(toolId, result.Text, result.Data));
-                else
-                {
+                if (!result.Success)
                     CopilotLogger.Warn("ToolExecutor: {0} 失败: {1}", effectiveName, result.Error);
-                    _sink?.Emit(CopilotEvent.ToolFail(toolId, result.Error));
-                }
 
                 return result;
             }
@@ -197,7 +196,6 @@ namespace E3DCopilot.Core.Tools
                 timeoutCts.Dispose();
                 linkedCts.Dispose();
                 string reason = ct.IsCancellationRequested ? "用户取消" : $"执行超时 ({timeoutMs/1000}秒)";
-                _sink?.Emit(CopilotEvent.Notice($"工具 {toolName} 已取消: {reason}"));
                 return ToolResult.Fail(reason);
             }
             catch (Exception ex)
@@ -209,7 +207,6 @@ namespace E3DCopilot.Core.Tools
                 linkedCts.Dispose();
                 var result = ToolResult.Fail($"工具执行异常: {ex.Message}");
                 CopilotLogger.Error(ex, "ToolExecutor: {0} 异常", effectiveName);
-                _sink?.Emit(CopilotEvent.ToolFail(toolId, result.Error));
                 return result;
             }
         }
@@ -262,8 +259,8 @@ namespace E3DCopilot.Core.Tools
             executor.Register(new CalculateHandler());
 
             // 元能力工具（不依赖 IToolDispatcher）
-            executor.Register(new AskUserHandler(sink));
-            executor.Register(new TaskHandler(sink));
+            // asker 通过 controller 在构造完成后通过 SetAsker 注入
+            executor.Register(new AskUserHandler(null));
             executor.Register(new ReadFileHandler(sink));
             executor.Register(new WriteFileHandler(sink));
 
@@ -271,11 +268,9 @@ namespace E3DCopilot.Core.Tools
             executor.Register(new GrepHandler(sink));
             executor.Register(new GlobHandler(sink));
 
-            // 结构化任务追踪（替代 task 工具的升级版）
+            // 结构化任务追踪（对齐 Reasonix todo_write + complete_step）
             executor.Register(new TodoWriteHandler(sink));
-
-            // 元能力工具：知识库搜索（memory 和 run_skill 在 CopilotController 中注册）
-            executor.Register(new SearchKnowledgeHandler(sink));
+            executor.Register(new CompleteStepHandler(sink));
 
             // E3D 操作辅助工具（需要 IToolDispatcher）
             executor.Register(new UndoRedoHandler(dispatcher, sink));

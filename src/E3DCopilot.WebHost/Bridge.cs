@@ -51,6 +51,22 @@ namespace E3DCopilot.WebHost
             _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         }
 
+        private static void Log(string message)
+        {
+            try
+            {
+                var logPath = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "E3DCopilot", "bridge.log");
+                var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                System.IO.File.AppendAllText(logPath, $"[{timestamp}] {message}\r\n");
+            }
+            catch
+            {
+                // 忽略日志写入错误
+            }
+        }
+
         /// <summary>
         /// 处理前端发来的消息（在 UI 线程上由 WebMessageReceived 触发）
         /// </summary>
@@ -212,15 +228,27 @@ namespace E3DCopilot.WebHost
         {
             string text = null;
             string tabId = null;
+            string[] images = null;
+            
             if (payload.HasValue)
             {
                 if (payload.Value.TryGetProperty("text", out var textProp))
                     text = textProp.GetString();
                 if (payload.Value.TryGetProperty("tabId", out var tabIdProp))
                     tabId = tabIdProp.GetString();
+                if (payload.Value.TryGetProperty("images", out var imagesProp) && imagesProp.ValueKind == JsonValueKind.Array)
+                {
+                    var imgList = new List<string>();
+                    foreach (var img in imagesProp.EnumerateArray())
+                    {
+                        if (img.ValueKind == JsonValueKind.String)
+                            imgList.Add(img.GetString());
+                    }
+                    images = imgList.Count > 0 ? imgList.ToArray() : null;
+                }
             }
 
-            if (string.IsNullOrWhiteSpace(text))
+            if (string.IsNullOrWhiteSpace(text) && (images == null || images.Length == 0))
             {
                 SendToFrontend(MessageTypes.Error, new { message = "[Bridge] 收到空消息，已忽略" });
                 return;
@@ -234,7 +262,7 @@ namespace E3DCopilot.WebHost
             {
                 try
                 {
-                    await _controller.SendAsync(text);
+                    await _controller.SendAsync(text, images);
                 }
                 catch (Exception ex)
                 {
@@ -260,19 +288,40 @@ namespace E3DCopilot.WebHost
         }
 
         /// <summary>
-        /// 处理用户对 ask_user 问题的回答
+        /// 处理用户对 ask 问题的回答（对齐 Reasonix AnswerQuestion）
         /// </summary>
         private void HandleAskResponse(JsonElement? payload)
         {
             if (!payload.HasValue) return;
 
-            var questionId = payload.Value.TryGetProperty("questionId", out var qidProp)
-                ? qidProp.GetString() : null;
-            var answer = payload.Value.TryGetProperty("answer", out var ansProp)
-                ? ansProp.GetString() : null;
+            var id = payload.Value.TryGetProperty("id", out var idProp)
+                ? idProp.GetString() : null;
 
-            if (!string.IsNullOrEmpty(questionId))
-                E3DCopilot.Core.Tools.Handlers.AskUserHandler.SubmitAnswer(questionId, answer ?? "");
+            if (string.IsNullOrEmpty(id)) return;
+
+            var answers = new List<AskAnswer>();
+
+            // answers 数组 [{questionId, selected:[]}]
+            if (payload.Value.TryGetProperty("answers", out var answersProp) && answersProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var ans in answersProp.EnumerateArray())
+                {
+                    var qId = ans.TryGetProperty("questionId", out var q) ? q.GetString() : "";
+                    var sel = new List<string>();
+                    if (ans.TryGetProperty("selected", out var s) && s.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in s.EnumerateArray())
+                            sel.Add(item.GetString());
+                    }
+                    if (!string.IsNullOrEmpty(qId) && sel.Count > 0)
+                        answers.Add(new AskAnswer { QuestionId = qId, Selected = sel });
+                }
+            }
+
+            Log($"[Bridge] Received user:ask_response: id={id}, answers={answers.Count}");
+
+            if (answers.Count > 0)
+                _controller.AnswerQuestion(id, answers);
         }
 
         /// <summary>
@@ -444,18 +493,32 @@ namespace E3DCopilot.WebHost
                     SendToFrontend(MessageTypes.ToolApproval, new { id = evt.ToolId, name = evt.Text, args = evt.Data?.ToString(), description = evt.Text, tabId });
                     break;
 
-                case EventKind.AskUser:
-                    string questionText = null;
-                    if (evt.Data is System.Text.Json.JsonElement jo)
-                        questionText = jo.GetProperty("question").GetString();
-                    else if (evt.Data != null)
+                case EventKind.AskRequest:
                     {
-                        // 匿名对象：通过反射取 question 属性
-                        var prop = evt.Data.GetType().GetProperty("question");
-                        questionText = prop?.GetValue(evt.Data) as string;
+                        // 通过 evt.Ask 属性传递结构化数据
+                        if (evt.Ask != null)
+                        {
+                            var askData = evt.Ask;
+                            Log($"[Bridge] Dispatching AskRequest: id={askData.Id}, questions={askData.Questions?.Count ?? 0}");
+                            SendToFrontend(MessageTypes.AskRequest, new
+                            {
+                                id = askData.Id,
+                                questions = askData.Questions?.Select(q => new
+                                {
+                                    id = q.Id,
+                                    header = q.Header,
+                                    prompt = q.Prompt,
+                                    options = q.Options?.Select(o => new { label = o.Label, description = o.Description }),
+                                    multi = q.Multi
+                                }),
+                                tabId
+                            });
+                        }
+                        else
+                        {
+                            Log($"[Bridge] AskRequest with null Ask data, ignoring");
+                        }
                     }
-                    questionText = questionText ?? evt.Text ?? "question";
-                    SendToFrontend(MessageTypes.AskUser, new { questionId = evt.ToolId, question = questionText, data = evt.Data, tabId });
                     break;
 
                 case EventKind.PlanModeChanged:
@@ -643,7 +706,7 @@ namespace E3DCopilot.WebHost
                     if (existingNames.Contains(handler.Name)) continue;
 
                     // 跳过内部工具（不暴露给用户的）
-                    if (handler.Name == "todo_write" || handler.Name == "memory") continue;
+                    if (handler.Name == "todo_write" || handler.Name == "complete_step" || handler.Name == "memory") continue;
 
                     skills.Add(new Core.Skills.SkillInfo
                     {

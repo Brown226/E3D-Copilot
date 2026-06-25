@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 export default defineConfig({
+  base: '',              // 空字符串 = 相对路径（WebView2 必需）
   plugins: [
     react(),
     tailwindcss(),

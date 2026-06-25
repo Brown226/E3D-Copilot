@@ -63,14 +63,13 @@ namespace E3DCopilot.Core
 "- compare: Compare attributes of two elements. 对比两个元素的属性差异\n" +
 "- hierarchy: Browse element hierarchy: parent, children, zone. 浏览元素层级结构\n" +
 "- batch: Batch modify: query + apply changes to all matches with dry-run. 批量修改，支持预览\n" +
-"- ask_user: Ask the user a question and wait for response — use when you need clarification or confirmation before proceeding\n" +
+"- ask: Ask the user one or more multiple-choice questions — use when you need a genuine user decision (which library, which approach, scope). Don't use for decisions with an obvious default. 向用户提出多选题，用于消除歧义或确认决策。\n" +
 "- task: (deprecated) Sub-task tracking — use todo_write instead for structured task lists with progress tracking\n" +
 "- read_file: Read local files (API documentation, config, reference materials)\n" +
 "- write_file: Write content to a file (create PML scripts, export reports, save config)\n" +
-"- grep: Search file contents with regex. Use for code/config/log search. For E3D API docs, use search_knowledge instead.\n" +
-"- glob: Find files by name pattern (*.pml, **/*.cs) — use for locating project files\n" +
+"- grep: Search file contents with regex, or search E3D knowledge base (API signatures, PML syntax, golden patterns) with knowledge=true. **pattern is always required** — even in knowledge mode, provide a search keyword. 在文件中搜索文本/正则，knowledge=true 时搜索 E3D 知识库。**pattern 参数始终必填**。\n" +
+"- glob: Find files by name pattern (**pattern required**, e.g. *.pml, **/*.cs). 按文件名模式查找文件，pattern 必填。\n" +
 "- todo_write: Structured task list with progress tracking — primary tool for multi-step operations\n" +
-"- search_knowledge: Search E3D knowledge base (API signatures, PML syntax, golden patterns) — primary knowledge lookup tool\n" +
 "- memory: Save/search/retrieve cross-session memories — use when user says \"remember this\" or to recall saved knowledge\n" +
 "- run_skill: Load an E3D skill playbook — use for domain-specific guidance (PML macros, piping standards, design specs)\n" +
 "- generate_iso_drawing: Generate ISO isometric drawings from E3D pipe data. 从E3D管道数据生成ISO等轴测图。支持单个和批量生成。\n" +

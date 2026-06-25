@@ -17,9 +17,14 @@ namespace E3DCopilot.Core
         /// <summary>
         /// 追加用户消息
         /// </summary>
-        public void AddUserMessage(string content)
+        public void AddUserMessage(string content, string[] images = null)
         {
-            Messages.Add(new ChatMessage(MessageRole.User, content));
+            var msg = new ChatMessage(MessageRole.User, content);
+            if (images != null && images.Length > 0)
+            {
+                msg.Images = images;
+            }
+            Messages.Add(msg);
         }
 
         /// <summary>

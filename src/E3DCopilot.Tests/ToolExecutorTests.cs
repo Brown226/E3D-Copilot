@@ -75,7 +75,6 @@ namespace E3DCopilot.Tests
             Assert.IsTrue(handlers.Any(h => h.Name == "geometry"));
             Assert.IsTrue(handlers.Any(h => h.Name == "cad_import"));
             Assert.IsTrue(handlers.Any(h => h.Name == "autocad"));
-            Assert.IsTrue(handlers.Any(h => h.Name == "search_knowledge"));
         }
     }
 }

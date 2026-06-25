@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Config;
@@ -18,7 +19,7 @@ namespace E3DCopilot.Core
     /// Aggregates all services: session management / AI engine / tool execution / permission control / state management
     /// Corresponds to cline-chinese-main's Controller class
     /// </summary>
-    public class CopilotController : IDisposable
+    public class CopilotController : IDisposable, Tools.Handlers.AskUserHandler.IAsker
     {
         // ── Core engine ──
         private AgentLoop _agent;
@@ -120,6 +121,21 @@ namespace E3DCopilot.Core
         private readonly Dictionary<string, PendingApproval> _pendingApprovals
             = new Dictionary<string, PendingApproval>();
 
+        // ── Ask management（对齐 Reasonix approvalManager asks）──
+        private readonly Dictionary<string, PendingAsk> _pendingAsks
+            = new Dictionary<string, PendingAsk>();
+        private int _askNextId = 0;
+
+        // promptMu 串行化 Ask 和 Approval 提示，确保同一时刻只有一个用户决策在等待
+        // 对齐 Reasonix approvalManager.promptMu
+        private readonly object _promptMu = new object();
+
+        private class PendingAsk
+        {
+            public List<AskQuestion> Questions;
+            public TaskCompletionSource<List<AskAnswer>> Reply;
+        }
+
         // ── Events ──
         public event Action<CopilotEvent> OnEvent;
         public IEventSink EventSink => _sink;
@@ -145,6 +161,14 @@ namespace E3DCopilot.Core
             Permission = permission ?? CommandPermissionController.CreateDefault();
             Config = config ?? CopilotConfig.Load();
 
+            // Bridge event sink — 必须在注册 handler 之前创建，确保 _sink 不为 null
+            var externalSink = sink;
+            _sink = new BridgeEventSink(evt =>
+            {
+                externalSink?.Emit(evt);
+                // OnEvent 已由 externalSink (realSink) 负责路由，此处不再重复调用，避免 delta 双发导致"结巴"现象
+            });
+
             // 初始化技能管理器
             var skillStatePath = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -164,13 +188,9 @@ namespace E3DCopilot.Core
 
             _session = new CopilotSession();
 
-            // Bridge event sink
-            var externalSink = sink;
-            _sink = new BridgeEventSink(evt =>
-            {
-                externalSink?.Emit(evt);
-                OnEvent?.Invoke(evt);
-            });
+            // 将 Controller 自身注入为 AskUserHandler 的 IAsker
+            // （对齐 Reasonix controller.EnableInteractiveApproval 中 executor.SetAsker(c)）
+            Executor.SetAsker(this);
         }
 
         /// <summary>
@@ -210,19 +230,33 @@ namespace E3DCopilot.Core
                 );
             }
             
-            var executor = ToolExecutor.CreateDefault(dispatcher, sink, router);
+            // ── 关键修复：提前创建 BridgeEventSink ──
+            // 修复 AskUserHandler 等工具的 _sink 为 null 的 bug。
+            // 之前 sink 参数为 null（调用方 CopilotAddinBoot/AddinBoot 未传入），
+            // 导致 ToolExecutor.CreateDefault 创建的 AskUserHandler(null) 无法发出事件，
+            // 前端永远收不到 ask_user 消息 → AskUserCard 不渲染 → 超时。
+            // 现在提前创建 BridgeEventSink，确保所有 handler 持有有效的 sink。
+            CopilotController controller = null;
+            var realSink = new BridgeEventSink(evt =>
+            {
+                sink?.Emit(evt);
+                controller?.OnEvent?.Invoke(evt);
+            });
+
+            var executor = ToolExecutor.CreateDefault(dispatcher, realSink, router);
             var permission = CommandPermissionController.CreateDefault();
 
-            return new CopilotController(provider, executor, permission, config, sink);
+            controller = new CopilotController(provider, executor, permission, config, realSink);
+            return controller;
         }
 
         /// <summary>
         /// Send user input → AgentLoop processing
         /// 使用 SemaphoreSlim 串行化，彻底消除旧 finally 与新请求的竞态
         /// </summary>
-        public async Task SendAsync(string input)
+        public async Task SendAsync(string input, string[] images = null)
         {
-            if (string.IsNullOrWhiteSpace(input)) return;
+            if (string.IsNullOrWhiteSpace(input) && (images == null || images.Length == 0)) return;
 
             // 取消上一个任务（仅发 Cancel 信号，不阻塞）
             if (_isRunning)
@@ -241,7 +275,7 @@ namespace E3DCopilot.Core
 
                 _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this, skillManager: Skills,
                     stormSig: StormSig, stormCount: StormCount);
-                await _agent.RunAsync(_session, input, _cts.Token);
+                await _agent.RunAsync(_session, input, images, _cts.Token);
                 // 回写 Storm Breaker 状态（AgentLoop 内部可能已更新）
                 StormSig = _agent.StormSig;
                 StormCount = _agent.StormCount;
@@ -363,6 +397,66 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
+        /// AskAsync implements IAsker: it emits an AskRequest and blocks until
+        /// AnswerQuestion(id, answers) answers or ct is cancelled.
+        /// promptMu serialises it against tool-approval prompts so at most one
+        /// user prompt is outstanding. 对齐 Reasonix controller.Ask()
+        /// </summary>
+        public async Task<List<AskAnswer>> AskAsync(List<AskQuestion> questions, CancellationToken ct)
+        {
+            var tcs = new TaskCompletionSource<List<AskAnswer>>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            string id;
+            lock (_promptMu)  // 对齐 Reasonix promptMu — 同一时刻只有一个 prompt
+            {
+                _askNextId++;
+                id = _askNextId.ToString();
+                var pending = new PendingAsk { Questions = questions, Reply = tcs };
+                _pendingAsks[id] = pending;
+
+                // 发射 AskRequest 事件到前端
+                _sink.Emit(CopilotEvent.AskRequestEvent(new Ask
+                {
+                    Id = id,
+                    Questions = questions
+                }));
+            }
+
+            // 注册取消回调
+            using (ct.Register(() =>
+            {
+                tcs.TrySetCanceled();
+                lock (_promptMu) { _pendingAsks.Remove(id); }
+            }, false))
+            {
+                try
+                {
+                    return await tcs.Task;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw; // 上层 AskUserHandler 处理为 "用户未在时限内回答"
+                }
+            }
+        }
+
+        /// <summary>
+        /// AnswerQuestion resolves a pending AskRequest by ID with the user's selections.
+        /// Unknown/expired IDs are ignored. 对齐 Reasonix controller.AnswerQuestion()
+        /// </summary>
+        public void AnswerQuestion(string id, List<AskAnswer> answers)
+        {
+            PendingAsk pending;
+            lock (_promptMu)
+            {
+                if (!_pendingAsks.TryGetValue(id, out pending))
+                    return;
+                _pendingAsks.Remove(id);
+            }
+            pending.Reply.TrySetResult(answers ?? new List<AskAnswer>());
+        }
+
+        /// <summary>
         /// New session
         /// </summary>
         public void NewSession()
@@ -373,6 +467,17 @@ namespace E3DCopilot.Core
                 try { kvp.Value.Complete(false, false); } catch { }
             }
             _pendingApprovals.Clear();
+
+            // 取消所有待处理的 ask
+            lock (_promptMu)
+            {
+                foreach (var kvp in _pendingAsks)
+                {
+                    try { kvp.Value.Reply.TrySetCanceled(); } catch { }
+                }
+                _pendingAsks.Clear();
+            }
+
             _session = new CopilotSession();
             _sink.Emit(CopilotEvent.Notice("已创建新会话"));
         }
@@ -413,6 +518,16 @@ namespace E3DCopilot.Core
                 try { kvp.Value.Complete(false, false); } catch { }
             }
             _pendingApprovals.Clear();
+
+            // 取消所有待处理的 ask
+            lock (_promptMu)
+            {
+                foreach (var kvp in _pendingAsks)
+                {
+                    try { kvp.Value.Reply.TrySetCanceled(); } catch { }
+                }
+                _pendingAsks.Clear();
+            }
         }
 
         /// <summary>

@@ -77,6 +77,19 @@ namespace E3DCopilot.Core.Security
             public bool Enabled { get; set; } = true;
         }
 
+        public ToolPolicy()
+        {
+            // 元能力工具默认 Auto — 它们不操作 E3D 数据，不需要审批
+            var metaTools = new[]
+            {
+                "todo_write", "complete_step", "memory", "run_skill",
+                "read_file", "write_file", "grep", "glob",
+                "ask",
+            };
+            foreach (var tool in metaTools)
+                Set(tool, ApprovalMode.Auto);
+        }
+
         /// <summary>设置工具策略</summary>
         public void Set(string toolName, ApprovalMode mode, bool enabled = true)
         {

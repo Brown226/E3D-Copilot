@@ -12,7 +12,7 @@
  * - 最终回复和正在进行的步骤始终全量渲染
  */
 
-import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
+import { useRef, useEffect, useCallback, useState, useMemo, memo } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import type { Message } from '@/types'
@@ -169,7 +169,7 @@ export function MessageList() {
   const subcallMap = useMemo(() => {
     const map = new Map<string, Message[]>()
     let currentParent: string | null = null
-    const SUBAGENT_TOOLS = new Set(['task', 'explore', 'research', 'review'])
+    const SUBAGENT_TOOLS = new Set(['explore', 'research', 'review'])
 
     for (const msg of messages) {
       if (msg.role === 'tool_call') {
@@ -292,6 +292,14 @@ export function MessageList() {
     useChatStore.getState().setPendingQuestion(null)
   }, [])
 
+  // 新版多问题回答（对齐 Reasonix AnswerQuestion）
+  const handleAskAnswer = useCallback((askId: string, answers: Array<{ questionId: string; selected: string[] }>) => {
+    import('@/services/bridgeService').then(({ default: bridge }) => {
+      bridge.sendAskAnswer(askId, answers)
+    })
+    useChatStore.getState().setPendingQuestion(null)
+  }, [])
+
   // 渲染单个 DisplayItem
   const renderItem = (item: DisplayItem, key: string, allMsgs: Message[]) => {
     if (item.kind === 'folded') {
@@ -377,7 +385,7 @@ export function MessageList() {
           {pendingApproval && <ApprovalCard approval={pendingApproval} onAnswer={handleApproval} />}
 
           {/* ═══════ AI 提问卡片 ═══════ */}
-          {pendingQuestion && <AskUserCard question={pendingQuestion} onAnswer={handleAskUser} />}
+          {pendingQuestion && <AskUserCard question={pendingQuestion} onAnswer={handleAskUser} onAskAnswer={handleAskAnswer} />}
         </div>
       </div>
 

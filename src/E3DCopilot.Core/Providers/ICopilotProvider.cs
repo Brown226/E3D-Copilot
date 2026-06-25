@@ -25,6 +25,11 @@ namespace E3DCopilot.Core.Providers
         public string Content { get; set; }
         public List<ToolCall> ToolCalls { get; set; }
         public string ToolCallId { get; set; }
+        
+        /// <summary>
+        /// 多模态支持：图片数组（base64 格式）
+        /// </summary>
+        public string[] Images { get; set; }
 
         public ChatMessage() { }
 

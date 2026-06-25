@@ -10,11 +10,14 @@ using Newtonsoft.Json.Linq;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
-    /// TodoWrite — 结构化任务追踪工具（替代 task 工具的升级版）
+    /// TodoWrite — 结构化任务追踪工具
     ///
     /// 元能力工具：
     /// AI 在处理复杂多步任务时，创建和维护结构化任务列表。
-    /// 支持 merge 模式（增量更新）和全量替换。
+    /// 每次调用发送完整列表（全量替换），或 merge=true 增量更新。
+    ///
+    /// 两层结构：level 0 = 阶段/里程碑，level 1 = 具体子步骤。
+    /// activeForm = 任务进行时的进行时描述（如 "正在添加解析器"）。
     ///
     /// 前端联动：
     /// 前端 TodoPanel 从消息流中提取最后一次 todo_write 调用的 todos 参数，
@@ -38,10 +41,16 @@ namespace E3DCopilot.Core.Tools.Handlers
         public string Name => "todo_write";
 
         public string Description =>
-            "Create and manage a structured task list to track complex multi-step work. " +
-            "Use when: (1) breaking a complex request into steps, (2) tracking progress of multi-step operations, " +
-            "(3) updating task status as you work through them. " +
-            "创建和管理结构化任务列表。支持 merge（增量更新）和全量替换模式。";
+            "Record and update a structured task list for the current work. " +
+            "Send the COMPLETE list every call — it replaces the previous one (or merge=true for incremental update). " +
+            "Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, " +
+            "and flip an item to completed the moment it's done (don't batch completions). " +
+            "Skip it for trivial single-step tasks. " +
+            "The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it " +
+            "are its concrete sub-steps; omit `level` (0) for a flat list. " +
+            "Each item has `content` (imperative, e.g. \"Add the parser\"), `status` (pending|in_progress|completed), " +
+            "`activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), " +
+            "and optional `level` (0 phase | 1 sub-step).";
 
         public string ParameterSchema => @"{
   ""type"": ""object"",
@@ -52,32 +61,43 @@ namespace E3DCopilot.Core.Tools.Handlers
     },
     ""todos"": {
       ""type"": ""array"",
+      ""description"": ""The complete task list, in order. Replaces any previous list (unless merge=true)."",
       ""items"": {
         ""type"": ""object"",
         ""properties"": {
           ""id"": {
             ""type"": ""string"",
-            ""description"": ""Unique identifier for the todo item. Use a short random string like 'r9Tg8Kq2pLm7'. 任务唯一标识""
+            ""description"": ""Unique identifier for the todo item. Use a short random string. 任务唯一标识""
           },
           ""content"": {
             ""type"": ""string"",
-            ""description"": ""Task description (max 70 chars recommended). 任务描述""
+            ""description"": ""Imperative description of the task (e.g. Add the parser). 任务描述""
           },
           ""status"": {
             ""type"": ""string"",
-            ""enum"": [""pending"", ""in_progress"", ""completed"", ""cancelled""],
-            ""description"": ""Task status: PENDING → IN_PROGRESS → COMPLETE/CANCELLED. 任务状态流转""
+            ""enum"": [""pending"", ""in_progress"", ""completed""],
+            ""description"": ""Task state. Keep at most one in_progress. 任务状态""
+          },
+          ""activeForm"": {
+            ""type"": ""string"",
+            ""description"": ""Present-continuous form shown while the task is in progress (e.g. Adding the parser). 进行时描述""
+          },
+          ""level"": {
+            ""type"": ""integer"",
+            ""enum"": [0, 1],
+            ""description"": ""Nesting level: 0 = phase/milestone, 1 = a sub-step of the phase above it. Omit for a flat list. 层级：0=阶段, 1=子步骤""
           }
         },
         ""required"": [""id"", ""content"", ""status""]
-      },
-      ""description"": ""Array of todo items (minimum 2 recommended). 任务项数组""
+      }
     }
   },
   ""required"": [""merge"", ""todos""]
 }";
 
-        public bool IsReadOnly => false; // 有状态写操作，不应并行执行
+        // ReadOnly=true：todo_write 只是记录列表（无文件系统或进程副作用），
+        // 不需要审批，在 Plan Mode 下也可用。
+        public bool IsReadOnly => true;
 
         public async Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default)
         {
@@ -100,11 +120,15 @@ namespace E3DCopilot.Core.Tools.Handlers
                     string id = token.Value<string>("id");
                     string content = token.Value<string>("content");
                     string status = (token.Value<string>("status") ?? "pending").ToLowerInvariant();
+                    string activeForm = token.Value<string>("activeForm");
+                    int level = token.Value<int?>("level") ?? 0;
 
                     if (string.IsNullOrWhiteSpace(id))
                         return ToolResult.Fail("Each todo item requires an 'id'");
                     if (string.IsNullOrWhiteSpace(content))
                         return ToolResult.Fail($"Todo item '{id}' is missing 'content'");
+                    if (level < 0 || level > 1)
+                        return ToolResult.Fail($"Todo item '{id}': invalid level {level} (want 0=phase | 1=sub-step)");
 
                     // 规范化 status
                     status = NormalizeStatus(status);
@@ -114,6 +138,8 @@ namespace E3DCopilot.Core.Tools.Handlers
                         Id = id,
                         Content = content.Length > 200 ? content.Substring(0, 197) + "..." : content,
                         Status = status,
+                        ActiveForm = activeForm,
+                        Level = level,
                         CreatedAt = DateTime.UtcNow
                     });
                 }
@@ -130,6 +156,8 @@ namespace E3DCopilot.Core.Tools.Handlers
                             {
                                 existing.Content = item.Content;
                                 existing.Status = item.Status;
+                                existing.ActiveForm = item.ActiveForm;
+                                existing.Level = item.Level;
                             }
                             else
                             {
@@ -157,11 +185,7 @@ namespace E3DCopilot.Core.Tools.Handlers
 
                     var sb = new StringBuilder();
                     string modeStr = merge ? "updated (merge)" : "created (replace)";
-                    sb.AppendLine($"Todo list {modeStr}: {inputItems.Count} items, {_todos.Count} total");
-                    sb.AppendLine($"Progress: {completed}/{_todos.Count} completed" +
-                                  (inProgress > 0 ? $", {inProgress} in progress" : "") +
-                                  (pending > 0 ? $", {pending} pending" : "") +
-                                  (cancelled > 0 ? $", {cancelled} cancelled" : ""));
+                    sb.AppendLine($"Todos updated: {_todos.Count} total — {completed} completed, {inProgress} in progress, {pending} pending.");
                     sb.AppendLine();
 
                     foreach (var t in _todos)
@@ -169,7 +193,11 @@ namespace E3DCopilot.Core.Tools.Handlers
                         string icon = t.Status == "completed" ? "✓" :
                                       t.Status == "in_progress" ? "→" :
                                       t.Status == "cancelled" ? "✗" : "○";
-                        sb.AppendLine($"  {icon} [{t.Id}] {t.Content}");
+                        string indent = t.Level == 1 ? "    " : "  ";
+                        string levelTag = t.Level == 1 ? "[子] " : "";
+                        string activeTag = t.Status == "in_progress" && !string.IsNullOrEmpty(t.ActiveForm)
+                            ? $" ({t.ActiveForm})" : "";
+                        sb.AppendLine($"{indent}{icon} [{t.Id}] {levelTag}{t.Content}{activeTag}");
                     }
 
                     output = sb.ToString().TrimEnd();
@@ -195,6 +223,47 @@ namespace E3DCopilot.Core.Tools.Handlers
             catch (Exception ex)
             {
                 return ToolResult.Fail($"TodoWrite failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 获取当前任务列表（供 CompleteStepHandler 查询）
+        /// </summary>
+        public static List<TodoItem> GetTodos()
+        {
+            lock (_lock)
+            {
+                return _todos.ToList();
+            }
+        }
+
+        /// <summary>
+        /// 自动推进 todo 状态：将匹配的 todo 标记为 completed，下一个 pending 标记为 in_progress
+        /// </summary>
+        public static bool AdvanceTodo(string stepIdentifier)
+        {
+            lock (_lock)
+            {
+                // 查找匹配的 todo（按 id 或 content 模糊匹配）
+                var match = _todos.Find(t =>
+                    t.Id == stepIdentifier ||
+                    t.Content.Equals(stepIdentifier, StringComparison.OrdinalIgnoreCase) ||
+                    t.Content.Contains(stepIdentifier));
+
+                if (match == null || match.Status == "completed")
+                    return false;
+
+                // 标记当前为 completed
+                match.Status = "completed";
+
+                // 找下一个 pending，标记为 in_progress
+                var nextPending = _todos.Find(t => t.Status == "pending");
+                if (nextPending != null)
+                {
+                    nextPending.Status = "in_progress";
+                }
+
+                return true;
             }
         }
 
@@ -230,11 +299,13 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
         }
 
-        private class TodoItem
+        public class TodoItem
         {
             public string Id { get; set; }
             public string Content { get; set; }
             public string Status { get; set; }
+            public string ActiveForm { get; set; }
+            public int Level { get; set; }  // 0=phase, 1=sub-step
             public DateTime CreatedAt { get; set; }
         }
     }

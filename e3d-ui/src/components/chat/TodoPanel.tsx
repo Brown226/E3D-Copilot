@@ -1,7 +1,8 @@
 /**
  * TodoPanel — 实时任务列表面板
  * 从消息流中提取 todo_write 工具调用，渲染为可折叠的任务清单
- * 显示在消息列表上方（流式期间）或作为浮动面板
+ * 支持两层结构：level 0 = 阶段/里程碑，level 1 = 具体子步骤
+ * 支持 activeForm：任务进行时显示进行时描述
  */
 
 import { memo, useMemo, useState } from 'react'
@@ -12,8 +13,9 @@ import type { Message } from '@/types'
 interface TodoItem {
   id: string
   content: string
-  status: 'pending' | 'in_progress' | 'completed'
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
   activeForm?: string
+  level?: number  // 0 = phase, 1 = sub-step
 }
 
 function extractTodos(messages: Message[]): TodoItem[] {
@@ -32,7 +34,6 @@ function extractTodos(messages: Message[]): TodoItem[] {
 
 export const TodoPanel = memo(function TodoPanel() {
   const messages = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.messages ?? [])
-  // const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
   const [collapsed, setCollapsed] = useState(false)
 
   const todos = useMemo(() => extractTodos(messages), [messages])
@@ -40,7 +41,6 @@ export const TodoPanel = memo(function TodoPanel() {
   if (todos.length === 0) return null
 
   const completedCount = todos.filter((t) => t.status === 'completed').length
-  // const inProgressCount = todos.filter((t) => t.status === 'in_progress').length
   const progress = Math.round((completedCount / todos.length) * 100)
 
   return (
@@ -70,37 +70,51 @@ export const TodoPanel = memo(function TodoPanel() {
       {/* 任务列表 */}
       {!collapsed && (
         <div className="px-3 pb-2 space-y-0.5">
-          {todos.map((todo) => (
-            <div
-              key={todo.id}
-              className={`flex items-start gap-2 py-1 px-1.5 rounded text-xs ${
-                todo.status === 'in_progress'
-                  ? 'bg-blue-50 dark:bg-blue-900/20'
-                  : ''
-              }`}
-            >
-              <span className="shrink-0 mt-0.5">
-                {todo.status === 'completed' ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                ) : todo.status === 'in_progress' ? (
-                  <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                ) : (
-                  <Circle className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
-                )}
-              </span>
-              <span
-                className={`flex-1 ${
-                  todo.status === 'completed'
-                    ? 'text-slate-400 dark:text-slate-500 line-through'
-                    : todo.status === 'in_progress'
-                    ? 'text-slate-700 dark:text-slate-200 font-medium'
-                    : 'text-slate-500 dark:text-slate-400'
+          {todos.map((todo) => {
+            const isPhase = todo.level === 0
+            const isSubStep = todo.level === 1
+            const displayText = todo.activeForm && todo.status === 'in_progress'
+              ? todo.activeForm
+              : todo.content
+
+            return (
+              <div
+                key={todo.id}
+                className={`flex items-start gap-2 py-1 rounded text-xs ${
+                  isSubStep ? 'pl-6' : 'pl-1.5'
+                } ${
+                  todo.status === 'in_progress'
+                    ? 'bg-blue-50 dark:bg-blue-900/20'
+                    : ''
                 }`}
               >
-                {todo.activeForm && todo.status === 'in_progress' ? todo.activeForm : todo.content}
-              </span>
-            </div>
-          ))}
+                <span className="shrink-0 mt-0.5">
+                  {todo.status === 'completed' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  ) : todo.status === 'in_progress' ? (
+                    <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
+                  ) : todo.status === 'cancelled' ? (
+                    <Circle className="w-3.5 h-3.5 text-red-300 dark:text-red-600" />
+                  ) : (
+                    <Circle className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+                  )}
+                </span>
+                <span
+                  className={`flex-1 ${
+                    isPhase ? 'font-semibold text-slate-700 dark:text-slate-200' : ''
+                  } ${
+                    todo.status === 'completed'
+                      ? 'text-slate-400 dark:text-slate-500 line-through'
+                      : todo.status === 'in_progress'
+                      ? 'text-slate-700 dark:text-slate-200 font-medium'
+                      : 'text-slate-500 dark:text-slate-400'
+                  }`}
+                >
+                  {displayText}
+                </span>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

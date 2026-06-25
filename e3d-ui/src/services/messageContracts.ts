@@ -45,7 +45,7 @@ export const MessageTypes = {
   ToolResult: 'tool:result',
   ToolError: 'tool:error',
   ToolApproval: 'tool:approval',
-  AskUser: 'ask_user',
+  AskRequest: 'ask_request',  //（对齐 Reasonix AskRequest）
   Notice: 'notice',
   Error: 'error',
   HostReady: 'host:ready',
@@ -129,10 +129,38 @@ export interface ApprovalRequestPayload {
   description: string;
 }
 
-export interface AskUserPayload {
+
+// ══════════════════════════════════════════════
+//  AskRequest 类型（对齐 Reasonix WireAsk）
+// ══════════════════════════════════════════════
+
+export interface WireAskOption {
+  label: string;
+  description?: string;
+}
+
+export interface WireAskQuestion {
+  id: string;
+  header?: string;
+  prompt: string;
+  options: WireAskOption[];
+  multi?: boolean;
+}
+
+export interface WireAsk {
+  id: string;
+  questions: WireAskQuestion[];
+  tabId?: string;
+}
+
+export interface AskRequestPayload extends WireAsk {}
+
+/**
+ * 回答项（对齐 Reasonix QuestionAnswer）
+ */
+export interface QuestionAnswerItem {
   questionId: string;
-  question: string;
-  data?: unknown;
+  selected: string[];
 }
 
 export interface NoticePayload {

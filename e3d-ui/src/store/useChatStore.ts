@@ -110,12 +110,23 @@ export interface PendingApproval {
   description?: string;
 }
 
-/** AI 主动提问 */
+/** AI 主动提问（对齐 Reasonix AskRequest） */
 export interface PendingQuestion {
   questionId: string;
   question: string;
   options?: string[];
   multiSelect?: boolean;
+  /** 新版：完整提问数据（原始 WireAsk，供 AskUserCard 渲染多问题 Tab） */
+  askData?: {
+    askId: string;
+    questions: Array<{
+      id: string;
+      header?: string;
+      prompt: string;
+      options: Array<{ label: string; description?: string }>;
+      multi?: boolean;
+    }>;
+  };
 }
 
 /** 工具审批模式 */
@@ -324,6 +335,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   appendAssistantDelta: (delta, tabId) => {
     const targetId = tabId || get().activeTabId
+    
+    // 过滤空 delta，避免无意义的状态更新
+    if (!delta || delta.trim() === '') return
+    
     set((s) => {
       const tab = s.tabs.find((t) => t.id === targetId)
       if (!tab) return s

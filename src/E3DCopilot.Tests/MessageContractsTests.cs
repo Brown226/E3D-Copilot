@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using E3DCopilot.Core.Messaging;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -225,20 +226,24 @@ namespace E3DCopilot.Tests
         // ====== AskUserPayload ======
 
         [Test]
-        public void AskUserPayload_RoundTrip()
+        public void AskResponsePayload_RoundTrip()
         {
-            var original = new AskUserPayload
+            var original = new AskResponsePayload
             {
-                QuestionId = "q1",
-                Question = "请确认管道直径",
-                Data = new { element = "PIPE-001" }
+                Id = "1",
+                Answers = new List<AskAnswerItem>
+                {
+                    new AskAnswerItem { QuestionId = "q1", Selected = new List<string> { "React" } }
+                }
             };
 
             var json = JsonConvert.SerializeObject(original);
-            var deserialized = JsonConvert.DeserializeObject<AskUserPayload>(json);
+            var deserialized = JsonConvert.DeserializeObject<AskResponsePayload>(json);
 
-            Assert.AreEqual("q1", deserialized.QuestionId);
-            Assert.AreEqual("请确认管道直径", deserialized.Question);
+            Assert.AreEqual("1", deserialized.Id);
+            Assert.AreEqual(1, deserialized.Answers.Count);
+            Assert.AreEqual("q1", deserialized.Answers[0].QuestionId);
+            Assert.AreEqual("React", deserialized.Answers[0].Selected[0]);
         }
 
         // ====== SetPlanModePayload ======

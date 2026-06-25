@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Newtonsoft.Json;
 
 namespace E3DCopilot.Core.Messaging
@@ -60,7 +61,7 @@ namespace E3DCopilot.Core.Messaging
         public const string ToolResult = "tool:result";
         public const string ToolError = "tool:error";
         public const string ToolApproval = "tool:approval";
-        public const string AskUser = "ask_user";
+        public const string AskRequest = "ask_request";  //（对齐 Reasonix AskRequest）
         public const string Notice = "notice";
         public const string Error = "error";
         public const string HostReady = "host:ready";
@@ -120,15 +121,37 @@ namespace E3DCopilot.Core.Messaging
     }
     
     /// <summary>
-    /// 用户回答（响应 ask_user）
+    /// 用户回答（响应 ask / ask_user，新协议对齐 Reasonix AnswerQuestion）
     /// </summary>
     public class AskResponsePayload
     {
+        /// <summary>Ask 批次 ID（新协议）</summary>
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        /// <summary>问题 ID（旧协议兼容）</summary>
         [JsonProperty("questionId")]
         public string QuestionId { get; set; } = "";
         
+        /// <summary>旧协议：单个回答字符串</summary>
         [JsonProperty("answer")]
         public string Answer { get; set; } = "";
+
+        /// <summary>新协议：结构化回答列表 [{questionId, selected:[]}]</summary>
+        [JsonProperty("answers")]
+        public List<AskAnswerItem> Answers { get; set; }
+    }
+
+    /// <summary>
+    /// 单个问题的回答（新协议，对齐 Reasonix QuestionAnswer）
+    /// </summary>
+    public class AskAnswerItem
+    {
+        [JsonProperty("questionId")]
+        public string QuestionId { get; set; }
+        
+        [JsonProperty("selected")]
+        public List<string> Selected { get; set; }
     }
 
     /// <summary>
@@ -229,21 +252,6 @@ namespace E3DCopilot.Core.Messaging
         
         [JsonProperty("description")]
         public string Description { get; set; } = "";
-    }
-    
-    /// <summary>
-    /// 询问用户
-    /// </summary>
-    public class AskUserPayload
-    {
-        [JsonProperty("questionId")]
-        public string QuestionId { get; set; } = "";
-        
-        [JsonProperty("question")]
-        public string Question { get; set; } = "";
-        
-        [JsonProperty("data")]
-        public object Data { get; set; }
     }
     
     /// <summary>

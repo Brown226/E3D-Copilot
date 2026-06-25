@@ -59,8 +59,9 @@ function summarizeTool(name: string, args?: string, error?: string): string {
       case 'execute_pml': return `PML: ${(parsed.command || parsed.script || '').slice(0, 40)}`
       case 'grep': return parsed.pattern || parsed.query || ''
       case 'read_file': return parsed.filePath || parsed.path || ''
-      case 'task': return (parsed.description || parsed.task || '').slice(0, 60)
-      case 'ask_user': return '询问用户'
+      case 'todo_write': return `${(parsed.todos || []).length} 个任务`
+      case 'complete_step': return `✓ ${parsed.step || ''}`
+      case 'ask': return '询问用户'
       case 'undo_redo': return parsed.action || ''
       case 'report': return `${parsed.type || ''} ${parsed.format || ''}`.trim()
       case 'compare': return `${parsed.element_a || ''} vs ${parsed.element_b || ''}`

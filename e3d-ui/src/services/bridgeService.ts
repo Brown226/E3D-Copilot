@@ -9,7 +9,9 @@ import type {
   UserMessagePayload,
   ApprovalPayload,
   AskResponsePayload,
-  AskUserPayload,
+  AskRequestPayload,
+  WireAskQuestion,
+  QuestionAnswerItem,
   LlmStreamDeltaPayload,
   ToolDispatchPayload,
   ToolResultPayload,
@@ -143,6 +145,13 @@ class Bridge {
 
   sendAskResponse(questionId: string, answer: string): void {
     this.send('user:ask_response', { questionId, answer } as AskResponsePayload);
+  }
+
+  /**
+   * 新版：发送结构化回答（对齐 Reasonix AnswerQuestion）
+   */
+  sendAskAnswer(id: string, answers: QuestionAnswerItem[]): void {
+    this.send('user:ask_response', { id, answers });
   }
 
   cancel(): void {
@@ -297,11 +306,16 @@ class Bridge {
     });
   }
 
-  onAskUser(callback: (questionId: string, question: string, data?: unknown) => void): () => void {
+  /**
+   * 监听 AskRequest 事件（对齐 Reasonix AskRequest）
+   */
+  onAskRequest(callback: (ask: AskRequestPayload) => void): () => void {
     return this.on((msg) => {
-      if (msg.type === 'ask_user') {
-        const p = msg.payload as AskUserPayload;
-        callback(p?.questionId || '', p?.question || '', p?.data);
+      if (msg.type === 'ask_request') {
+        const p = msg.payload as AskRequestPayload;
+        if (p?.id && p?.questions) {
+          callback(p);
+        }
       }
     });
   }
@@ -614,6 +628,16 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         const p = msg.payload as LlmStreamDeltaPayload;
         const state = store.getState();
         const targetId = tabId || state.activeTabId;
+        
+        // 过滤空 delta
+        if (!p.delta || p.delta.trim() === '') break;
+        
+        // 调试：检测重复内容（连续相同的 delta）
+        const lastDelta = _deltaBuffer.length > 0 ? _deltaBuffer[_deltaBuffer.length - 1] : null;
+        if (lastDelta && lastDelta.tabId === targetId && lastDelta.text === p.delta) {
+          console.warn('[Bridge] 检测到重复 delta:', p.delta);
+        }
+        
         // 不检查 currentAssistantMsgId 是否存在 — appendAssistantDelta 会在首次 delta 时自动创建 assistant 消息
         _deltaBuffer.push({ tabId: targetId, text: p.delta });
         if (!_deltaFlushScheduled) {
@@ -713,14 +737,22 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         break;
       }
 
-      case 'ask_user': {
-        const p = msg.payload as { questionId: string; question: string; data?: { question?: string; options?: string[]; multiSelect?: boolean } };
-        s.setPendingQuestion({
-          questionId: p.questionId,
-          question: p.data?.question || p.question,
-          options: p.data?.options,
-          multiSelect: p.data?.multiSelect,
-        }, tabId);
+      case 'ask_request': {
+        const askPayload = msg.payload as AskRequestPayload;
+        if (askPayload?.id && askPayload?.questions && askPayload.questions.length > 0) {
+          const store = useChatStore.getState();
+          const tId = tabId || store.activeTabId;
+          store.setPendingQuestion({
+            questionId: askPayload.id,
+            question: askPayload.questions[0]?.prompt || '',
+            options: askPayload.questions[0]?.options?.map(o => o.label),
+            multiSelect: askPayload.questions[0]?.multi,
+            askData: {
+              askId: askPayload.id,
+              questions: askPayload.questions,
+            },
+          }, tId);
+        }
         break;
       }
 
