@@ -237,6 +237,8 @@ export interface ProviderInfo {
   default: string;
   enabled: boolean;
   builtIn: boolean;
+  contextWindow: number;
+  visionModels: string[];
 }
 
 export interface ModelsListResultPayload {

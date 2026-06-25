@@ -5,11 +5,11 @@
  */
 
 import { useEffect, useState } from 'react'
-import { X, Settings, User, Box, Palette, Brain, Zap } from 'lucide-react'
+import { X, Settings, User, Box, Palette, Brain, Zap, Info } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 
 // ── Tab 定义 ──
-type SettingsTab = 'general' | 'models' | 'skills' | 'appearance' | 'memory'
+type SettingsTab = 'general' | 'models' | 'skills' | 'appearance' | 'memory' | 'about'
 
 interface TabDef {
   id: SettingsTab
@@ -23,6 +23,7 @@ const TABS: TabDef[] = [
   { id: 'skills', label: '技能', icon: <Zap className="w-4 h-4" /> },
   { id: 'appearance', label: '外观', icon: <Palette className="w-4 h-4" /> },
   { id: 'memory', label: '记忆', icon: <Brain className="w-4 h-4" /> },
+  { id: 'about', label: '介绍', icon: <Info className="w-4 h-4" /> },
 ]
 
 // ── Lazy load sections ──
@@ -31,6 +32,7 @@ const ModelsSection = () => import('./sections/ModelsSection')
 const SkillsSection = () => import('./sections/SkillsSection')
 const AppearanceSection = () => import('./sections/AppearanceSection')
 const MemorySection = () => import('./sections/MemorySection')
+const AboutSection = () => import('./sections/AboutSection')
 
 const sectionLoaders: Record<SettingsTab, () => Promise<{ default: React.ComponentType<any> }>> = {
   general: GeneralSection,
@@ -38,6 +40,7 @@ const sectionLoaders: Record<SettingsTab, () => Promise<{ default: React.Compone
   skills: SkillsSection,
   appearance: AppearanceSection,
   memory: MemorySection,
+  about: AboutSection,
 }
 
 export default function SettingsPanel() {
@@ -106,7 +109,9 @@ export default function SettingsPanel() {
 
           {/* 底部版本信息 */}
           <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700">
-            <p className="text-xs text-slate-400 dark:text-slate-500">E小智 v2.0</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              E小智 {window.__E3D_VERSION__ || 'v2.0'}
+            </p>
           </div>
         </nav>
 

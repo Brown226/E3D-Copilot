@@ -4,7 +4,7 @@
  * 修复：使用 fixed 定位 + 动态计算位置，避免被父容器 overflow-hidden 裁剪
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
 import { Brain, ChevronDown, Loader2, Settings, Check } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 
@@ -35,12 +35,26 @@ export function ModelSwitcher() {
   const updatePanelPosition = useCallback(() => {
     if (!open || !buttonRef.current) return
     const rect = buttonRef.current.getBoundingClientRect()
+    const gap = 6
+    const panelWidth = 256
+    const panelMaxHeight = 320
+
+    // 水平：左对齐按钮，但不超出右边界
+    let left = rect.left
+    if (left + panelWidth > window.innerWidth - 8) {
+      left = window.innerWidth - panelWidth - 8
+    }
+    if (left < 8) left = 8
+
+    // 垂直：按钮上方
+    const bottom = window.innerHeight - rect.top + gap
+
     setPanelStyle({
       position: 'fixed',
-      left: rect.left + 'px',
-      bottom: (window.innerHeight - rect.top + 6) + 'px',
-      width: '256px',
-      maxHeight: '320px',
+      left: left + 'px',
+      bottom: bottom + 'px',
+      width: panelWidth + 'px',
+      maxHeight: panelMaxHeight + 'px',
     })
   }, [open])
 
@@ -69,10 +83,23 @@ export function ModelSwitcher() {
     return () => document.removeEventListener('keydown', handler)
   }, [open])
 
-  // 打开时计算位置 + 监听滚动/resize
-  useEffect(() => {
+  // 打开时：用 useLayoutEffect 在浏览器绘制前计算位置（避免闪烁）
+  useLayoutEffect(() => {
     if (!open) return
     updatePanelPosition()
+  }, [open, updatePanelPosition])
+
+  // 打开后：监听面板尺寸变化，实时调整位置（providers 加载后高度变化）
+  useEffect(() => {
+    if (!open || !panelRef.current) return
+    const observer = new ResizeObserver(() => updatePanelPosition())
+    observer.observe(panelRef.current)
+    return () => observer.disconnect()
+  }, [open, updatePanelPosition])
+
+  // 打开后：监听滚动和窗口缩放
+  useEffect(() => {
+    if (!open) return
     window.addEventListener('scroll', updatePanelPosition, true)
     window.addEventListener('resize', updatePanelPosition)
     return () => {
@@ -84,8 +111,6 @@ export function ModelSwitcher() {
   const handleToggle = () => {
     if (!open) {
       ensureProvidersLoaded()
-      // 打开后下一帧计算位置
-      requestAnimationFrame(() => requestAnimationFrame(updatePanelPosition))
     }
     setOpen((prev) => !prev)
   }

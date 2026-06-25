@@ -24,6 +24,7 @@ export interface SessionMeta {
 }
 
 const STORAGE_KEY = 'e3d-chat-sessions'
+const MESSAGES_KEY_PREFIX = 'e3d-session-msgs-'
 const MAX_SESSIONS = 100
 
 function generateSessionId(): string {
@@ -47,6 +48,29 @@ function saveSessionsToStorage(sessions: SessionMeta[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS)))
 }
 
+function saveMessagesToStorage(sessionId: string, messages: Message[]) {
+  try {
+    // 限制存储大小：每个会话最多保存 500 条消息
+    const trimmed = messages.slice(-500)
+    localStorage.setItem(MESSAGES_KEY_PREFIX + sessionId, JSON.stringify(trimmed))
+  } catch {
+    // localStorage 满时静默失败
+  }
+}
+
+function loadMessagesFromStorage(sessionId: string): Message[] {
+  try {
+    const raw = localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function deleteMessagesFromStorage(sessionId: string) {
+  localStorage.removeItem(MESSAGES_KEY_PREFIX + sessionId)
+}
+
 // ============================================
 // Tab 类型
 // ============================================
@@ -59,6 +83,7 @@ export interface Tab {
   currentAssistantMsgId: string | null
   currentThinkingMsgId: string | null
   pendingApproval: PendingApproval | null
+  pendingQuestion: PendingQuestion | null
 }
 
 function createTab(title = '新对话'): Tab {
@@ -70,6 +95,7 @@ function createTab(title = '新对话'): Tab {
     currentAssistantMsgId: null,
     currentThinkingMsgId: null,
     pendingApproval: null,
+    pendingQuestion: null,
   }
 }
 
@@ -82,6 +108,14 @@ export interface PendingApproval {
   toolName: string;
   args?: unknown;
   description?: string;
+}
+
+/** AI 主动提问 */
+export interface PendingQuestion {
+  questionId: string;
+  question: string;
+  options?: string[];
+  multiSelect?: boolean;
 }
 
 /** 工具审批模式 */
@@ -130,11 +164,14 @@ export interface ChatStore {
   startStreaming: (tabId?: string) => void;
   appendAssistantDelta: (delta: string, tabId?: string) => void;
   finalizeAssistantMessage: (id: string, tabId?: string) => void;
+  setAssistantErrorMessage: (id: string, errorMessage: string, tabId?: string) => void;
   handleThinkingDelta: (text: string, tabId?: string) => void;
   handleToolResult: (toolId: string, result?: string, error?: string, tabId?: string, durationMs?: number) => void;
   handleToolProgress: (toolId: string, text: string, progress: unknown, tabId?: string) => void;
+  finalizeThinkingMessage: (tabId?: string) => void;
   stopStreaming: (tabId?: string) => void;
   setPendingApproval: (approval: PendingApproval | null, tabId?: string) => void;
+  setPendingQuestion: (question: PendingQuestion | null, tabId?: string) => void;
 
   // === 全局动作 ===
   setInputValue: (v: string) => void;
@@ -264,18 +301,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   startStreaming: (tabId) => {
     const targetId = tabId || get().activeTabId
-    const assistantId = generateMessageId()
-    const assistantMsg: Message = {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
+    const existingTab = get().tabs.find((t) => t.id === targetId)
+    // 幂等：如果已在流式中且有 assistant 消息，不覆盖（AgentLoop 循环内多次 TurnStarted）
+    if (existingTab?.isStreaming && existingTab?.currentAssistantMsgId) {
+      set((s) => ({
+        tabs: updateTab(s.tabs, targetId, () => ({
+          currentThinkingMsgId: null,  // 只重置 thinking（新一轮可能有新 thinking）
+        })),
+      }))
+      return
     }
+    // 首次进入流式：不创建 assistant 消息，等第一个 text delta 到达时由 appendAssistantDelta 创建
+    // 这确保 thinking/tool 消息排在 assistant 消息前面，UI 顺序正确
     set((s) => ({
       tabs: updateTab(s.tabs, targetId, () => ({
-        messages: [...(s.tabs.find((t) => t.id === targetId)?.messages ?? []), assistantMsg],
         isStreaming: true,
-        currentAssistantMsgId: assistantId,
+        currentAssistantMsgId: existingTab?.currentAssistantMsgId ?? null,
         currentThinkingMsgId: null,
       })),
     }))
@@ -283,17 +324,45 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   appendAssistantDelta: (delta, tabId) => {
     const targetId = tabId || get().activeTabId
-    set((s) => ({
-      tabs: s.tabs.map((t) => {
-        if (t.id !== targetId || !t.currentAssistantMsgId) return t
+    set((s) => {
+      const tab = s.tabs.find((t) => t.id === targetId)
+      if (!tab) return s
+
+      // 如果还没有 assistant 消息，现在创建（排在 thinking/tool 消息之后）
+      if (!tab.currentAssistantMsgId) {
+        const assistantId = generateMessageId()
+        const assistantMsg: Message = {
+          id: assistantId,
+          role: 'assistant',
+          content: delta,
+          timestamp: Date.now(),
+        }
         return {
-          ...t,
-          messages: t.messages.map((m) =>
-            m.id === t.currentAssistantMsgId ? { ...m, content: m.content + delta } : m
+          tabs: s.tabs.map((t) =>
+            t.id === targetId
+              ? {
+                  ...t,
+                  messages: [...t.messages, assistantMsg],
+                  currentAssistantMsgId: assistantId,
+                }
+              : t
           ),
         }
-      }),
-    }))
+      }
+
+      // 已有 assistant 消息，追加 delta
+      return {
+        tabs: s.tabs.map((t) => {
+          if (t.id !== targetId || !t.currentAssistantMsgId) return t
+          return {
+            ...t,
+            messages: t.messages.map((m) =>
+              m.id === t.currentAssistantMsgId ? { ...m, content: m.content + delta } : m
+            ),
+          }
+        }),
+      }
+    })
   },
 
   finalizeAssistantMessage: (id, tabId) => {
@@ -304,6 +373,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           m.id === id ? { ...m, finalized: true } : m
         ),
         currentAssistantMsgId: null,
+      })),
+    }))
+  },
+
+  setAssistantErrorMessage: (id, errorMessage, tabId) => {
+    const targetId = tabId || get().activeTabId
+    set((s) => ({
+      tabs: updateTab(s.tabs, targetId, () => ({
+        messages: (s.tabs.find((t) => t.id === targetId)?.messages ?? []).map((m) =>
+          m.id === id ? { ...m, errorMessage } : m
+        ),
       })),
     }))
   },
@@ -345,6 +425,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
+  finalizeThinkingMessage: (tabId) => {
+    const targetId = tabId || get().activeTabId
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === targetId
+          ? {
+              ...t,
+              messages: t.messages.map((m) =>
+                m.id === t.currentThinkingMsgId ? { ...m, finalized: true } : m
+              ),
+              currentThinkingMsgId: null,
+            }
+          : t
+      ),
+    }))
+  },
+
   handleToolResult: (toolId, result, error, tabId, durationMs) => {
     const targetId = tabId || get().activeTabId
     set((s) => ({
@@ -373,7 +470,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   stopStreaming: (tabId) => {
     const targetId = tabId || get().activeTabId
     set((s) => ({
-      tabs: updateTab(s.tabs, targetId, () => ({ isStreaming: false })),
+      tabs: s.tabs.map((t) => {
+        if (t.id !== targetId) return t
+        // Finalize assistant message and clear ID
+        const updatedMessages = t.currentAssistantMsgId
+          ? t.messages.map((m) =>
+              m.id === t.currentAssistantMsgId ? { ...m, finalized: true } : m
+            )
+          : t.messages
+        return {
+          ...t,
+          isStreaming: false,
+          messages: updatedMessages,
+          currentAssistantMsgId: null,
+          currentThinkingMsgId: null,
+        }
+      }),
     }))
   },
 
@@ -399,6 +511,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const targetId = tabId || get().activeTabId
     set((s) => ({
       tabs: updateTab(s.tabs, targetId, () => ({ pendingApproval: approval })),
+    }))
+  },
+
+  setPendingQuestion: (question, tabId) => {
+    const targetId = tabId || get().activeTabId
+    set((s) => ({
+      tabs: updateTab(s.tabs, targetId, () => ({ pendingQuestion: question })),
     }))
   },
 
@@ -452,6 +571,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         currentAssistantMsgId: null,
         currentThinkingMsgId: null,
         pendingApproval: null,
+        pendingQuestion: null,
       })),
       error: null,
     }))
@@ -563,6 +683,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       lastActivityAt: Date.now(),
     }
 
+    // 持久化消息内容
+    saveMessagesToStorage(sessionId, activeTab.messages)
+
     const exists = sessions.findIndex((s) => s.id === sessionId)
     const nextSessions = exists >= 0
       ? sessions.map((s, i) => (i === exists ? meta : s))
@@ -573,19 +696,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   loadSession: (sessionId) => {
-    const { sessions } = get()
+    const { sessions, tabs, activeTabId } = get()
     const session = sessions.find((s) => s.id === sessionId)
     if (!session) return
-    set({
+
+    // 先保存当前会话的消息
+    const currentTab = tabs.find((t) => t.id === activeTabId)
+    const { sessionId: currentSessionId } = get()
+    if (currentTab && currentTab.messages.length > 0) {
+      saveMessagesToStorage(currentSessionId, currentTab.messages)
+    }
+
+    // 恢复目标会话的消息
+    const savedMessages = loadMessagesFromStorage(sessionId)
+    set((s) => ({
       sessionId,
       showHistory: false,
-    })
+      tabs: updateTab(s.tabs, s.activeTabId, () => ({
+        messages: savedMessages,
+        isStreaming: false,
+        currentAssistantMsgId: null,
+        currentThinkingMsgId: null,
+        pendingApproval: null,
+        pendingQuestion: null,
+        title: session.title,
+      })),
+    }))
   },
 
   deleteSession: (sessionId) => {
     const { sessions } = get()
     const nextSessions = sessions.filter((s) => s.id !== sessionId)
     saveSessionsToStorage(nextSessions)
+    deleteMessagesFromStorage(sessionId)
     set({ sessions: nextSessions })
   },
 
@@ -606,6 +749,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         currentAssistantMsgId: null,
         currentThinkingMsgId: null,
         pendingApproval: null,
+        pendingQuestion: null,
         title: '新对话',
       })),
       error: null,

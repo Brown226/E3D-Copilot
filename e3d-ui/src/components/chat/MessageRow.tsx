@@ -6,7 +6,7 @@
 
 import type { Message } from '@/types'
 import { UserBubble } from './UserBubble'
-import { AssistantBubble } from './AssistantBubble'
+import { AssistantBubble, ReasoningBlock } from './AssistantBubble'
 import { ToolCard } from './ToolCard'
 import { ErrorCard } from './ErrorCard'
 
@@ -14,20 +14,17 @@ interface MessageRowProps {
   msg: Message
   subcalls?: Message[]
   allMessages?: Message[]
-  /** 紧接其前的 thinking 消息（用于内联 reasoning 展示） */
-  thinkingMsg?: Message
 }
 
-export function MessageRow({ msg, subcalls, allMessages, thinkingMsg }: MessageRowProps) {
+export function MessageRow({ msg, subcalls, allMessages }: MessageRowProps) {
   switch (msg.role) {
     case 'user':
       return <UserBubble msg={msg} />
     case 'assistant':
-      return <AssistantBubble msg={msg} thinkingMsg={thinkingMsg} />
+      return <AssistantBubble msg={msg} />
     case 'thinking':
-      // thinking 消息已通过 thinkingMsg 传递给 AssistantBubble
-      // 如果后面没有 assistant 消息（流式中断），则不渲染
-      return null
+      // thinking 消息始终独立渲染（Reasonix 风格：思考在前、工具在中、回复在后）
+      return <ReasoningBlock msg={msg} />
     case 'tool_call':
     case 'tool_result':
       return (

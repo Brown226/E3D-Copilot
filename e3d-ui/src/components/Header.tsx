@@ -4,8 +4,28 @@
  * 所有按钮 icon-only
  */
 
-import { Bot, Settings, Clock, Plus } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Bot, Settings, Clock, Plus, Sun, Moon } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
+
+type Theme = 'light' | 'dark' | 'system'
+
+function getStoredTheme(): Theme {
+  try { return (localStorage.getItem('e3d-theme') as Theme) || 'dark' } catch { return 'dark' }
+}
+
+function isDarkActive(): boolean {
+  const t = getStoredTheme()
+  return t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme:dark)').matches)
+}
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement
+  const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme:dark)').matches)
+  root.classList.toggle('dark', dark)
+  root.classList.toggle('light', !dark)
+  localStorage.setItem('e3d-theme', theme)
+}
 
 export function Header() {
   const currentModel = useChatStore((s) => s.currentModel)
@@ -14,6 +34,30 @@ export function Header() {
   const toggleHistory = useChatStore((s) => s.toggleHistory)
   const newSession = useChatStore((s) => s.newSession)
   const sessions = useChatStore((s) => s.sessions)
+
+  const [dark, setDark] = useState(isDarkActive)
+
+  // 监听系统主题变化（当用户选了 system 时）
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = () => { if (getStoredTheme() === 'system') setDark(isDarkActive()) }
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // 监听其他地方的主题变更（如设置面板、命令面板）
+  useEffect(() => {
+    const handler = () => setDark(isDarkActive())
+    window.addEventListener('theme-changed', handler)
+    return () => window.removeEventListener('theme-changed', handler)
+  }, [])
+
+  const handleToggleTheme = useCallback(() => {
+    const next: Theme = dark ? 'light' : 'dark'
+    applyTheme(next)
+    setDark(!dark)
+    window.dispatchEvent(new Event('theme-changed'))
+  }, [dark])
 
   const handleNewSession = () => {
     import('@/services/bridgeService').then(({ default: bridge }) => {
@@ -60,6 +104,14 @@ export function Header() {
                 {sessions.length > 99 ? '99+' : sessions.length}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={handleToggleTheme}
+            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+            title={dark ? '切换到亮色' : '切换到暗色'}
+          >
+            {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
           <button

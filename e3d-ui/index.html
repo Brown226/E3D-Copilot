@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>E小智</title>
+    <script>
+      // 防止 FOUC：在 React 渲染前同步应用主题和字体
+      ;(function () {
+        var root = document.documentElement
+        var theme = localStorage.getItem('e3d-theme') || 'dark'
+        var isDark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme:dark)').matches)
+        if (isDark) { root.classList.add('dark') } else { root.classList.add('light') }
+        var font = localStorage.getItem('e3d-font')
+        if (font === 'mono') root.style.setProperty('--font-family', 'JetBrains Mono, Fira Code, Consolas, monospace')
+        var sz = localStorage.getItem('e3d-text-size')
+        if (sz) { var m = {sm:'14px',md:'16px',lg:'18px',xl:'20px'}; if (m[sz]) root.style.fontSize = m[sz] }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

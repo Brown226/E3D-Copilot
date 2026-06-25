@@ -1,23 +1,20 @@
 /**
- * AssistantBubble — Reasonix 风格
+ * AssistantBubble — Reasonix 对标
  * 纯文本 + 内联 reasoning 折叠 + 复制/重试
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { ChevronRight, Copy, Check } from 'lucide-react'
+import { ChevronRight, Copy, Check, RotateCcw } from 'lucide-react'
 import MarkdownBlock from '@/components/common/MarkdownBlock'
-import { TurnActions } from './TurnActions'
 import { useChatStore } from '@/store/useChatStore'
 import type { Message } from '@/types'
 
 interface AssistantBubbleProps {
   msg: Message
-  /** 紧接其前的 thinking 消息（由 MessageRow 传入） */
-  thinkingMsg?: Message
 }
 
-/** 内联 reasoning 折叠块 — 简洁行内风格 */
-function ReasoningBlock({ msg }: { msg: Message }) {
+/** 内联 reasoning 折叠块 — Reasonix 风格 */
+export function ReasoningBlock({ msg }: { msg: Message }) {
   const [open, setOpen] = useState(!msg.finalized) // 流式时默认展开，完成后折叠
   const bodyRef = useRef<HTMLDivElement>(null)
 
@@ -29,37 +26,35 @@ function ReasoningBlock({ msg }: { msg: Message }) {
   }, [msg.content, open, msg.finalized])
 
   return (
-    <div className="reasoning-block">
+    <div className="reasoning">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="reasoning-block__head"
+        className="reasoning__head"
         data-running={!msg.finalized ? '' : undefined}
+        aria-expanded={open}
       >
-        {/* 思考状态文字 */}
-        <span className="reasoning-block__label">
-          {!msg.finalized ? '正在思考…' : '思考过程'}
-        </span>
-        {/* 右侧 meta + 箭头 */}
-        <span className="reasoning-block__meta">
-          {!msg.finalized ? '运行中' : '已完成'}
-        </span>
+        {/* 思考图标 */}
+        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+        </svg>
+        <span>{!msg.finalized ? '正在思考…' : '思考过程'}</span>
+        <span className="reasoning__meta">{!msg.finalized ? '运行中' : '已完成'}</span>
         <ChevronRight
-          className={`reasoning-block__chevron ${open ? 'reasoning-block__chevron--open' : ''}`}
+          size={12}
+          className={`reasoning__chevron${open ? ' reasoning__chevron--open' : ''}`}
         />
       </button>
       {open && (
-        <div ref={bodyRef} className="reasoning-block__body">
-          <p className="text-sm text-slate-500 dark:text-slate-400 whitespace-pre-wrap break-words leading-relaxed">
-            {msg.content}
-          </p>
+        <div ref={bodyRef} className="reasoning__body">
+          {msg.content}
         </div>
       )}
     </div>
   )
 }
 
-export function AssistantBubble({ msg, thinkingMsg }: AssistantBubbleProps) {
+export function AssistantBubble({ msg }: AssistantBubbleProps) {
   const [copied, setCopied] = useState(false)
   const rerollLastMessage = useChatStore((s) => s.rerollLastMessage)
 
@@ -77,37 +72,43 @@ export function AssistantBubble({ msg, thinkingMsg }: AssistantBubbleProps) {
   }
 
   const hasContent = msg.content.trim() !== ''
+  const hasError = !!msg.errorMessage || !!msg.toolError
+  const errorText = msg.errorMessage || msg.toolError
 
   return (
-    <div className="msg-assistant group" data-entrance={msg.id}>
-      {/* 内联 reasoning 折叠块 */}
-      {thinkingMsg && <ReasoningBlock msg={thinkingMsg} />}
-
+    <div className="msg msg--assistant" data-entrance={msg.id}>
       {/* 消息正文 */}
-      {hasContent && (
-        <div className="msg-assistant__body relative">
+      <div className="msg__body">
+        {hasContent ? (
           <MarkdownBlock markdown={msg.content} showCursor={!msg.finalized} />
-
-          {/* 复制按钮（hover 显示） */}
-          {msg.finalized && (
-            <button
-              onClick={handleCopy}
-              className="absolute -top-1 -right-1 p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
-              title="复制"
-            >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
-          )}
-        </div>
-      )}
+        ) : hasError ? (
+          /* 有真实错误信息时显示 */
+          <div style={{ color: 'var(--error)', fontSize: '14px' }}>
+            <strong>错误：</strong>{errorText}
+          </div>
+        ) : (
+          /* 无内容且无错误时的通用提示 */
+          <div style={{ color: 'var(--fg-dim)', fontStyle: 'italic' }}>
+            {!msg.finalized ? '正在生成回复…' : '抱歉，未能生成有效回复'}
+          </div>
+        )}
+      </div>
 
       {/* 操作栏（完成后显示） */}
-      {msg.finalized && hasContent && (
-        <TurnActions content={msg.content} onReroll={handleReroll} />
+      {msg.finalized && (
+        <div className="turn-actions">
+          {hasContent && (
+            <button className="turn-actions__btn" onClick={handleCopy} title="复制">
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              <span>{copied ? '已复制' : '复制'}</span>
+            </button>
+          )}
+          <button className="turn-actions__btn" onClick={handleReroll} title="重新生成">
+            <RotateCcw size={13} />
+            <span>重新生成</span>
+          </button>
+        </div>
       )}
-
-      {/* 分隔线 */}
-      <div className="mt-3 border-t border-slate-100 dark:border-slate-800" />
     </div>
   )
 }

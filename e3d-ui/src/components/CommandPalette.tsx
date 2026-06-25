@@ -3,9 +3,29 @@
  * 快速执行常用操作：新会话、设置、历史、切换模型、切换主题
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Search, MessageSquarePlus, Settings, History, Bot, Moon, Sun } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
+
+type Theme = 'light' | 'dark' | 'system'
+
+function getStoredTheme(): Theme {
+  try { return (localStorage.getItem('e3d-theme') as Theme) || 'dark' } catch { return 'dark' }
+}
+
+function isDarkActive(): boolean {
+  const t = getStoredTheme()
+  return t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme:dark)').matches)
+}
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement
+  const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme:dark)').matches)
+  root.classList.toggle('dark', dark)
+  root.classList.toggle('light', !dark)
+  localStorage.setItem('e3d-theme', theme)
+  window.dispatchEvent(new Event('theme-changed'))
+}
 
 interface CommandItem {
   id: string
@@ -65,12 +85,10 @@ export function CommandPalette() {
       id: 'toggle-theme',
       label: '切换主题',
       description: '在亮色/暗色主题间切换',
-      icon: document.documentElement.classList.contains('dark')
-        ? <Sun className="w-4 h-4" />
-        : <Moon className="w-4 h-4" />,
+      icon: isDarkActive() ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />,
       action: () => {
-        document.documentElement.classList.toggle('dark')
-        localStorage.setItem('e3d-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light')
+        const next: Theme = isDarkActive() ? 'light' : 'dark'
+        applyTheme(next)
         toggle()
       },
       keywords: ['theme', '主题', '暗色', '亮色', 'dark', 'light'],

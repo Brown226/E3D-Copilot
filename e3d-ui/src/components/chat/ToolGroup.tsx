@@ -10,8 +10,8 @@ import { ToolCard } from './ToolCard'
 
 export type ToolGroupKind = 'explore' | 'modify' | 'delegate' | 'shell'
 
-const EXPLORE_TOOLS = new Set(['read_file', 'ls', 'grep', 'glob', 'web_fetch', 'code_index', 'read_skill', 'mcp__*'])
-const MODIFY_TOOLS = new Set(['write_file', 'edit_file', 'multi_edit', 'move_file', 'delete_range', 'delete_symbol', 'notebook_edit'])
+const EXPLORE_TOOLS = new Set(['read_file', 'ls', 'grep', 'glob', 'web_fetch', 'code_index', 'read_skill', 'mcp__*', 'geometry', 'report', 'compare', 'hierarchy'])
+const MODIFY_TOOLS = new Set(['write_file', 'edit_file', 'multi_edit', 'move_file', 'delete_range', 'delete_symbol', 'notebook_edit', 'design', 'piping', 'batch', 'undo_redo'])
 const DELEGATE_TOOLS = new Set(['task', 'run_skill', 'explore', 'research', 'review', 'security_review'])
 
 export function toolGroupKind(msg: Message): ToolGroupKind | null {
@@ -53,23 +53,24 @@ export const ToolGroup = memo(function ToolGroup({ kind, messages, subcalls, all
   const [expanded, setExpanded] = useState(messages.length <= 3) // 3 个以内默认展开
 
   return (
-    <div className="tool-group">
-      {/* 组标题（可点击展开/折叠） */}
+    <div className={`tool-group tool-group--${kind}${expanded ? ' tool-group--open' : ''}`}>
+      {/* 组标题（可点击展开/折叠） — Reasonix 对标 */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className="tool-group__head"
+        aria-expanded={expanded}
       >
-        {kindIcon(kind)}
-        <span className="tool-group__label">
-          {kindLabel(kind, messages.length)}
+        <span className="tool-group__title">{kindLabel(kind, messages.length)}</span>
+        <span className="tool-group__summary">
+          {messages.filter(m => m.role === 'tool_call').map(m => m.toolName).join(', ')}
         </span>
         <ChevronRight
-          className={`tool-group__chevron ${expanded ? 'tool-group__chevron--open' : ''}`}
+          size={12}
+          className={`tool-group__chevron${expanded ? ' tool-group__chevron--open' : ''}`}
         />
       </button>
 
-      {/* 展开时显示每个 ToolCard */}
       {expanded && (
         <div className="tool-group__body">
           {messages.map((msg) => (

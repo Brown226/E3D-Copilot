@@ -1,20 +1,21 @@
 /**
- * InputBar — Reasonix 风格 Composer
+ * InputBar — Composer 输入组件
  *
  * 布局结构：
  * 1. 附件/粘贴块区（context cards）
  * 2. 流式状态栏（运行中显示：旋转词 + 时长 + token + 停止按钮）
  * 3. 主卡片：textarea + 发送按钮
- * 4. 底部工具栏：附件 | 模式切换(询问/自动/Yolo) | 模型选择器 | Plan/Act | 连接状态
+ * 4. 底部工具栏：附件 | 自动执行开关 | 模型选择器 | 连接状态
  * 5. Slash 命令菜单（浮层）
  */
 
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type CSSProperties } from 'react'
-import { Paperclip, ArrowUp, Square, Zap, List, Shield, ShieldCheck, ShieldAlert, GripHorizontal } from 'lucide-react'
+import { Paperclip, ArrowUp, Square, Shield, ShieldCheck, List } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import type { ToolApprovalMode } from '@/store/useChatStore'
 import { ModelSwitcher } from '@/components/chat/ModelSwitcher'
 import { SlashMenu } from '@/components/chat/SlashMenu'
+import { CadImportButton } from '@/components/chat/CadImportButton'
 
 // ── 常量 ──
 const LONG_PASTE_MIN_CHARS = 2000
@@ -113,22 +114,17 @@ interface PastedBlock {
   text: string
 }
 
-// ── 审批模式配置 ──
-const APPROVAL_MODES: { mode: ToolApprovalMode; icon: typeof Shield; label: string; title: string }[] = [
-  { mode: 'ask', icon: Shield, label: '询问', title: '每次工具调用前询问确认' },
-  { mode: 'auto', icon: ShieldCheck, label: '自动', title: '自动执行工具调用（只读操作）' },
-  { mode: 'yolo', icon: ShieldAlert, label: 'Yolo', title: '全自动模式：所有操作无需确认' },
-]
+// ── 自动执行模式：开 = auto（只读操作自动执行），关 = ask（每次询问确认） ──
 
 export function InputBar() {
   const inputValue = useChatStore((s) => s.inputValue)
   const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
   const bridgeConnected = useChatStore((s) => s.bridgeConnected)
   const currentModel = useChatStore((s) => s.currentModel)
-  const isPlanMode = useChatStore((s) => s.isPlanMode)
-  const togglePlanMode = useChatStore((s) => s.togglePlanMode)
   const toolApprovalMode = useChatStore((s) => s.toolApprovalMode)
   const setToolApprovalMode = useChatStore((s) => s.setToolApprovalMode)
+  const isPlanMode = useChatStore((s) => s.isPlanMode)
+  const togglePlanMode = useChatStore((s) => s.togglePlanMode)
   const turnStartAt = useChatStore((s) => s.turnStartAt)
   const turnTokens = useChatStore((s) => s.turnTokens)
   const setInputValue = useChatStore((s) => s.setInputValue)
@@ -419,114 +415,82 @@ export function InputBar() {
       })()
     : null
 
-  // ── 审批模式切换器当前激活索引（用于滑块动画） ──
-  const approvalIndex = APPROVAL_MODES.findIndex((m) => m.mode === toolApprovalMode)
+  // ── 自动执行开关状态 ──
+  const isAutoMode = toolApprovalMode !== 'ask'
 
   return (
     <footer
-      className={`border-t transition-colors duration-200 relative ${
-        dragOver
-          ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-900/20'
-          : 'border-slate-200 bg-white/80 dark:bg-slate-900/80 dark:border-slate-700'
-      } backdrop-blur-sm px-2.5 py-2 sm:px-3`}
+      className={`composer-footer${dragOver ? ' composer-footer--dragover' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="space-y-1.5">
-        {/* ═══════ 区域 1：附件/粘贴块 ═══════ */}
-        {(attachments.length > 0 || pastedBlocks.length > 0) && (
-          <div className="flex flex-wrap gap-2">
-            {attachments.map((att) => (
-              <div key={att.id} className="relative group flex items-center gap-2 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 text-xs">
+      {/* ═══════ 流式状态栏（卡片上方） ═══════ */}
+      {runActivity && (
+        <div className="composer-toolbar composer-toolbar--status-only">
+          <div className="composer-runstatus" role="status" aria-live="polite">
+            <span className="composer-runstatus__dot" />
+            <span className="composer-runstatus__text">{runActivity}</span>
+            <button className="composer-runstatus__stop" type="button" onClick={handleCancel}>
+              <Square size={10} fill="currentColor" />
+              <span>停止</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ 附件 / 粘贴块（卡片上方） ═══════ */}
+      {(attachments.length > 0 || pastedBlocks.length > 0) && (
+        <div className="composer-context">
+          {attachments.map((att) => (
+            <div key={att.id} className="composer-context__item">
+              <span className="composer-context__icon">
                 {att.previewUrl ? (
-                  <img src={att.previewUrl} alt="" className="w-8 h-8 rounded object-cover" />
+                  <img src={att.previewUrl} alt="" draggable={false} />
                 ) : (
-                  <Paperclip className="w-3.5 h-3.5 text-slate-400" />
+                  <Paperclip className="w-4 h-4" />
                 )}
-                <div className="flex flex-col min-w-0">
-                  <span className="text-slate-700 dark:text-slate-300 truncate max-w-[120px]">{att.name}</span>
-                  <span className="text-slate-400 dark:text-slate-500">{formatSize(att.size)}</span>
-                </div>
-                <button
-                  onClick={() => removeAttachment(att.id)}
-                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                >×</button>
-              </div>
-            ))}
-            {pastedBlocks.map((block) => (
-              <div key={block.label} className="relative group flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700 text-xs">
-                <span className="text-amber-700 dark:text-amber-300">📋 {block.label} ({block.text.length} 字符)</span>
-                <button
-                  onClick={() => removePastedBlock(block.label)}
-                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                >×</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ═══════ 区域 2：流式状态栏 ═══════ */}
-        {runActivity && (
-          <div className="flex items-center justify-end">
-            <div
-              className="inline-flex items-center gap-2 h-[34px] px-3 rounded-[10px] border text-xs font-medium"
-              style={{
-                borderColor: 'color-mix(in srgb, var(--e3d-primary) 38%, var(--border))',
-                background: 'color-mix(in srgb, var(--e3d-primary) 9%, var(--bg-elev))',
-                color: 'var(--e3d-primary)',
-              }}
-              role="status"
-              aria-live="polite"
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"
-                style={{ animation: 'pulse 1.2s ease-in-out infinite' }}
-              />
-              <span className="truncate tabular-nums">{runActivity}</span>
-              <button
-                onClick={handleCancel}
-                className="inline-flex items-center gap-1 h-[26px] px-2.5 rounded-[7px] border text-xs font-semibold transition-colors"
-                style={{
-                  borderColor: 'color-mix(in srgb, var(--e3d-error) 42%, transparent)',
-                  background: 'color-mix(in srgb, var(--e3d-error) 14%, var(--bg-elev-2))',
-                  color: 'var(--e3d-error)',
-                }}
-                title="停止生成"
-              >
-                <Square className="w-2.5 h-2.5" fill="currentColor" />
-                <span>停止</span>
-              </button>
+              </span>
+              <span className="composer-context__info">
+                <span className="composer-context__name">{att.name}</span>
+                <span className="composer-context__meta">{formatSize(att.size)}</span>
+              </span>
+              <button className="composer-context__remove" onClick={() => removeAttachment(att.id)}>×</button>
             </div>
-          </div>
-        )}
+          ))}
+          {pastedBlocks.map((block) => (
+            <div key={block.label} className="composer__pasted-block">
+              <span>📋 {block.label} ({block.text.length} 字符)</span>
+              <button className="composer-context__remove" style={{ position: 'static', opacity: 1 }} onClick={() => removePastedBlock(block.label)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* ═══════ 区域 3：主输入卡片 ═══════ */}
+      <div className="composer-wrap">
+        {/* ═══════ 主输入卡片 ═══════ */}
         <div
           ref={composerCardRef}
-          className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 border transition-colors overflow-hidden ${
-            dragOver ? 'border-blue-400 dark:border-blue-500' : 'border-slate-200 dark:border-slate-600'
-          }${composerResizing ? ' ring-2 ring-blue-300 dark:ring-blue-700' : ''}`}
-          style={composerHeight !== null ? ({ '--composer-h': `${composerHeight}px` } as CSSProperties) : undefined}
+          className={`composer-card${composerHeight !== null ? ' composer-card--resized' : ''}${composerResizing ? ' composer-card--resizing' : ''}${isStreaming ? ' composer-card--running' : ''}`}
+          style={composerHeight !== null ? ({ '--composer-height': `${composerHeight}px` } as CSSProperties) : undefined}
         >
-          {/* 拖拽调整高度手柄 */}
           <button
+            className="composer-resize-handle"
             type="button"
-            className="absolute -top-0.5 left-1/2 -translate-x-1/2 z-20 h-2 w-16 flex items-center justify-center cursor-ns-resize group/resizer touch-none"
+            aria-label="拖拽调整高度"
+            title="拖拽调整高度（双击重置）"
             onPointerDown={onComposerResizeStart}
             onDoubleClick={resetComposerHeight}
-            title="拖拽调整高度（双击重置）"
-            aria-label="拖拽调整输入框高度"
-          >
-            <GripHorizontal className="w-4 h-3 text-slate-300 dark:text-slate-600 group-hover/resizer:text-slate-400 dark:group-hover/resizer:text-slate-400 transition-colors" />
-          </button>
+          />
+
+          {/* textarea + 发送按钮 */}
           <div
-            className="flex items-end"
-            style={composerHeight !== null ? { height: `${composerHeight}px` } : undefined}
+            className={`composer${dragOver ? ' composer--dragover' : ''}${!bridgeConnected ? ' composer--disabled' : ''}`}
           >
-            {/* textarea */}
+            <span className="composer__caret">›</span>
             <textarea
               ref={textareaRef}
+              className="composer__input"
               value={inputValue}
               onChange={(e) => {
                 const val = e.target.value
@@ -546,143 +510,96 @@ export function InputBar() {
                 dragOver
                   ? '拖放文件到此处...'
                   : bridgeConnected
-                  ? isStreaming ? 'AI 正在回复...' : '给 E小智 发消息... (/ 命令 · @ 文件 · ! 终端)'
+                  ? isStreaming ? 'AI 正在回复...' : '给 E小智 发消息...'
                   : '等待连接...'
               }
               disabled={!bridgeConnected}
-              rows={1}
-              className="flex-1 px-3 py-2 bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-sm resize-none leading-5 disabled:opacity-50 min-h-[40px]"
               style={{ maxHeight: `${composerMaxHeight()}px` }}
             />
 
-            {/* 发送/取消按钮 */}
+            {/* 发送 / 停止按钮 */}
             {isStreaming ? (
-              <button
-                onClick={handleCancel}
-                className="m-2 w-8 h-8 rounded-xl flex items-center justify-center bg-red-500 hover:bg-red-600 text-white transition-colors shrink-0"
-                title="停止生成"
-              >
-                <Square className="w-4 h-4" />
+              <button className="composer__btn composer__btn--stop" onClick={handleCancel} title="停止生成">
+                <Square size={14} fill="currentColor" strokeWidth={0} />
               </button>
             ) : (
               <button
+                className="composer__btn composer__btn--send"
                 onClick={handleSend}
                 disabled={!canSend}
-                className="m-2 w-8 h-8 rounded-xl flex items-center justify-center text-white transition-all shrink-0 bg-slate-800 dark:bg-slate-200 hover:bg-slate-700 dark:hover:bg-slate-300 disabled:opacity-30 disabled:cursor-not-allowed"
                 title="发送 (Enter)"
               >
-                <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
+                <ArrowUp size={16} />
               </button>
             )}
           </div>
 
-          {/* ═══════ 区域 4：底部工具栏 ═══════ */}
-          <div className="flex items-center gap-1 px-1.5 py-1 border-t border-slate-100 dark:border-slate-700/50">
-            {/* 附件按钮 */}
-            <button
-              onClick={handleFileSelect}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              title="添加附件"
-            >
-              <Paperclip className="w-4 h-4" />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,.pdf,.txt,.json,.csv,.xml,.yaml,.yml,.md"
-              className="hidden"
-              onChange={handleFileChange}
-            />
+          {/* ═══════ 底部工具栏 ═══════ */}
+          <div className="composer-meta">
+            <div className="composer-meta__params">
+              {/* 附件按钮 */}
+              <div className="composer-meta__control">
+                <button
+                  className="composer-action-trigger"
+                  onClick={handleFileSelect}
+                  title="添加附件"
+                >
+                  <Paperclip size={15} />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.txt,.json,.csv,.xml,.yaml,.yml,.md"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </div>
 
-            {/* 分隔线 */}
-            <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+              {/* 规划模式开关 */}
+              <div className="composer-meta__control">
+                <button
+                  type="button"
+                  className={`composer-auto-toggle${isPlanMode ? ' composer-auto-toggle--plan' : ''}`}
+                  onClick={togglePlanMode}
+                  disabled={!bridgeConnected}
+                  title={isPlanMode ? '当前：先规划再执行，点击切换为直接执行' : '当前：直接执行，点击开启规划模式'}
+                >
+                  <List size={15} />
+                  <span>规划</span>
+                </button>
+              </div>
 
-            {/* ══ 审批模式三段切换器（询问/自动/Yolo） ══ */}
-            <div
-              className="relative grid grid-cols-3 items-center h-8 p-0.5 rounded-full border border-slate-200 dark:border-slate-600 bg-slate-100/50 dark:bg-slate-900/50 overflow-hidden"
-              data-mode={toolApprovalMode}
-              style={{ minWidth: '180px' }}
-            >
-              {/* 滑块 */}
-              <span
-                className="absolute top-0.5 bottom-0.5 left-0.5 rounded-full border transition-all duration-200 pointer-events-none"
-                style={{
-                  width: 'calc((100% - 4px) / 3)',
-                  transform: `translateX(${approvalIndex * 100}%)`,
-                  ...(toolApprovalMode === 'ask'
-                    ? { borderColor: 'var(--border)', background: 'var(--bg-elev)' }
-                    : toolApprovalMode === 'auto'
-                    ? { borderColor: 'color-mix(in srgb, var(--e3d-success) 76%, #0b3d24)', background: 'color-mix(in srgb, var(--e3d-success) 58%, #0b3d24)' }
-                    : { borderColor: 'var(--e3d-error)', background: 'color-mix(in srgb, var(--e3d-error) 20%, var(--bg-elev-2))' }
-                  ),
-                }}
-              />
-              {APPROVAL_MODES.map(({ mode, icon: Icon, label, title }) => {
-                const isActive = toolApprovalMode === mode
-                return (
-                  <button
-                    key={mode}
-                    onClick={() => setToolApprovalMode(mode)}
-                    disabled={!bridgeConnected}
-                    className={`relative z-10 inline-flex items-center justify-center gap-1 h-[26px] px-1.5 rounded-full border border-transparent text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isActive
-                        ? mode === 'ask'
-                          ? 'text-slate-700 dark:text-slate-200'
-                          : mode === 'auto'
-                          ? 'text-white'
-                          : 'text-red-600 dark:text-red-400'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                    }`}
-                    title={title}
-                    aria-pressed={isActive}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span className="hidden min-[420px]:inline">{label}</span>
-                  </button>
-                )
-              })}
+              {/* CAD 导入按钮 */}
+              <div className="composer-meta__control relative">
+                <CadImportButton />
+              </div>
+
+              {/* 自动执行开关 */}
+              <div className="composer-meta__control">
+                <button
+                  type="button"
+                  className={`composer-auto-toggle${isAutoMode ? ' composer-auto-toggle--on' : ''}`}
+                  onClick={() => setToolApprovalMode(isAutoMode ? 'ask' : 'auto')}
+                  disabled={!bridgeConnected}
+                  title={isAutoMode ? '当前：只读操作自动执行，点击切换为每次询问' : '当前：每次工具调用前询问确认，点击开启自动执行'}
+                >
+                  {isAutoMode ? <ShieldCheck size={15} /> : <Shield size={15} />}
+                  <span>{isAutoMode ? '自动' : '询问'}</span>
+                </button>
+              </div>
             </div>
 
-            {/* 分隔线 */}
-            <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
-
-            {/* Plan/Act 模式切换 */}
-            <button
-              onClick={togglePlanMode}
-              className={`flex items-center gap-1 px-2 py-1 text-xs rounded-lg font-medium transition-all ${
-                isPlanMode
-                  ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-              title={isPlanMode ? '规划模式：AI 只分析不执行' : '执行模式：AI 可直接操作'}
-            >
-              {isPlanMode ? <List className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
-              <span className="hidden min-[400px]:inline">{isPlanMode ? '规划' : '执行'}</span>
-            </button>
-
-            {/* 分隔线 */}
-            <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
-
-            {/* 模型选择器 */}
-            <ModelSwitcher />
-
-            {/* 右侧：连接状态 + token 统计 */}
-            <div className="ml-auto flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
-              {/* 会话 token 统计 */}
+            {/* 右侧：连接状态 + 模型选择器 */}
+            <div className="composer-status">
               {useChatStore((s) => s.sessionTokens) > 0 && (
-                <span className="hidden sm:inline tabular-nums">
-                  Σ {fmtTokens(useChatStore((s) => s.sessionTokens))} tok
+                <span className="hidden sm:inline" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  Σ {fmtTokens(useChatStore((s) => s.sessionTokens))}
                 </span>
               )}
-              <span className={`w-1.5 h-1.5 rounded-full ${bridgeConnected ? 'bg-emerald-500' : 'bg-red-500'}`} />
-              <span className="hidden sm:inline">
-                {bridgeConnected ? (currentModel || '已连接') : '未连接'}
-              </span>
+              <ModelSwitcher />
               {historyEntries.length > 0 && (
-                <span className="hidden sm:inline text-slate-300 dark:text-slate-600">
-                  · ↑↓ {historyEntries.length}
-                </span>
+                <span className="hidden sm:inline" style={{ color: 'var(--fg-faint)' }}>· ↑↓ {historyEntries.length}</span>
               )}
             </div>
           </div>

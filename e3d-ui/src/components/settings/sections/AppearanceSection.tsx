@@ -49,24 +49,12 @@ function getStoredTextSize(): TextSize {
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement
-  if (theme === 'dark') {
-    root.classList.add('dark')
-    root.classList.remove('light')
-  } else if (theme === 'light') {
-    root.classList.add('light')
-    root.classList.remove('dark')
-  } else {
-    // system
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    if (prefersDark) {
-      root.classList.add('dark')
-      root.classList.remove('light')
-    } else {
-      root.classList.add('light')
-      root.classList.remove('dark')
-    }
-  }
+  const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme:dark)').matches)
+  root.classList.toggle('dark', dark)
+  root.classList.toggle('light', !dark)
   localStorage.setItem('e3d-theme', theme)
+  // 通知其他组件（Header 等）主题已变更
+  window.dispatchEvent(new Event('theme-changed'))
 }
 
 function applyTextSize(size: TextSize) {
@@ -92,9 +80,30 @@ export default function AppearanceSection() {
   const [theme, setTheme] = useState<Theme>(getStoredTheme)
   const [textSize, setTextSize] = useState<TextSize>(getStoredTextSize)
 
-  // 初始化应用主题
+  // 初始化：应用主题 + 字体
   useEffect(() => {
     applyTheme(theme)
+    // 初始化字体
+    const storedFont = localStorage.getItem('e3d-font')
+    if (storedFont === 'mono') {
+      document.documentElement.style.setProperty('--font-family', 'JetBrains Mono, Fira Code, Consolas, monospace')
+    }
+  }, [])
+
+  // 监听系统主题变化（当选择了 "system" 时实时跟随）
+  useEffect(() => {
+    if (theme !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = () => applyTheme('system')
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [theme])
+
+  // 监听其他组件的主题变更（Header 快捷切换等）
+  useEffect(() => {
+    const handler = () => setTheme(getStoredTheme())
+    window.addEventListener('theme-changed', handler)
+    return () => window.removeEventListener('theme-changed', handler)
   }, [])
 
   const handleThemeChange = useCallback((t: Theme) => {

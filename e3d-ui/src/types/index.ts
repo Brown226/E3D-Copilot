@@ -2,6 +2,14 @@
  * E小智 v2.0 前端核心类型定义
  */
 
+// 全局变量声明（由 config:sync 设置）
+declare global {
+  interface Window {
+    __E3D_VERSION__?: string;
+    __E3D_ABOUT_URL__?: string;
+  }
+}
+
 // ============================================
 // 消息角色
 // ============================================
@@ -23,8 +31,10 @@ export interface Message {
   toolArgs?: unknown;
   /** 子代理嵌套：父工具调用 ID */
   parentId?: string;
-  /** tool_result 专用 */
+  /** tool_result / assistant 专用：错误信息 */
   toolError?: string;
+  /** assistant 专用：LLM 返回的错误信息（用于空回复时诊断） */
+  errorMessage?: string;
   /** 工具执行耗时（毫秒） */
   durationMs?: number;
   /** 是否已完成（流式结束） */

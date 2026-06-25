@@ -561,6 +561,11 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
           currentModel: p.currentModel || p.model,
           providers: p.providers || [],
         });
+        // 同步版本号到全局变量（供 AboutSection 等使用）
+        if ((p as any).version) {
+          window.__E3D_VERSION__ = (p as any).version;
+          window.__E3D_ABOUT_URL__ = (p as any).aboutUrl || '';
+        }
         // 同步 plan mode
         if (p.mode) {
           s.setPlanMode(p.mode === 'plan');
@@ -573,12 +578,17 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
           // 应用主题
           if (p.ui.theme) {
             const root = document.documentElement
-            if (p.ui.theme === 'dark' || (p.ui.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-              root.classList.add('dark')
-              root.classList.remove('light')
+            const isDark = p.ui.theme === 'dark' || (p.ui.theme === 'system' && window.matchMedia('(prefers-color-scheme:dark)').matches)
+            root.classList.toggle('dark', isDark)
+            root.classList.toggle('light', !isDark)
+            window.dispatchEvent(new Event('theme-changed'))
+          }
+          // 应用字体
+          if (p.ui.fontFamily) {
+            if (p.ui.fontFamily === 'mono') {
+              document.documentElement.style.setProperty('--font-family', 'JetBrains Mono, Fira Code, Consolas, monospace')
             } else {
-              root.classList.add('light')
-              root.classList.remove('dark')
+              document.documentElement.style.removeProperty('--font-family')
             }
           }
         }
@@ -604,27 +614,23 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         const p = msg.payload as LlmStreamDeltaPayload;
         const state = store.getState();
         const targetId = tabId || state.activeTabId;
-        const tab = state.tabs.find((t) => t.id === targetId);
-        if (tab?.currentAssistantMsgId) {
-          // 批量合并 delta：16ms 内的多个 token 合并为一次 setState（60fps 节流）
-          _deltaBuffer.push({ tabId: targetId, text: p.delta });
-          if (!_deltaFlushScheduled) {
-            _deltaFlushScheduled = true;
-            setTimeout(() => {
-              _deltaFlushScheduled = false;
-              if (_deltaBuffer.length === 0) return;
-              // 按 tabId 分组合并
-              const byTab = new Map<string, string>();
-              for (const d of _deltaBuffer) {
-                byTab.set(d.tabId, (byTab.get(d.tabId) || '') + d.text);
-              }
-              _deltaBuffer = [];
-              const s = store.getState();
-              for (const [tid, combined] of byTab) {
-                s.appendAssistantDelta(combined, tid);
-              }
-            }, 16);
-          }
+        // 不检查 currentAssistantMsgId 是否存在 — appendAssistantDelta 会在首次 delta 时自动创建 assistant 消息
+        _deltaBuffer.push({ tabId: targetId, text: p.delta });
+        if (!_deltaFlushScheduled) {
+          _deltaFlushScheduled = true;
+          setTimeout(() => {
+            _deltaFlushScheduled = false;
+            if (_deltaBuffer.length === 0) return;
+            const byTab = new Map<string, string>();
+            for (const d of _deltaBuffer) {
+              byTab.set(d.tabId, (byTab.get(d.tabId) || '') + d.text);
+            }
+            _deltaBuffer = [];
+            const s = store.getState();
+            for (const [tid, combined] of byTab) {
+              s.appendAssistantDelta(combined, tid);
+            }
+          }, 16);
         }
         break;
       }
@@ -645,13 +651,23 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         const state = store.getState();
         const targetId = tabId || state.activeTabId;
         const tab = state.tabs.find((t) => t.id === targetId);
+        // Finalize thinking message (auto-collapse ThinkingBlock)
+        // 必须在 if 之外，因为 thinking 消息独立于 assistant 消息存在
+        state.finalizeThinkingMessage(tabId);
         if (tab?.currentAssistantMsgId) {
-          state.finalizeAssistantMessage(tab.currentAssistantMsgId, tabId);
+          // 解析 error 字段（LLM 空回复时的错误信息）
+          const endPayload = msg.payload as { usage?: { total_tokens?: number }; error?: string };
+          if (endPayload?.error) {
+            state.setAssistantErrorMessage(tab.currentAssistantMsgId, endPayload.error, tabId);
+          }
+          // 注意：不在这里 finalize assistant 消息和清空 currentAssistantMsgId！
+          // AgentLoop 可能有多轮 LLM 调用（step 1: LLM→tools, step 2: LLM→text），
+          // 清空 ID 会导致后续 delta 丢失。由 turn:done 统一 finalize。
         }
         // 解析 usage 中的 token 信息
-        const endPayload = msg.payload as { usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } };
-        if (endPayload?.usage?.total_tokens) {
-          state.addTurnTokens(endPayload.usage.total_tokens);
+        const endPayload2 = msg.payload as { usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } };
+        if (endPayload2?.usage?.total_tokens) {
+          state.addTurnTokens(endPayload2.usage.total_tokens);
         }
         break;
       }
@@ -666,7 +682,7 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         const p = msg.payload as ToolDispatchPayload;
         s.appendMessage({
           role: 'tool_call',
-          content: `Calling ${p.name}...`,
+          content: `正在调用 ${p.name}...`,
           toolId: p.id,
           toolName: p.name,
           toolArgs: p.args,
@@ -697,9 +713,22 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         break;
       }
 
+      case 'ask_user': {
+        const p = msg.payload as { questionId: string; question: string; data?: { options?: string[]; multiSelect?: boolean } };
+        s.setPendingQuestion({
+          questionId: p.questionId,
+          question: p.question,
+          options: p.data?.options,
+          multiSelect: p.data?.multiSelect,
+        }, tabId);
+        break;
+      }
+
       case 'turn:done': {
         s.stopStreaming(tabId);
         s.setTurnStart(null);
+        // 每轮结束后自动保存会话
+        s.saveSession();
         break;
       }
 
@@ -785,30 +814,56 @@ const bridge = new Bridge();
 // 注册 store 映射
 registerStoreMappings(bridge);
 
-// 等待 host:ready 超时机制
+// 等待 host:ready 超时机制 + 自动重连
 // WebView2 模式下 C# 端应在 NavigationCompleted 后发送 host:ready
-// 如果 5 秒内未收到，说明连接异常，保持断连状态让用户手动重连
+// 如果未收到，自动 ping 重试直到连接成功
 let hostReadyTimer: ReturnType<typeof setTimeout> | null = null;
+let autoReconnectTimer: ReturnType<typeof setInterval> | null = null;
+
+function startAutoReconnect() {
+  if (autoReconnectTimer) return
+  autoReconnectTimer = setInterval(async () => {
+    const state = useChatStore.getState()
+    if (state.bridgeConnected) {
+      // 已连接，停止重试
+      if (autoReconnectTimer) { clearInterval(autoReconnectTimer); autoReconnectTimer = null }
+      return
+    }
+    try {
+      await bridge.ping()
+      // ping 成功，标记为已连接
+      useChatStore.getState().setBridgeConnected(true)
+      if (autoReconnectTimer) { clearInterval(autoReconnectTimer); autoReconnectTimer = null }
+    } catch {
+      // ping 失败，继续重试
+    }
+  }, 3000)  // 每 3 秒重试一次
+}
 
 if (bridge.isAvailable()) {
   // WebView2 模式：等待 C# 发送 host:ready
   hostReadyTimer = setTimeout(() => {
-    const state = useChatStore.getState();
+    const state = useChatStore.getState()
     if (!state.bridgeConnected) {
-      console.warn('[Bridge] host:ready 未在 5 秒内收到，可能连接异常');
+      console.warn('[Bridge] host:ready 未在 5 秒内收到，启动自动重连')
+      startAutoReconnect()
     }
-  }, 5000);
+  }, 5000)
 } else {
   // Standalone 模式：立即启动 mock（无延迟，避免断连屏闪烁）
-  Promise.resolve().then(() => bridge.startMock());
+  Promise.resolve().then(() => bridge.startMock())
 }
 
-// 监听 host:ready 后取消超时定时器
+// 监听 host:ready 后取消超时定时器和自动重连
 bridge.onHostReady(() => {
   if (hostReadyTimer) {
-    clearTimeout(hostReadyTimer);
-    hostReadyTimer = null;
+    clearTimeout(hostReadyTimer)
+    hostReadyTimer = null
   }
-});
+  if (autoReconnectTimer) {
+    clearInterval(autoReconnectTimer)
+    autoReconnectTimer = null
+  }
+})
 
 export default bridge;

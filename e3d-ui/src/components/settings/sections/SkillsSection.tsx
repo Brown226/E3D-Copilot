@@ -6,7 +6,7 @@
  * 2. 技能来源管理（添加/移除/刷新）
  * 3. 技能启用/禁用（持久化到后端）
  * 4. 搜索/过滤/展开详情
- * 5. 内置技能展示（fallback 到静态数据）
+ * 5. 内置技能由后端动态生成（ToolExecutor 注册的工具自动同步）
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
@@ -30,18 +30,8 @@ import {
 import type { SkillInfo, SkillSource } from '@/services/messageContracts'
 import { useToastStore } from '@/store/useToastStore'
 
-// ── 内置 E3D 技能（后端未连接时的 fallback） ──
-const BUILTIN_SKILLS: SkillInfo[] = [
-  { name: 'query', description: '查询 E3D 数据库中的元素属性、层级关系、当前选中元素信息。', scope: 'builtin', runAs: 'inline', enabled: true, tags: ['数据库', '查询'] },
-  { name: 'modify', description: '修改 E3D 元素的属性值。支持单个/批量修改，自动处理事务提交和回滚。', scope: 'builtin', runAs: 'inline', enabled: true, tags: ['修改', '属性'] },
-  { name: 'calculate', description: '执行数学计算和单位换算。支持 E3D 内置函数（距离、角度、面积等）。', scope: 'builtin', runAs: 'inline', enabled: true, tags: ['计算', '数学'] },
-  { name: 'export', description: '导出 E3D 数据到文件。支持 CSV、XML、JSON 等格式。', scope: 'builtin', runAs: 'inline', enabled: true, tags: ['导出', '文件'] },
-  { name: 'execute_pml', description: '执行 PML 脚本命令。可直接操作 E3D 内部功能，灵活度最高。', scope: 'builtin', runAs: 'inline', enabled: true, tags: ['PML', '脚本'] },
-  { name: 'search_knowledge', description: '搜索 E3D 知识库，查找最佳实践、标准规范、操作指南。', scope: 'builtin', runAs: 'inline', enabled: true, tags: ['知识库', '搜索'] },
-  { name: 'ask_user', description: '向用户提问并等待回答。用于需要确认或补充信息的场景。', scope: 'builtin', runAs: 'inline', enabled: true, tags: ['交互', '提问'] },
-  { name: 'task', description: '创建子任务，将复杂工作拆分为可管理的步骤。', scope: 'builtin', runAs: 'subagent', enabled: true, tags: ['任务', '子代理'] },
-  { name: 'read_file', description: '读取本地文件内容。支持文本文件、配置文件等。', scope: 'builtin', runAs: 'inline', enabled: true, tags: ['文件', '读取'] },
-]
+// ── 内置技能由后端动态生成，不再硬编码 ──
+const BUILTIN_SKILLS: SkillInfo[] = []
 
 // ── Helpers ──
 function summarizeDescription(desc: string, maxLen = 120): string {
@@ -78,9 +68,9 @@ function scopeIcon(scope: string) {
 // ═══════════════════════════════════════════
 
 export default function SkillsSection() {
-  const [skills, setSkills] = useState<SkillInfo[]>(BUILTIN_SKILLS)
+  const [skills, setSkills] = useState<SkillInfo[]>([])
   const [sources, setSources] = useState<SkillSource[]>([
-    { path: '（内置技能）', status: 'active', skillCount: BUILTIN_SKILLS.length, removable: false },
+    { path: '（从后端加载）', status: 'active', skillCount: 0, removable: false },
   ])
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedSkills, setExpandedSkills] = useState<Set<string>>(new Set())
@@ -105,7 +95,7 @@ export default function SkillsSection() {
         if (result.sources) setSources(result.sources)
       }
     } catch {
-      // bridge 不可用时保持静态内置技能列表
+      // bridge 不可用时保持空列表
     } finally {
       setLoading(false)
     }
