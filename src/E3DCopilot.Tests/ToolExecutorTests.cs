@@ -69,10 +69,13 @@ namespace E3DCopilot.Tests
         public void GetAllHandlers_ReturnsExpectedHandlers()
         {
             var handlers = _executor.GetAllHandlers();
-            Assert.AreEqual(14, handlers.Count);
+            Assert.AreEqual(28, handlers.Count);
             Assert.IsTrue(handlers.Any(h => h.Name == "design"));
             Assert.IsTrue(handlers.Any(h => h.Name == "piping"));
             Assert.IsTrue(handlers.Any(h => h.Name == "geometry"));
+            Assert.IsTrue(handlers.Any(h => h.Name == "cad_import"));
+            Assert.IsTrue(handlers.Any(h => h.Name == "autocad"));
+            Assert.IsTrue(handlers.Any(h => h.Name == "search_knowledge"));
         }
     }
 }
