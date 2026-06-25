@@ -37,3 +37,11 @@ git/
 .reasonix/
 deploy/
 git/
+
+# Test artifacts
+TestResults/
+test_output.txt
+test_result.txt
+
+# Compiled DLLs in lib/ (build artifacts, not source)
+lib/E3DCopilot.*.dll
