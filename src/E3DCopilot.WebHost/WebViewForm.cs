@@ -55,7 +55,10 @@ namespace E3DCopilot.WebHost
         {
             this.Dock = DockStyle.Fill;
             this.MinimumSize = new Size(280, 200);
-            this.BackColor = Color.FromArgb(12, 12, 20);
+            this.BackColor = Color.FromArgb(255, 255, 255);  // 纯白背景，防止透明
+
+            // 防止 E3D DockedWindow 失焦变透明
+            this.Leave += (s, e) => { this.BackColor = Color.FromArgb(255, 255, 255); };
 
             // 加载占位面板（WebView2 初始化前显示）
             var loadingPanel = new Panel
@@ -187,6 +190,11 @@ namespace E3DCopilot.WebHost
                                 // 模型参数同步
                                 temperature = prov?.Temperature ?? 0.7,
                                 maxTokens = prov?.MaxTokens ?? 4096,
+                                // Agent 运行参数
+                                maxSteps = config.Ui.MaxSteps,
+                                // 介绍信息
+                                version = config.Ui.Version,
+                                aboutUrl = config.Ui.AboutUrl,
                             });
                         }
                         catch (Exception ex)

@@ -405,7 +405,7 @@ namespace E3DCopilot.WebHost
                     break;
 
                 case EventKind.StreamEnd:
-                    SendToFrontend(MessageTypes.LlmStreamEnd, new { usage = evt.Data, tabId });
+                    SendToFrontend(MessageTypes.LlmStreamEnd, new { usage = evt.Data, error = evt.Text, tabId });
                     break;
 
                 case EventKind.Reasoning:
@@ -626,6 +626,29 @@ namespace E3DCopilot.WebHost
             {
                 var skills = _controller.Skills.ListSkills();
                 var sources = _controller.Skills.ListSources();
+
+                // 合并内置工具作为技能条目（从 ToolExecutor 注册的工具自动生成）
+                var existingNames = new System.Collections.Generic.HashSet<string>(
+                    skills.Select(s => s.Name), System.StringComparer.OrdinalIgnoreCase);
+
+                foreach (var handler in _controller.Executor.GetAllHandlers())
+                {
+                    if (existingNames.Contains(handler.Name)) continue;
+
+                    // 跳过内部工具（不暴露给用户的）
+                    if (handler.Name == "todo_write" || handler.Name == "memory") continue;
+
+                    skills.Add(new Core.Skills.SkillInfo
+                    {
+                        Name = handler.Name,
+                        Description = handler.Description,
+                        Scope = "builtin",
+                        RunAs = "inline",
+                        Enabled = true,
+                        Tags = new[] { "内置", "工具" }
+                    });
+                }
+
                 SendToFrontend(MessageTypes.SkillsList, new { skills, sources }, requestId);
             }
             catch (Exception ex)
@@ -864,6 +887,16 @@ namespace E3DCopilot.WebHost
                             var (prov, _) = config.ResolveModel(config.DefaultModel);
                             if (prov != null) prov.MaxTokens = maxTokens;
                         }
+                        break;
+                    case "maxSteps":
+                        if (int.TryParse(value, out var maxSteps))
+                            config.Ui.MaxSteps = maxSteps;
+                        break;
+                    case "version":
+                        config.Ui.Version = value ?? "2.0.0";
+                        break;
+                    case "aboutUrl":
+                        config.Ui.AboutUrl = value ?? "";
                         break;
                     default:
                         // 未知键 — 静默忽略
