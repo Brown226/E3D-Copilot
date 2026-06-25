@@ -81,6 +81,7 @@ namespace E3DCopilot.Core.Tools.Handlers
 
         public async Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default)
         {
+            ct.ThrowIfCancellationRequested();
             await Task.CompletedTask;
 
             try

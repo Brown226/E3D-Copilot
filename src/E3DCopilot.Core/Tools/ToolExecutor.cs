@@ -133,8 +133,14 @@ namespace E3DCopilot.Core.Tools
 
             var sw = Stopwatch.StartNew();
 
+            // ── 超时配置：默认 60 秒，PML 执行 120 秒 ──
+            int timeoutMs = (toolName == "execute_pml" || effectiveName == "execute_pml") ? 120000 : 60000;
+            var timeoutCts = new CancellationTokenSource();
+            var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
             // ── Timer-based progress for long-running tools ──
             System.Threading.Timer progressTimer = null;
+            System.Threading.Timer timeoutTimer = null;
             if (handler.IsReadOnly == false || toolName == "export" || toolName == "execute_pml"
                 || toolName == "query" || toolName == "modify")
             {
@@ -147,13 +153,28 @@ namespace E3DCopilot.Core.Tools
                             $"执行中... {sw.ElapsedMilliseconds}ms", sw.ElapsedMilliseconds));
                     }
                 }, null, 3000, 3000);
+
+                // 超时定时器（触发取消）
+                timeoutTimer = new System.Threading.Timer(_ =>
+                {
+                    if (sw.IsRunning && !ct.IsCancellationRequested)
+                    {
+                        CopilotLogger.Warn("ToolExecutor: {0} 执行超时 ({1}ms)", effectiveName, timeoutMs);
+                        _sink?.Emit(CopilotEvent.ToolProgressEvent(toolId,
+                            $"⚠ 执行超时 ({timeoutMs/1000}秒)，正在取消...", sw.ElapsedMilliseconds));
+                        timeoutCts.Cancel();
+                    }
+                }, null, timeoutMs, Timeout.Infinite);
             }
 
             try
             {
-                var result = await handler.ExecuteAsync(args, ct);
+                var result = await handler.ExecuteAsync(args, linkedCts.Token);
                 sw.Stop();
                 progressTimer?.Dispose();
+                timeoutTimer?.Dispose();
+                timeoutCts.Dispose();
+                linkedCts.Dispose();
                 result.DurationMs = sw.ElapsedMilliseconds;
 
                 // 结果事件（使用相同 toolId 关联）
@@ -172,13 +193,20 @@ namespace E3DCopilot.Core.Tools
             {
                 sw.Stop();
                 progressTimer?.Dispose();
-                _sink?.Emit(CopilotEvent.Notice($"工具 {toolName} 已取消"));
-                return ToolResult.Fail("已取消");
+                timeoutTimer?.Dispose();
+                timeoutCts.Dispose();
+                linkedCts.Dispose();
+                string reason = ct.IsCancellationRequested ? "用户取消" : $"执行超时 ({timeoutMs/1000}秒)";
+                _sink?.Emit(CopilotEvent.Notice($"工具 {toolName} 已取消: {reason}"));
+                return ToolResult.Fail(reason);
             }
             catch (Exception ex)
             {
                 sw.Stop();
                 progressTimer?.Dispose();
+                timeoutTimer?.Dispose();
+                timeoutCts.Dispose();
+                linkedCts.Dispose();
                 var result = ToolResult.Fail($"工具执行异常: {ex.Message}");
                 CopilotLogger.Error(ex, "ToolExecutor: {0} 异常", effectiveName);
                 _sink?.Emit(CopilotEvent.ToolFail(toolId, result.Error));

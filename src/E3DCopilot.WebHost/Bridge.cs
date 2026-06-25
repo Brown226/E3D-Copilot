@@ -445,10 +445,17 @@ namespace E3DCopilot.WebHost
                     break;
 
                 case EventKind.AskUser:
-                    var question = evt.Data is System.Text.Json.JsonElement jo
-                        ? jo.GetProperty("question").GetString()
-                        : evt.Text;
-                    SendToFrontend(MessageTypes.AskUser, new { questionId = evt.ToolId, question = question, data = evt.Data, tabId });
+                    string questionText = null;
+                    if (evt.Data is System.Text.Json.JsonElement jo)
+                        questionText = jo.GetProperty("question").GetString();
+                    else if (evt.Data != null)
+                    {
+                        // 匿名对象：通过反射取 question 属性
+                        var prop = evt.Data.GetType().GetProperty("question");
+                        questionText = prop?.GetValue(evt.Data) as string;
+                    }
+                    questionText = questionText ?? evt.Text ?? "question";
+                    SendToFrontend(MessageTypes.AskUser, new { questionId = evt.ToolId, question = questionText, data = evt.Data, tabId });
                     break;
 
                 case EventKind.PlanModeChanged:

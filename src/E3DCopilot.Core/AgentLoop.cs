@@ -77,6 +77,10 @@ namespace E3DCopilot.Core
                 policy.Set("cad_import", ApprovalMode.Auto);
                 policy.Set("autocad", ApprovalMode.Auto);
                 policy.Set("search_knowledge", ApprovalMode.Auto);
+                policy.Set("todo_write", ApprovalMode.Auto);
+                policy.Set("memory", ApprovalMode.Auto);
+                policy.Set("grep", ApprovalMode.Auto);
+                policy.Set("glob", ApprovalMode.Auto);
             }
             else if (mode == "ask")
             {
@@ -104,6 +108,10 @@ namespace E3DCopilot.Core
                 policy.Set("cad_import", ApprovalMode.Ask);
                 policy.Set("autocad", ApprovalMode.Ask);
                 policy.Set("search_knowledge", ApprovalMode.Auto);
+                policy.Set("todo_write", ApprovalMode.Auto);
+                policy.Set("memory", ApprovalMode.Auto);
+                policy.Set("grep", ApprovalMode.Auto);
+                policy.Set("glob", ApprovalMode.Auto);
             }
             else
             {
@@ -132,6 +140,10 @@ namespace E3DCopilot.Core
                 policy.Set("cad_import", ApprovalMode.Auto);
                 policy.Set("autocad", ApprovalMode.Auto);
                 policy.Set("search_knowledge", ApprovalMode.Auto);
+                policy.Set("todo_write", ApprovalMode.Auto);
+                policy.Set("memory", ApprovalMode.Auto);
+                policy.Set("grep", ApprovalMode.Auto);
+                policy.Set("glob", ApprovalMode.Auto);
             }
 
             return policy;

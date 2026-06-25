@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Aveva.Core.Database;
 using Aveva.Core.Utilities.CommandLine;
 using Newtonsoft.Json.Linq;
@@ -181,27 +182,58 @@ namespace E3DCopilot.Tools.Bridge
 
         /// <summary>
         /// 在 E3D UI 线程上执行委托（E3D API 非线程安全）
+        /// 使用 Post + TaskCompletionSource 避免线程死锁
         /// </summary>
         private T InvokeOnUi<T>(Func<T> action)
         {
-            T result = default(T);
-            Exception error = null;
-            _uiContext.Send(_ =>
+            // 如果当前就在 UI 线程上，直接执行
+            if (SynchronizationContext.Current == _uiContext)
             {
-                try { result = action(); }
-                catch (Exception ex) { error = ex; }
+                return action();
+            }
+
+            var tcs = new TaskCompletionSource<T>();
+            _uiContext.Post(_ =>
+            {
+                try
+                {
+                    var result = action();
+                    tcs.SetResult(result);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
             }, null);
-            if (error != null) throw error;
-            return result;
+
+            // 等待结果，使用异步避免阻塞线程池线程
+            return tcs.Task.GetAwaiter().GetResult();
         }
 
         private void InvokeOnUi(Action action)
         {
-            _uiContext.Send(_ =>
+            // 如果当前就在 UI 线程上，直接执行
+            if (SynchronizationContext.Current == _uiContext)
             {
-                try { action(); }
-                catch (Exception ex) { throw ex; }
+                action();
+                return;
+            }
+
+            var tcs = new TaskCompletionSource<object>();
+            _uiContext.Post(_ =>
+            {
+                try
+                {
+                    action();
+                    tcs.SetResult(null);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
             }, null);
+
+            tcs.Task.GetAwaiter().GetResult();
         }
         public List<ElementInfo> QueryElements(string elementType, string namePattern, string scope, int limit)
         {
