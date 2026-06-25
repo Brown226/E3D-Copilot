@@ -171,7 +171,7 @@ namespace E3DCopilot.Core.Skills
         public bool ToggleSkill(string skillName)
         {
             if (!_enabledState.ContainsKey(skillName))
-                _enabledState[skillName] = false; // 默认启用，首次切换为禁用
+                _enabledState[skillName] = true; // 默认启用，首次切换为禁用
 
             _enabledState[skillName] = !_enabledState[skillName];
             SaveState();

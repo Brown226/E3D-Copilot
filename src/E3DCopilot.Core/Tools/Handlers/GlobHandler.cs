@@ -53,14 +53,13 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (Directory.Exists(knowledgeDir)) roots.Add(knowledgeDir);
             if (Directory.Exists(docsDir)) roots.Add(docsDir);
 
-            var devRoot = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", ".."));
-            if (Directory.Exists(devRoot)) roots.Add(devRoot);
-
-            var devDocs = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "E3D官方API文档"));
-            if (Directory.Exists(devDocs)) roots.Add(devDocs);
-
-            var pmlDir = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "PML语法与项目合集"));
-            if (Directory.Exists(pmlDir)) roots.Add(pmlDir);
+            // 向上搜索：将沿途所有目录加入可搜索范围
+            var dir = appDir;
+            for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+            {
+                if (!roots.Contains(dir)) roots.Add(dir);
+                dir = Path.GetDirectoryName(dir);
+            }
 
             return roots.ToArray();
         }

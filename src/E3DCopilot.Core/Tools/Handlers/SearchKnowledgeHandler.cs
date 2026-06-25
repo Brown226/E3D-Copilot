@@ -33,26 +33,31 @@ namespace E3DCopilot.Core.Tools.Handlers
 
         private static string ResolveKnowledgeRoot()
         {
-            // 1. 程序同级 knowledge/ 目录（部署后标准位置）
-            var appDir = AppDomain.CurrentDomain.BaseDirectory;
-            var bundled = Path.Combine(appDir, "knowledge");
-            if (Directory.Exists(bundled)) return bundled;
-
-            // 2. 开发环境回退
-            var devPath = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "E小智-v1.0-开发中", "knowledge"));
-            return devPath;
+            // 策略：从 BaseDirectory 向上搜索 knowledge/ 目录
+            // - 生产模式：knowledge/ 被复制到 exe 同级目录，第一层就命中
+            // - 开发模式：knowledge/ 在源码根目录，向上 5~6 层命中
+            var dir = AppDomain.CurrentDomain.BaseDirectory;
+            for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+            {
+                var candidate = Path.Combine(dir, "knowledge");
+                if (Directory.Exists(candidate)) return candidate;
+                dir = Path.GetDirectoryName(dir);
+            }
+            // 未找到：返回 exe 同级（部署时应确保 knowledge/ 已复制过去）
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "knowledge");
         }
 
         private static string ResolveDocsRoot()
         {
-            // 1. 程序同级 docs/ 目录（部署后标准位置）
-            var appDir = AppDomain.CurrentDomain.BaseDirectory;
-            var bundled = Path.Combine(appDir, "docs");
-            if (Directory.Exists(bundled)) return bundled;
-
-            // 2. 开发环境回退
-            var devPath = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "E3D官方API文档", "docs"));
-            return devPath;
+            // 策略同上：从 BaseDirectory 向上搜索 docs/ 目录
+            var dir = AppDomain.CurrentDomain.BaseDirectory;
+            for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+            {
+                var candidate = Path.Combine(dir, "docs");
+                if (Directory.Exists(candidate)) return candidate;
+                dir = Path.GetDirectoryName(dir);
+            }
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "docs");
         }
 
         // 预加载的搜索索引

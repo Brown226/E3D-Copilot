@@ -11,16 +11,11 @@ using Newtonsoft.Json.Linq;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
-    /// Grep — 在文件内容中搜索文本/正则模式
+    /// Grep — 搜索文件内容 + 知识库索引
     ///
     /// 元能力工具：
-    /// AI 可在项目文件中搜索 PML 宏引用、配置模式、API 用法等。
-    /// 参考 Reasonix builtin/grep.go 的设计，适配 .NET Framework 4.8。
-    ///
-    /// 安全限制：
-    /// - 复用 ReadFileHandler 的 AllowedRoots 安全模型
-    /// - 禁止搜索二进制文件
-    /// - 结果数上限防止输出爆炸
+    /// 1. knowledge=true：优先用 search_index.json 关键词索引搜索 knowledge/ 目录（快速精准）
+    /// 2. knowledge=false（默认）：逐文件扫描，支持正则表达式
     /// </summary>
     public class GrepHandler : IToolHandler
     {
@@ -29,11 +24,19 @@ namespace E3DCopilot.Core.Tools.Handlers
         /// <summary>允许搜索的根目录列表</summary>
         private static readonly string[] AllowedRoots = ResolveAllowedRoots();
 
+        /// <summary>知识库根目录</summary>
+        private static readonly string KnowledgeRoot = ResolveKnowledgeRoot();
+
         /// <summary>最大文件大小（字节）— 跳过超大文件</summary>
         private const int MaxFileSize = 512 * 1024; // 512KB
 
         /// <summary>最大匹配数</summary>
         private const int MaxMatches = 200;
+
+        // ── 知识库索引（静态，延迟加载） ──
+        private static Dictionary<string, List<string>> _keywordIndex;
+        private static Dictionary<string, KnowledgeFileMeta> _fileIndex;
+        private static readonly object _indexLock = new object();
 
         /// <summary>禁止搜索的扩展名</summary>
         private static readonly HashSet<string> BlockedExtensions = new HashSet<string>(
@@ -66,19 +69,27 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (Directory.Exists(knowledgeDir)) roots.Add(knowledgeDir);
             if (Directory.Exists(docsDir)) roots.Add(docsDir);
 
-            // 开发环境回退：项目根目录
-            var devRoot = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", ".."));
-            if (Directory.Exists(devRoot)) roots.Add(devRoot);
-
-            // 开发环境回退：E3D 官方 API 文档目录
-            var devDocs = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "E3D官方API文档"));
-            if (Directory.Exists(devDocs)) roots.Add(devDocs);
-
-            // PML 语法与项目合集目录
-            var pmlDir = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "..", "PML语法与项目合集"));
-            if (Directory.Exists(pmlDir)) roots.Add(pmlDir);
+            // 向上搜索：将沿途所有目录加入可搜索范围
+            var dir = appDir;
+            for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+            {
+                if (!roots.Contains(dir)) roots.Add(dir);
+                dir = Path.GetDirectoryName(dir);
+            }
 
             return roots.ToArray();
+        }
+
+        private static string ResolveKnowledgeRoot()
+        {
+            var dir = AppDomain.CurrentDomain.BaseDirectory;
+            for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+            {
+                var candidate = Path.Combine(dir, "knowledge");
+                if (Directory.Exists(candidate)) return candidate;
+                dir = Path.GetDirectoryName(dir);
+            }
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "knowledge");
         }
 
         public GrepHandler(IEventSink sink = null)
@@ -89,9 +100,9 @@ namespace E3DCopilot.Core.Tools.Handlers
         public string Name => "grep";
 
         public string Description =>
-            "Search file contents using text or regex pattern. Use when: (1) finding PML macro references, " +
-            "(2) locating API usage patterns, (3) searching configuration files, (4) finding specific text across project files. " +
-            "在项目文件中搜索文本或正则表达式。适合查找 PML 宏引用、API 用法、配置模式等。";
+            "Search file contents using text or regex pattern. " +
+            "When knowledge=true, uses pre-built keyword index for fast, relevant results from E3D knowledge base. " +
+            "在文件中搜索文本/正则。knowledge=true 时优先查知识库索引（API签名/PML语法/黄金范式）。";
 
         public string ParameterSchema => @"{
   ""type"": ""object"",
@@ -99,6 +110,15 @@ namespace E3DCopilot.Core.Tools.Handlers
     ""pattern"": {
       ""type"": ""string"",
       ""description"": ""Search pattern — plain text or regex. 搜索模式，支持纯文本和正则表达式。例: 'coll all PIPE', 'DbElement\.Get\w+'""
+    },
+    ""knowledge"": {
+      ""type"": ""boolean"",
+      ""description"": ""Search E3D knowledge base using keyword index (default: false). 设为 true 搜索 E3D 知识库（API签名/PML语法/黄金范式）""
+    },
+    ""source"": {
+      ""type"": ""string"",
+      ""enum"": [""api"", ""pml"", ""pattern"", ""domain"", ""all""],
+      ""description"": ""Knowledge source filter (only when knowledge=true). 知识源筛选：api/pml/pattern/domain/all""
     },
     ""path"": {
       ""type"": ""string"",
@@ -136,6 +156,15 @@ namespace E3DCopilot.Core.Tools.Handlers
                     string pattern = json.Value<string>("pattern");
                     if (string.IsNullOrWhiteSpace(pattern))
                         return ToolResult.Fail("pattern is required");
+
+                    // ── 知识库索引模式 ──
+                    bool knowledgeMode = json.Value<bool?>("knowledge") ?? false;
+                    if (knowledgeMode)
+                    {
+                        string source = json.Value<string>("source") ?? "all";
+                        int kLimit = json.Value<int?>("max_results") ?? 10;
+                        return SearchKnowledgeIndex(pattern, source, kLimit, ct);
+                    }
 
                     string searchPath = json.Value<string>("path");
                     string filePattern = json.Value<string>("file_pattern");
@@ -400,6 +429,260 @@ namespace E3DCopilot.Core.Tools.Handlers
             public string LineText { get; set; }
             public Dictionary<int, string> ContextBefore { get; set; } = new Dictionary<int, string>();
             public Dictionary<int, string> ContextAfter { get; set; } = new Dictionary<int, string>();
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  知识库索引搜索（原 SearchKnowledgeHandler 的核心逻辑）
+        // ═══════════════════════════════════════════════════════════
+
+        private static readonly Dictionary<string, string> SourceDirs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "api", "api" }, { "pml", "pml" }, { "pattern", "patterns" }, { "domain", "domain" }
+        };
+
+        private ToolResult SearchKnowledgeIndex(string query, string source, int limit, CancellationToken ct)
+        {
+            if (!Directory.Exists(KnowledgeRoot))
+                return ToolResult.Fail($"Knowledge directory not found: {KnowledgeRoot}");
+
+            EnsureKnowledgeIndexLoaded();
+
+            var targetSources = new List<string>();
+            if (source == "all")
+                targetSources.AddRange(SourceDirs.Keys);
+            else if (SourceDirs.ContainsKey(source))
+                targetSources.Add(source);
+
+            string queryLower = query.ToLowerInvariant();
+            var matchedFiles = new HashSet<string>();
+
+            // 1. 关键词索引匹配
+            if (_keywordIndex != null)
+            {
+                foreach (var kvp in _keywordIndex)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (kvp.Key.IndexOf(queryLower, StringComparison.OrdinalIgnoreCase) >= 0
+                        || queryLower.IndexOf(kvp.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        foreach (var file in kvp.Value)
+                            if (MatchesSourceFilter(file, targetSources))
+                                matchedFiles.Add(file);
+                    }
+                }
+            }
+
+            // 2. 文件名 + 标签匹配（补充）
+            if (matchedFiles.Count < 20 && _fileIndex != null)
+            {
+                foreach (var kvp in _fileIndex)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    string fileName = Path.GetFileNameWithoutExtension(kvp.Key);
+                    if (fileName.IndexOf(queryLower, StringComparison.OrdinalIgnoreCase) >= 0)
+                        if (MatchesSourceFilter(kvp.Key, targetSources))
+                            matchedFiles.Add(kvp.Key);
+
+                    if (kvp.Value.tags != null)
+                        foreach (var tag in kvp.Value.tags)
+                            if (tag.IndexOf(queryLower, StringComparison.OrdinalIgnoreCase) >= 0)
+                            { if (MatchesSourceFilter(kvp.Key, targetSources)) matchedFiles.Add(kvp.Key); break; }
+                }
+            }
+
+            // 3. 读取匹配文件，提取摘要
+            var sb = new System.Text.StringBuilder();
+            int count = 0;
+            foreach (var file in matchedFiles)
+            {
+                if (count >= limit) break;
+                ct.ThrowIfCancellationRequested();
+
+                string fullPath = Path.Combine(KnowledgeRoot, file);
+                if (!File.Exists(fullPath)) continue;
+
+                try
+                {
+                    string content = File.ReadAllText(fullPath, System.Text.Encoding.UTF8);
+                    string signature = ExtractKnowledgeSignature(content);
+                    string example = ExtractKnowledgeExample(content);
+                    string excerpt = ExtractKnowledgeExcerpt(content, query);
+
+                    sb.AppendLine($"--- 结果 {count + 1} ---");
+                    sb.AppendLine($"来源: {GetSourceLabel(file)}");
+                    sb.AppendLine($"文件: {Path.GetFileName(file)}");
+                    if (!string.IsNullOrEmpty(signature)) sb.AppendLine($"签名: {signature}");
+                    sb.AppendLine();
+                    sb.AppendLine(excerpt);
+                    if (!string.IsNullOrEmpty(example))
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("代码示例:");
+                        sb.AppendLine(example);
+                    }
+                    sb.AppendLine();
+                    count++;
+                }
+                catch { }
+            }
+
+            if (count == 0)
+                return ToolResult.Ok($"在知识库中未找到 '{query}' 的相关结果。试试换其他关键词或 source=all。", null);
+
+            _sink?.Emit(CopilotEvent.Notice($"Knowledge index search: '{query}' → {count} results"));
+            return ToolResult.Ok(sb.ToString().TrimEnd(), new { query, source, count });
+        }
+
+        private void EnsureKnowledgeIndexLoaded()
+        {
+            if (_keywordIndex != null && _fileIndex != null) return;
+            lock (_indexLock)
+            {
+                if (_keywordIndex != null && _fileIndex != null) return;
+
+                string indexPath = Path.Combine(KnowledgeRoot, "search_index.json");
+                if (!File.Exists(indexPath))
+                {
+                    _keywordIndex = new Dictionary<string, List<string>>();
+                    _fileIndex = new Dictionary<string, KnowledgeFileMeta>();
+                    return;
+                }
+                try
+                {
+                    string json = File.ReadAllText(indexPath, System.Text.Encoding.UTF8);
+                    var index = JObject.Parse(json);
+
+                    _keywordIndex = new Dictionary<string, List<string>>();
+                    var kwObj = index["keywords"] as JObject;
+                    if (kwObj != null)
+                        foreach (var prop in kwObj.Properties())
+                            _keywordIndex[prop.Name.ToLowerInvariant()] = prop.Value.ToObject<List<string>>();
+
+                    _fileIndex = new Dictionary<string, KnowledgeFileMeta>();
+                    var fileObj = index["files"] as JObject;
+                    if (fileObj != null)
+                        foreach (var prop in fileObj.Properties())
+                            _fileIndex[prop.Name] = prop.Value.ToObject<KnowledgeFileMeta>();
+                }
+                catch
+                {
+                    _keywordIndex = new Dictionary<string, List<string>>();
+                    _fileIndex = new Dictionary<string, KnowledgeFileMeta>();
+                }
+            }
+        }
+
+        private bool MatchesSourceFilter(string file, List<string> targets)
+        {
+            if (targets.Count == 0 || targets.Contains("all")) return true;
+            string fileLower = file.ToLowerInvariant();
+            foreach (var t in targets)
+                if (fileLower.Contains(t)) return true;
+            return false;
+        }
+
+        private string GetSourceLabel(string file)
+        {
+            string f = file.ToLowerInvariant();
+            if (f.Contains("api")) return "C# API";
+            if (f.Contains("pml")) return "PML 语法";
+            if (f.Contains("pattern")) return "黄金范式";
+            if (f.Contains("domain")) return "领域术语";
+            return "知识库";
+        }
+
+        private string ExtractKnowledgeSignature(string content)
+        {
+            var lines = content.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                string t = line.Trim();
+                if (t.Contains("| 方法 |") || t.Contains("| Method |"))
+                {
+                    int idx = lines.ToList().IndexOf(line);
+                    if (idx + 1 < lines.Length)
+                    {
+                        string next = lines[idx + 1].Trim();
+                        if (next.StartsWith("|"))
+                            return next.Replace("|", " ").Trim();
+                    }
+                }
+                if (t.StartsWith("```csharp") || t.StartsWith("```pml"))
+                {
+                    int idx = lines.ToList().IndexOf(line);
+                    if (idx + 1 < lines.Length)
+                        return lines[idx + 1].Trim();
+                }
+            }
+            return null;
+        }
+
+        private string ExtractKnowledgeExample(string content)
+        {
+            var lines = content.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            bool inCode = false;
+            var code = new System.Text.StringBuilder();
+            foreach (var line in lines)
+            {
+                string t = line.Trim();
+                if (t.StartsWith("```csharp") || t.StartsWith("```pml"))
+                {
+                    inCode = true;
+                    continue;
+                }
+                if (inCode && t == "```")
+                {
+                    if (code.Length > 0) break;
+                    inCode = false;
+                    continue;
+                }
+                if (inCode)
+                {
+                    code.AppendLine(line);
+                    if (code.Length > 500) break;
+                }
+            }
+            return code.Length > 0 ? code.ToString().TrimEnd() : null;
+        }
+
+        private string ExtractKnowledgeExcerpt(string content, string query)
+        {
+            var lines = content.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                string t = line.Trim();
+                if (t.Contains("**用途**") || t.Contains("**一句话**"))
+                {
+                    int idx = t.IndexOf(':');
+                    if (idx > 0 && idx < t.Length - 1) return t.Substring(idx + 1).Trim();
+                }
+            }
+            foreach (var line in lines)
+            {
+                string t = line.Trim();
+                if (t.Length > 20 && !t.StartsWith("#") && !t.StartsWith("```") && !t.StartsWith("---"))
+                {
+                    string excerpt = t.Length > 200 ? t.Substring(0, 197) + "..." : t;
+                    return excerpt;
+                }
+            }
+            int queryIdx = content.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+            if (queryIdx > 0)
+            {
+                int start = Math.Max(0, queryIdx - 80);
+                int end = Math.Min(content.Length, queryIdx + query.Length + 120);
+                string excerpt = content.Substring(start, end - start).Replace("\n", " ").Replace("\r", "");
+                return excerpt.Length > 200 ? excerpt.Substring(0, 197) + "..." : excerpt;
+            }
+            return "(文档摘要)";
+        }
+
+        private class KnowledgeFileMeta
+        {
+            public string title { get; set; }
+            public List<string> tags { get; set; }
+            public string summary { get; set; }
+            public bool verified { get; set; }
         }
     }
 }

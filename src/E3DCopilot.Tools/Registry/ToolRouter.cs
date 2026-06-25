@@ -20,7 +20,11 @@ namespace E3DCopilot.Tools.Registry
             "query", "modify", "check", "calculate", "export", "execute_pml",
             "get_attributes", "design", "piping", "geometry",
             "ask_user", "task", "todo_write", "read_file", "write_file", "search_knowledge",
-            "grep", "glob", "memory"
+            "grep", "glob", "memory",
+            // ISO出图相关工具
+            "generate_iso_drawing", "query_material", "get_pipe_info",
+            // CAD 工具
+            "cad_import", "autocad"
         };
 
         /// <summary>
@@ -59,6 +63,12 @@ namespace E3DCopilot.Tools.Registry
                         return RouteCheck(args);
                     case "calculate":
                         return RouteCalculate(args);
+                    case "generate_iso_drawing":
+                    case "query_material":
+                    case "get_pipe_info":
+                    case "autocad":
+                        // ISO工具和AutoCAD工具直接透传，不需要路由
+                        return (coreToolName, args);
                     default:
                         return (coreToolName, args);
                 }

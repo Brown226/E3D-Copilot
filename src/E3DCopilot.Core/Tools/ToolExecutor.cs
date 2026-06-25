@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Events;
+using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Tools.Handlers;
 using Newtonsoft.Json.Linq;
 
@@ -128,33 +129,58 @@ namespace E3DCopilot.Core.Tools
 
             // 分派事件（传原始 toolName 作为 coreToolName，effectiveName 作为实际执行的工具名）
             _sink?.Emit(CopilotEvent.ToolStart(toolId, effectiveName, args, toolName));
+            CopilotLogger.Info("ToolExecutor: {0} (id={1}), args={2}", effectiveName, toolId.Substring(0, 8), args?.Substring(0, Math.Min(200, args?.Length ?? 0)));
 
             var sw = Stopwatch.StartNew();
+
+            // ── Timer-based progress for long-running tools ──
+            System.Threading.Timer progressTimer = null;
+            if (handler.IsReadOnly == false || toolName == "export" || toolName == "execute_pml"
+                || toolName == "query" || toolName == "modify")
+            {
+                // 对写入工具和耗时查询工具启动进度定时器（3秒间隔）
+                progressTimer = new System.Threading.Timer(_ =>
+                {
+                    if (sw.IsRunning && sw.ElapsedMilliseconds > 2000)
+                    {
+                        _sink?.Emit(CopilotEvent.ToolProgressEvent(toolId,
+                            $"执行中... {sw.ElapsedMilliseconds}ms", sw.ElapsedMilliseconds));
+                    }
+                }, null, 3000, 3000);
+            }
 
             try
             {
                 var result = await handler.ExecuteAsync(args, ct);
                 sw.Stop();
+                progressTimer?.Dispose();
                 result.DurationMs = sw.ElapsedMilliseconds;
 
                 // 结果事件（使用相同 toolId 关联）
+                CopilotLogger.Info("ToolExecutor: {0} 完成, success={1}, duration={2}ms", effectiveName, result.Success, result.DurationMs);
                 if (result.Success)
                     _sink?.Emit(CopilotEvent.ToolComplete(toolId, result.Text, result.Data));
                 else
+                {
+                    CopilotLogger.Warn("ToolExecutor: {0} 失败: {1}", effectiveName, result.Error);
                     _sink?.Emit(CopilotEvent.ToolFail(toolId, result.Error));
+                }
 
                 return result;
             }
             catch (OperationCanceledException)
             {
                 sw.Stop();
+                progressTimer?.Dispose();
                 _sink?.Emit(CopilotEvent.Notice($"工具 {toolName} 已取消"));
                 return ToolResult.Fail("已取消");
             }
             catch (Exception ex)
             {
                 sw.Stop();
+                progressTimer?.Dispose();
                 var result = ToolResult.Fail($"工具执行异常: {ex.Message}");
+                CopilotLogger.Error(ex, "ToolExecutor: {0} 异常", effectiveName);
                 _sink?.Emit(CopilotEvent.ToolFail(toolId, result.Error));
                 return result;
             }
@@ -186,8 +212,8 @@ namespace E3DCopilot.Core.Tools
                 @"{""type"":""object"",""properties"":{""type"":{""type"":""string"",""enum"":[""exists"",""attribute"",""attribute_complete"",""naming"",""name_consistency"",""clearance"",""distance"",""bore_consistency"",""change_status"",""room_number""],""description"":""Check type""},""element"":{""type"":""string"",""description"":""Target element name or DBURI""},""target"":{""type"":""string"",""description"":""Alias for element""},""attribute"":{""type"":""string"",""description"":""Attribute name to check""},""expected"":{""type"":""string"",""description"":""Expected value for attribute check""},""pattern"":{""type"":""string"",""description"":""Naming regex pattern""}},""required"":[""type""]}",
                 true));
             executor.Register(new DispatcherBackedHandler(dispatcher,
-                "export", "Import/Export: export element list to Excel/CSV, generate PML script",
-                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""export"",""import"",""generate_pml""]},""format"":{""type"":""string"",""enum"":[""csv"",""excel"",""pml""]},""filePath"":{""type"":""string"",""description"":""File path""}},""required"":[""action"",""format""]}",
+                "export", "Export element list to Excel/CSV, or generate PML script. 导出元素列表或生成 PML 脚本。",
+                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""export"",""generate_pml""]},""format"":{""type"":""string"",""enum"":[""csv"",""excel"",""pml""]},""filePath"":{""type"":""string"",""description"":""File path""}},""required"":[""action"",""format""]}",
                 false));
             executor.Register(new DispatcherBackedHandler(dispatcher,
                 "design", "Create/modify equipment and structural elements",
@@ -212,7 +238,6 @@ namespace E3DCopilot.Core.Tools
             executor.Register(new TaskHandler(sink));
             executor.Register(new ReadFileHandler(sink));
             executor.Register(new WriteFileHandler(sink));
-            executor.Register(new SearchKnowledgeHandler(sink));
 
             // 文件搜索工具（纯读操作，不依赖 IToolDispatcher）
             executor.Register(new GrepHandler(sink));
@@ -220,6 +245,25 @@ namespace E3DCopilot.Core.Tools
 
             // 结构化任务追踪（替代 task 工具的升级版）
             executor.Register(new TodoWriteHandler(sink));
+
+            // 元能力工具：知识库搜索（memory 和 run_skill 在 CopilotController 中注册）
+            executor.Register(new SearchKnowledgeHandler(sink));
+
+            // E3D 操作辅助工具（需要 IToolDispatcher）
+            executor.Register(new UndoRedoHandler(dispatcher, sink));
+            executor.Register(new ReportHandler(dispatcher));
+            executor.Register(new CompareHandler(dispatcher));
+            executor.Register(new HierarchyHandler(dispatcher));
+            executor.Register(new BatchHandler(dispatcher, sink));
+
+            // ISO出图相关工具（集成CNPE.IC.ISO功能）
+            executor.Register(new IsoDrawingHandler(dispatcher));
+            executor.Register(new MaterialQueryHandler(dispatcher));
+            executor.Register(new PipeInfoHandler(dispatcher));
+
+            // CAD 工具（文件/坐标导入 + AutoCAD 运行时交互）
+            executor.Register(new CadImportHandler());   // cad_import
+            executor.Register(new AutoCadHandler());     // autocad
 
             // 接入可选路由器
             executor.Router = router;
