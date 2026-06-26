@@ -7,8 +7,6 @@ using System.Threading.Tasks;
 using E3DCopilot.Core.Tools;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using CNPE.ISO.E3D.Core;
-using CNPE.ISO.Model;
 
 namespace E3DCopilot.Core.Tools.Handlers
 {
@@ -441,138 +439,351 @@ namespace E3DCopilot.Core.Tools.Handlers
             return sb.ToString();
         }
 
-        // 以下是E3D API调用的模拟实现
-        // 实际实现需要调用E3D API或通过IToolDispatcher
+        // 以下是通过 IToolDispatcher 从 E3D 获取真实数据的实现
 
         private async Task<PipeDetailInfo> GetPipeInfoFromE3D(string pipeName, bool includeAttributes, CancellationToken ct)
         {
-            // 使用真实的E3D API获取管道信息
-            var pipeReader = new PipeReader(pipeName);
-            var pipeModel = pipeReader.GetPipeModel("1907", new List<string[]>());
-            
+            // 通过 dispatcher 读取真实属性
+            string spec = SafeGetAttribute(pipeName, "SPEC");
+            string bore = SafeGetAttribute(pipeName, "BORE");
+            string pres = SafeGetAttribute(pipeName, "PRES");
+            string temp = SafeGetAttribute(pipeName, "TEMP");
+            string mate = SafeGetAttribute(pipeName, "MATE");
+            string insl = SafeGetAttribute(pipeName, "INSL");
+            string htrc = SafeGetAttribute(pipeName, "HTRC");
+            string flui = SafeGetAttribute(pipeName, "FLUI");
+
+            // 查询分支数量
+            int branchCount = 0;
+            double totalLength = 0.0;
+            try
+            {
+                string queryResult = await _dispatcher.ExecuteAsync("query", JsonConvert.SerializeObject(new
+                {
+                    type = "BRAN",
+                    scope = pipeName,
+                    limit = 500
+                }));
+                var j = JObject.Parse(queryResult);
+                var elements = j["elements"] as JArray;
+                if (elements != null)
+                {
+                    branchCount = elements.Count;
+                    // 累加分支长度
+                    foreach (var elem in elements)
+                    {
+                        string branName = elem["name"]?.ToString();
+                        if (!string.IsNullOrEmpty(branName))
+                        {
+                            string lenStr = SafeGetAttribute(branName, "LEN");
+                            double len;
+                            if (double.TryParse(lenStr, out len))
+                                totalLength += len;
+                        }
+                    }
+                }
+            }
+            catch { /* 查询失败不阻塞基本信息返回 */ }
+
+            var attrs = new Dictionary<string, string>();
+            if (includeAttributes)
+            {
+                attrs["NAME"] = pipeName;
+                attrs["TYPE"] = "PIPE";
+                if (spec != null) attrs["SPEC"] = spec;
+                if (bore != null) attrs["BORE"] = bore;
+                if (pres != null) attrs["PRES"] = pres;
+                if (temp != null) attrs["TEMP"] = temp;
+                if (mate != null) attrs["MATE"] = mate;
+            }
+
             return new PipeDetailInfo
             {
-                Name = pipeModel.Name,
+                Name = pipeName,
                 Type = "PIPE",
-                Specification = "ASME B36.19",
-                NominalDiameter = "DN100",
-                DesignPressure = pipeModel.DesignPressure,
-                DesignTemperature = "100°C",
-                Material = "022Cr19Ni10",
-                InsulationClass = "Class A",
-                HeatTracing = pipeModel.IsHeatTracing,
-                FluidType = pipeModel.FluidType,
-                BranchCount = 0,
-                TotalLength = 0.0,
-                Attributes = includeAttributes ? new Dictionary<string, string>
-                {
-                    ["NAME"] = pipeModel.Name,
-                    ["TYPE"] = "PIPE",
-                    ["SPEC"] = "ASME B36.19",
-                    ["BORE"] = "DN100",
-                    ["PRES"] = pipeModel.DesignPressure,
-                    ["TEMP"] = "100°C",
-                    ["MATE"] = "022Cr19Ni10"
-                } : null
+                Specification = spec ?? "",
+                NominalDiameter = bore ?? "",
+                DesignPressure = pres ?? "",
+                DesignTemperature = temp ?? "",
+                Material = mate ?? "",
+                InsulationClass = insl ?? "",
+                HeatTracing = htrc ?? "",
+                FluidType = flui ?? "",
+                BranchCount = branchCount,
+                TotalLength = totalLength,
+                Attributes = includeAttributes ? attrs : null
             };
         }
 
         private async Task<BranchDetailInfo> GetBranchInfoFromE3D(string branchName, bool includeAttributes, CancellationToken ct)
         {
-            // 使用真实的E3D API获取分支信息
-            var branReader = new BranReader(branchName);
-            var branInfoModel = branReader.BranInfoModel;
-            
+            // 通过 dispatcher 读取真实属性
+            string pipeName = SafeGetAttribute(branchName, "PIPE") ?? "";
+            string bore = SafeGetAttribute(branchName, "BORE");
+            string spos = SafeGetAttribute(branchName, "SPOS");
+            string epos = SafeGetAttribute(branchName, "EPOS");
+            string lenStr = SafeGetAttribute(branchName, "LEN");
+            double len;
+            double.TryParse(lenStr, out len);
+
+            // 查询分支下的元件
+            var components = new List<ComponentInfo>();
+            try
+            {
+                string queryResult = await _dispatcher.ExecuteAsync("query", JsonConvert.SerializeObject(new
+                {
+                    type = "*",
+                    scope = branchName,
+                    limit = 200
+                }));
+                var j = JObject.Parse(queryResult);
+                var elements = j["elements"] as JArray;
+                if (elements != null)
+                {
+                    foreach (var elem in elements)
+                    {
+                        string compName = elem["name"]?.ToString();
+                        if (string.IsNullOrEmpty(compName)) continue;
+                        string compType = SafeGetAttribute(compName, "TYPE") ?? "";
+                        string compSpec = SafeGetAttribute(compName, "SPEC") ?? "";
+                        string compMate = SafeGetAttribute(compName, "MATE") ?? "";
+                        string compPos = SafeGetAttribute(compName, "PPOS") ?? "";
+                        components.Add(new ComponentInfo
+                        {
+                            Name = compName,
+                            Type = compType,
+                            Specification = compSpec,
+                            Material = compMate,
+                            Position = compPos
+                        });
+                    }
+                }
+            }
+            catch { /* 查询失败不阻塞基本信息返回 */ }
+
             return new BranchDetailInfo
             {
                 Name = branchName,
-                PipeName = branInfoModel.PipeName,
-                BranchType = "主管分支",
-                StartPoint = "(0, 0, 0)",
-                EndPoint = "(10, 0, 0)",
-                Length = 10.0,
-                NominalDiameter = "DN100",
-                ComponentCount = 5,
-                Components = new List<ComponentInfo>
-                {
-                    new ComponentInfo { Name = "法兰", Type = "FLANGE", Specification = "ASME B16.5", Material = "022Cr19Ni10", Position = "(0, 0, 0)" },
-                    new ComponentInfo { Name = "弯头", Type = "ELBOW", Specification = "ASME B16.9", Material = "022Cr19Ni10", Position = "(2, 0, 0)" },
-                    new ComponentInfo { Name = "三通", Type = "TEE", Specification = "ASME B16.9", Material = "022Cr19Ni10", Position = "(5, 0, 0)" }
-                }
+                PipeName = pipeName,
+                BranchType = "BRAN",
+                StartPoint = spos ?? "",
+                EndPoint = epos ?? "",
+                Length = len,
+                NominalDiameter = bore ?? "",
+                ComponentCount = components.Count,
+                Components = components
             };
         }
 
         private async Task<List<ComponentInfo>> GetPipeComponentsFromE3D(string pipeName, int limit, CancellationToken ct)
         {
-            await Task.Delay(100, ct);
-            
-            return new List<ComponentInfo>
+            var components = new List<ComponentInfo>();
+            try
             {
-                new ComponentInfo { Name = "法兰1", Type = "FLANGE", Specification = "ASME B16.5", Material = "022Cr19Ni10", Position = "(0, 0, 0)" },
-                new ComponentInfo { Name = "弯头1", Type = "ELBOW", Specification = "ASME B16.9", Material = "022Cr19Ni10", Position = "(2, 0, 0)" },
-                new ComponentInfo { Name = "三通1", Type = "TEE", Specification = "ASME B16.9", Material = "022Cr19Ni10", Position = "(5, 0, 0)" },
-                new ComponentInfo { Name = "大小头1", Type = "REDUCER", Specification = "ASME B16.9", Material = "022Cr19Ni10", Position = "(7, 0, 0)" },
-                new ComponentInfo { Name = "法兰2", Type = "FLANGE", Specification = "ASME B16.5", Material = "022Cr19Ni10", Position = "(10, 0, 0)" }
-            };
+                string queryResult = await _dispatcher.ExecuteAsync("query", JsonConvert.SerializeObject(new
+                {
+                    type = "*",
+                    scope = pipeName,
+                    limit = limit
+                }));
+                var j = JObject.Parse(queryResult);
+                var elements = j["elements"] as JArray;
+                if (elements != null)
+                {
+                    foreach (var elem in elements)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        string compName = elem["name"]?.ToString();
+                        if (string.IsNullOrEmpty(compName)) continue;
+                        components.Add(new ComponentInfo
+                        {
+                            Name = compName,
+                            Type = SafeGetAttribute(compName, "TYPE") ?? "",
+                            Specification = SafeGetAttribute(compName, "SPEC") ?? "",
+                            Material = SafeGetAttribute(compName, "MATE") ?? "",
+                            Position = SafeGetAttribute(compName, "PPOS") ?? ""
+                        });
+                    }
+                }
+            }
+            catch { /* 查询失败返回空列表 */ }
+            return components;
         }
 
         private async Task<List<SupportInfo>> GetSupportsFromE3D(string pipeName, int limit, CancellationToken ct)
         {
-            await Task.Delay(100, ct);
-            
-            return new List<SupportInfo>
+            var supports = new List<SupportInfo>();
+            try
             {
-                new SupportInfo { Name = "弹簧支吊架1", Type = "SPRING_SUPPORT", Position = "(3, 0, 0)", Load = "500kg", Stiffness = "100N/mm" },
-                new SupportInfo { Name = "刚性吊架1", Type = "RIGID_HANGER", Position = "(6, 0, 0)", Load = "300kg", Stiffness = "∞" },
-                new SupportInfo { Name = "滑动支架1", Type = "SLIDE_SUPPORT", Position = "(9, 0, 0)", Load = "200kg", Stiffness = "0" }
-            };
+                // 查询支吊架类型元素（SUPP/SUPPORT）
+                string queryResult = await _dispatcher.ExecuteAsync("query", JsonConvert.SerializeObject(new
+                {
+                    type = "SUPP",
+                    scope = pipeName,
+                    limit = limit
+                }));
+                var j = JObject.Parse(queryResult);
+                var elements = j["elements"] as JArray;
+                if (elements != null)
+                {
+                    foreach (var elem in elements)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        string suppName = elem["name"]?.ToString();
+                        if (string.IsNullOrEmpty(suppName)) continue;
+                        supports.Add(new SupportInfo
+                        {
+                            Name = suppName,
+                            Type = SafeGetAttribute(suppName, "TYPE") ?? "SUPP",
+                            Position = SafeGetAttribute(suppName, "PPOS") ?? "",
+                            Load = SafeGetAttribute(suppName, "LOAD") ?? "",
+                            Stiffness = SafeGetAttribute(suppName, "STIF") ?? ""
+                        });
+                    }
+                }
+            }
+            catch { /* 查询失败返回空列表 */ }
+            return supports;
         }
 
         private async Task<List<PipeBasicInfo>> ListPipesFromE3D(string zoneName, int limit, CancellationToken ct)
         {
-            await Task.Delay(100, ct);
-            
-            return new List<PipeBasicInfo>
+            var pipes = new List<PipeBasicInfo>();
+            try
             {
-                new PipeBasicInfo { Name = "/PIPE-1001", Specification = "ASME B36.19", BranchCount = 3, TotalLength = 25.5 },
-                new PipeBasicInfo { Name = "/PIPE-1002", Specification = "ASME B36.19", BranchCount = 2, TotalLength = 18.2 },
-                new PipeBasicInfo { Name = "/PIPE-1003", Specification = "ASME B36.19", BranchCount = 4, TotalLength = 32.1 }
-            };
+                string queryResult = await _dispatcher.ExecuteAsync("query", JsonConvert.SerializeObject(new
+                {
+                    type = "PIPE",
+                    scope = string.IsNullOrEmpty(zoneName) ? null : zoneName,
+                    limit = limit
+                }));
+                var j = JObject.Parse(queryResult);
+                var elements = j["elements"] as JArray;
+                if (elements != null)
+                {
+                    foreach (var elem in elements)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        string pipeName = elem["name"]?.ToString();
+                        if (string.IsNullOrEmpty(pipeName)) continue;
+
+                        // 查询分支数
+                        int branCount = 0;
+                        try
+                        {
+                            string branResult = await _dispatcher.ExecuteAsync("query", JsonConvert.SerializeObject(new
+                            {
+                                type = "BRAN",
+                                scope = pipeName,
+                                limit = 500
+                            }));
+                            var bj = JObject.Parse(branResult);
+                            var branArr = bj["elements"] as JArray;
+                            branCount = branArr?.Count ?? 0;
+                        }
+                        catch { }
+
+                        pipes.Add(new PipeBasicInfo
+                        {
+                            Name = pipeName,
+                            Specification = SafeGetAttribute(pipeName, "SPEC") ?? "",
+                            BranchCount = branCount,
+                            TotalLength = 0.0 // 需遍历分支累加，此处简化
+                        });
+                    }
+                }
+            }
+            catch { /* 查询失败返回空列表 */ }
+            return pipes;
         }
 
         private async Task<HierarchyNode> GetPipeHierarchyFromE3D(string pipeName, CancellationToken ct)
         {
-            await Task.Delay(100, ct);
-            
-            return new HierarchyNode
+            var root = new HierarchyNode
             {
                 Name = pipeName,
                 Type = "PIPE",
-                Children = new List<HierarchyNode>
+                Children = new List<HierarchyNode>()
+            };
+
+            try
+            {
+                // 查询分支
+                string branResult = await _dispatcher.ExecuteAsync("query", JsonConvert.SerializeObject(new
                 {
-                    new HierarchyNode
+                    type = "BRAN",
+                    scope = pipeName,
+                    limit = 500
+                }));
+                var bj = JObject.Parse(branResult);
+                var branElements = bj["elements"] as JArray;
+                if (branElements != null)
+                {
+                    foreach (var branElem in branElements)
                     {
-                        Name = $"{pipeName}-B1",
-                        Type = "BRAN",
-                        Children = new List<HierarchyNode>
+                        ct.ThrowIfCancellationRequested();
+                        string branName = branElem["name"]?.ToString();
+                        if (string.IsNullOrEmpty(branName)) continue;
+
+                        var branNode = new HierarchyNode
                         {
-                            new HierarchyNode { Name = "法兰1", Type = "FLANGE" },
-                            new HierarchyNode { Name = "弯头1", Type = "ELBOW" },
-                            new HierarchyNode { Name = "三通1", Type = "TEE" }
-                        }
-                    },
-                    new HierarchyNode
-                    {
-                        Name = $"{pipeName}-B2",
-                        Type = "BRAN",
-                        Children = new List<HierarchyNode>
+                            Name = branName,
+                            Type = "BRAN",
+                            Children = new List<HierarchyNode>()
+                        };
+
+                        // 查询分支下的元件
+                        try
                         {
-                            new HierarchyNode { Name = "法兰2", Type = "FLANGE" },
-                            new HierarchyNode { Name = "大小头1", Type = "REDUCER" }
+                            string compResult = await _dispatcher.ExecuteAsync("query", JsonConvert.SerializeObject(new
+                            {
+                                type = "*",
+                                scope = branName,
+                                limit = 200
+                            }));
+                            var cj = JObject.Parse(compResult);
+                            var compElements = cj["elements"] as JArray;
+                            if (compElements != null)
+                            {
+                                foreach (var compElem in compElements)
+                                {
+                                    string compName = compElem["name"]?.ToString();
+                                    if (!string.IsNullOrEmpty(compName))
+                                    {
+                                        branNode.Children.Add(new HierarchyNode
+                                        {
+                                            Name = compName,
+                                            Type = SafeGetAttribute(compName, "TYPE") ?? "",
+                                            Children = null
+                                        });
+                                    }
+                                }
+                            }
                         }
+                        catch { }
+
+                        root.Children.Add(branNode);
                     }
                 }
-            };
+            }
+            catch { /* 查询失败返回仅含根节点的结构 */ }
+
+            return root;
+        }
+
+        /// <summary>
+        /// 安全读取属性，失败返回 null
+        /// </summary>
+        private string SafeGetAttribute(string element, string attribute)
+        {
+            try
+            {
+                return _dispatcher.GetAttribute(element, attribute);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // 数据模型类

@@ -101,6 +101,27 @@ namespace E3DCopilot.Core.Tools
         }
 
         /// <summary>
+        /// 按工具类型获取超时时间（毫秒）
+        /// </summary>
+        private static int GetToolTimeout(string toolName, string effectiveName)
+        {
+            string name = effectiveName ?? toolName;
+            switch (name)
+            {
+                case "execute_pml":
+                    return 120000;   // 2 分钟
+                case "generate_iso_drawing":
+                    return 600000;   // 10 分钟（启动 AutoCAD + ISODRAFT）
+                case "structure_drawing":
+                    return 300000;   // 5 分钟（DXF 生成）
+                case "batch":
+                    return 300000;   // 5 分钟（批量操作）
+                default:
+                    return 60000;    // 默认 1 分钟
+            }
+        }
+
+        /// <summary>
         /// 执行工具（完整流程：路由 → 校验 → 分派 → 执行 → 结果）
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(string toolName, string args,
@@ -141,8 +162,8 @@ namespace E3DCopilot.Core.Tools
 
             var sw = Stopwatch.StartNew();
 
-            // ── 超时配置：默认 60 秒，PML 执行 120 秒 ──
-            int timeoutMs = (toolName == "execute_pml" || effectiveName == "execute_pml") ? 120000 : 60000;
+            // ── 超时配置：按工具类型分级 ──
+            int timeoutMs = GetToolTimeout(toolName, effectiveName);
             var timeoutCts = new CancellationTokenSource();
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 

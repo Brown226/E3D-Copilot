@@ -251,12 +251,11 @@ namespace E3DCopilot.Core.Tools.Handlers
                             sb.AppendLine($"── {m.FilePath} ──");
                         }
 
-                        sb.AppendLine($"  L{m.LineNumber}: {m.LineText.TrimEnd()}");
-
-                        // 上下文行
+                        // 上下文行（before 在匹配行之前，after 在之后）
                         foreach (var ctx in m.ContextBefore)
-                            sb.Insert(sb.Length - m.LineText.TrimEnd().Length - $"  L{m.LineNumber}: ".Length - Environment.NewLine.Length,
-                                $"  L{ctx.Key}: {ctx.Value.TrimEnd()}\n");
+                            sb.AppendLine($"  L{ctx.Key}: {ctx.Value.TrimEnd()}");
+
+                        sb.AppendLine($"  L{m.LineNumber}: {m.LineText.TrimEnd()}");
 
                         foreach (var ctx in m.ContextAfter)
                             sb.AppendLine($"  L{ctx.Key}: {ctx.Value.TrimEnd()}");
@@ -526,11 +525,102 @@ namespace E3DCopilot.Core.Tools.Handlers
                 catch { }
             }
 
+            // 4. 索引匹配不足时，回退到 knowledge/ 下 .md 文件直接内容搜索
+            if (count < limit)
+            {
+                var contentResults = SearchKnowledgeContent(query, source, limit - count, matchedFiles, ct);
+                foreach (var r in contentResults)
+                {
+                    sb.AppendLine($"--- 结果 {count + 1} ---");
+                    sb.AppendLine($"来源: {r.SourceLabel}");
+                    sb.AppendLine($"文件: {r.FileName}");
+                    sb.AppendLine();
+                    sb.AppendLine(r.Excerpt);
+                    if (!string.IsNullOrEmpty(r.Example))
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("代码示例:");
+                        sb.AppendLine(r.Example);
+                    }
+                    sb.AppendLine();
+                    count++;
+                }
+            }
+
             if (count == 0)
                 return ToolResult.Ok($"在知识库中未找到 '{query}' 的相关结果。试试换其他关键词或 source=all。", null);
 
-            _sink?.Emit(CopilotEvent.Notice($"Knowledge index search: '{query}' → {count} results"));
+            _sink?.Emit(CopilotEvent.Notice($"Knowledge search: '{query}' → {count} results"));
             return ToolResult.Ok(sb.ToString().TrimEnd(), new { query, source, count });
+        }
+
+        /// <summary>
+        /// 回退搜索：直接扫描 knowledge/ 下的 .md 文件内容
+        /// 当 search_index.json 关键词索引未命中足够结果时使用
+        /// </summary>
+        private List<KnowledgeContentResult> SearchKnowledgeContent(
+            string query, string source, int maxResults, HashSet<string> alreadyMatched, CancellationToken ct)
+        {
+            var results = new List<KnowledgeContentResult>();
+            if (!Directory.Exists(KnowledgeRoot)) return results;
+
+            var searchDirs = new List<string>();
+            if (source == "all")
+            {
+                foreach (var dir in SourceDirs.Values)
+                    searchDirs.Add(Path.Combine(KnowledgeRoot, dir));
+            }
+            else if (SourceDirs.ContainsKey(source))
+            {
+                searchDirs.Add(Path.Combine(KnowledgeRoot, SourceDirs[source]));
+            }
+
+            foreach (var dir in searchDirs)
+            {
+                if (results.Count >= maxResults) break;
+                if (!Directory.Exists(dir)) continue;
+
+                try
+                {
+                    foreach (var file in Directory.GetFiles(dir, "*.md", SearchOption.AllDirectories))
+                    {
+                        if (results.Count >= maxResults) break;
+                        ct.ThrowIfCancellationRequested();
+
+                        // 跳过已通过索引匹配的文件
+                        string relPath = GetRelativePath(KnowledgeRoot, file);
+                        if (alreadyMatched.Contains(relPath)) continue;
+
+                        try
+                        {
+                            string content = File.ReadAllText(file, System.Text.Encoding.UTF8);
+                            if (content.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
+                                continue;
+
+                            results.Add(new KnowledgeContentResult
+                            {
+                                FileName = Path.GetFileName(file),
+                                SourceLabel = GetSourceLabel(relPath),
+                                Excerpt = ExtractKnowledgeExcerpt(content, query),
+                                Example = ExtractKnowledgeExample(content)
+                            });
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+
+            return results;
+        }
+
+        private static string GetRelativePath(string root, string fullPath)
+        {
+            string normalizedRoot = root.TrimEnd('\\', '/');
+            string normalizedFile = fullPath.Replace('/', '\\');
+            if (normalizedFile.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+                return normalizedFile.Substring(normalizedRoot.Length).TrimStart('\\');
+            return Path.GetFileName(fullPath);
         }
 
         private void EnsureKnowledgeIndexLoaded()
@@ -683,6 +773,14 @@ namespace E3DCopilot.Core.Tools.Handlers
             public List<string> tags { get; set; }
             public string summary { get; set; }
             public bool verified { get; set; }
+        }
+
+        private class KnowledgeContentResult
+        {
+            public string FileName { get; set; }
+            public string SourceLabel { get; set; }
+            public string Excerpt { get; set; }
+            public string Example { get; set; }
         }
     }
 }

@@ -444,22 +444,6 @@ namespace E3DCopilot.Core
             return handler != null && handler.IsReadOnly;
         }
 
-        /// <summary>
-        /// 元能力/只读工具不受危险模式检测限制（todo_write、complete_step 等）
-        /// 它们的 JSON 参数可能被误判（如包含 >、; 等字符），但实际不会执行 Shell/PML
-        /// </summary>
-        private static readonly HashSet<string> _dangerousExemptTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "todo_write", "complete_step", "memory", "run_skill",
-            "read_file", "write_file", "grep", "glob", "ask",
-            "report", "compare", "hierarchy"
-        };
-
-        private bool IsMetaToolDangerousExempt(string toolName)
-        {
-            return _dangerousExemptTools.Contains(toolName);
-        }
-
         // ═══════════════════════════════════════════════════════════
         //  executeOne — 单工具执行（对齐 Reasonix executeOne）
         //  包含：权限检查 + 审批 + plan mode 门控 + 实际执行
@@ -493,17 +477,7 @@ namespace E3DCopilot.Core
                 }
             }
 
-            // ── 1. 危险模式检测（仅对写/执行类工具检查，元能力只读工具始终安全）──
-            if (!IsMetaToolDangerousExempt(call.Name) && _permission.HasDangerousPattern(call.Arguments))
-            {
-                string msg = $"Tool {call.Name} 参数包含危险模式，已阻止";
-                _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
-                _sink?.Emit(CopilotEvent.Error(msg));
-                _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
-                return (msg, "危险模式已阻止");
-            }
-
-            // ── 2. Plan Mode 门控（对齐 Reasonix planModeBlocked） ──
+            // ── 1. Plan Mode 门控（对齐 Reasonix planModeBlocked） ──
             bool isPlanMode = session?.IsPlanMode ?? false;
             if (!_toolPolicy.IsAllowed(call.Name, isPlanMode))
             {
@@ -519,10 +493,14 @@ namespace E3DCopilot.Core
             // ── 3. 批量操作检测 ──
             bool isBatch = _permission.IsBatchOperation(call.Arguments);
 
-            // ── 4. 审批检查 ──
+            // ── 3. 审批检查 ──
+            // 安全保障：
+            //   - execute_pml 有 PmlValidator 预检（PURGE/DELETE DB 等高危命令直接阻止）
+            //   - 写工具默认 ApprovalMode.Ask（用户审批）
+            //   - 批量操作需用户确认
             bool needsApproval = _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask || isBatch;
 
-            // ── 4.1 通知前端工具开始（审批前就发射，让 ToolCard 先显示）──
+            // ── 3.1 通知前端工具开始（审批前就发射，让 ToolCard 先显示）──
             _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
 
             if (needsApproval)

@@ -357,84 +357,14 @@ namespace E3DCopilot.Core.Tools.Handlers
             {
                 // 使用 StructureElementExtractor 从 E3D 提取真实数据
                 var element = _elementExtractor.Extract(elementName);
-                
-                if (element == null)
-                {
-                    // 如果 E3D 提取失败，回退到模拟数据（用于测试）
-                    element = CreateMockElement(elementName);
-                }
-
-                return element;
+                return element; // 提取失败时返回 null，由调用方跳过
             }
             catch (Exception ex)
             {
                 // 提取失败，记录日志但继续处理其他元素
                 System.Diagnostics.Debug.WriteLine($"提取元素 {elementName} 失败: {ex.Message}");
-                // 回退到模拟数据
-                return CreateMockElement(elementName);
+                return null;
             }
-        }
-
-        /// <summary>
-        /// 创建模拟元素（用于测试或 E3D 不可用时）
-        /// </summary>
-        private StructureElement CreateMockElement(string elementName)
-        {
-            var element = new StructureElement
-            {
-                Id = Guid.NewGuid().ToString(),
-                Name = elementName,
-                DbRef = elementName
-            };
-
-            string upperName = elementName.ToUpper();
-            if (upperName.Contains("SCTN"))
-            {
-                element.Type = StructureElementType.Sctn;
-                element.StartPoint = new Models.Geometry.Point3D(0, 0, 0);
-                element.EndPoint = new Models.Geometry.Point3D(5000, 0, 0);
-                element.Width = 300;
-                element.Height = 500;
-                element.BoundingBox = new Models.Geometry.BoundingBox(
-                    new Models.Geometry.Point3D(-150, -250, -250),
-                    new Models.Geometry.Point3D(5150, 250, 250));
-            }
-            else if (upperName.Contains("STWL"))
-            {
-                element.Type = StructureElementType.Stwl;
-                element.BoundaryPoints = new List<Models.Geometry.Point3D>
-                {
-                    new Models.Geometry.Point3D(0, 0, 0),
-                    new Models.Geometry.Point3D(5000, 0, 0),
-                    new Models.Geometry.Point3D(5000, 200, 0),
-                    new Models.Geometry.Point3D(0, 200, 0)
-                };
-                element.BoundingBox = new Models.Geometry.BoundingBox(
-                    new Models.Geometry.Point3D(0, 0, 0),
-                    new Models.Geometry.Point3D(5000, 200, 0));
-            }
-            else if (upperName.Contains("FRMW"))
-            {
-                element.Type = StructureElementType.Frmw;
-                element.StartPoint = new Models.Geometry.Point3D(0, 0, 0);
-                element.EndPoint = new Models.Geometry.Point3D(5000, 5000, 0);
-                element.Width = 50;
-                element.Height = 50;
-                element.BoundingBox = new Models.Geometry.BoundingBox(
-                    new Models.Geometry.Point3D(-25, -25, -25),
-                    new Models.Geometry.Point3D(5025, 5025, 25));
-            }
-            else
-            {
-                element.Type = StructureElementType.Other;
-                element.StartPoint = new Models.Geometry.Point3D(0, 0, 0);
-                element.EndPoint = new Models.Geometry.Point3D(1000, 1000, 0);
-                element.BoundingBox = new Models.Geometry.BoundingBox(
-                    new Models.Geometry.Point3D(0, 0, 0),
-                    new Models.Geometry.Point3D(1000, 1000, 0));
-            }
-
-            return element;
         }
 
         /// <summary>

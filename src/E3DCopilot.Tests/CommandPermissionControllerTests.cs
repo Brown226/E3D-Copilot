@@ -82,55 +82,6 @@ namespace E3DCopilot.Tests
                 ctrl.CheckTool("delete", "{}"));
         }
 
-        // ====== HasDangerousPattern ======
-
-        [Test]
-        public void HasDangerousPattern_NullArgs_ReturnsFalse()
-        {
-            Assert.IsFalse(_ctrl.HasDangerousPattern(null));
-        }
-
-        [Test]
-        public void HasDangerousPattern_EmptyArgs_ReturnsFalse()
-        {
-            Assert.IsFalse(_ctrl.HasDangerousPattern(""));
-        }
-
-        [Test]
-        public void HasDangerousPattern_NormalJson_ReturnsFalse()
-        {
-            Assert.IsFalse(_ctrl.HasDangerousPattern("{\"type\": \"PIPE\"}"));
-        }
-
-        [Test]
-        [TestCase("rm -rf /")]
-        [TestCase("drop table")]
-        [TestCase("del file")]
-        [TestCase("format c:")]
-        public void HasDangerousPattern_DangerousCommands_ReturnsTrue(string input)
-        {
-            Assert.IsTrue(_ctrl.HasDangerousPattern(input));
-        }
-
-        [Test]
-        [TestCase("echo hello > file.txt")]
-        [TestCase("echo hello >> file.txt")]
-        [TestCase("cat < file.txt")]
-        [TestCase("a | b")]
-        [TestCase("cmd1 && cmd2")]
-        [TestCase("cmd1 ; cmd2")]
-        public void HasDangerousPattern_ShellOperators_ReturnsTrue(string input)
-        {
-            Assert.IsTrue(_ctrl.HasDangerousPattern(input));
-        }
-
-        [Test]
-        public void HasDangerousPattern_CaseInsensitive()
-        {
-            Assert.IsTrue(_ctrl.HasDangerousPattern("RM file"));
-            Assert.IsTrue(_ctrl.HasDangerousPattern("DROP table"));
-        }
-
         // ====== IsBatchOperation ======
 
         [Test]

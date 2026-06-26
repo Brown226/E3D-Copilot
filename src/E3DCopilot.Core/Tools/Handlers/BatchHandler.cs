@@ -19,8 +19,13 @@ namespace E3DCopilot.Core.Tools.Handlers
     public class BatchHandler : IToolHandler
     {
         private readonly IToolDispatcher _dispatcher;
+        private readonly Events.IEventSink _sink;
 
-        public BatchHandler(IToolDispatcher dispatcher) { _dispatcher = dispatcher; }
+        public BatchHandler(IToolDispatcher dispatcher, Events.IEventSink sink = null)
+        {
+            _dispatcher = dispatcher;
+            _sink = sink;
+        }
 
         public string Name => "batch";
         public string Description =>
@@ -165,13 +170,6 @@ namespace E3DCopilot.Core.Tools.Handlers
             {
                 return ToolResult.Fail($"Batch failed: {ex.Message}");
             }
-        }
-
-        private readonly Events.IEventSink _sink;
-        public BatchHandler(IToolDispatcher dispatcher, Events.IEventSink sink = null)
-        {
-            _dispatcher = dispatcher;
-            _sink = sink;
         }
     }
 }

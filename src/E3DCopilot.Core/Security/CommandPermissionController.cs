@@ -6,18 +6,20 @@ using Newtonsoft.Json.Linq;
 namespace E3DCopilot.Core.Security
 {
     /// <summary>
-    /// 命令权限控制器（参考 cline-chinese-main 的 CommandPermissionController）
+    /// 命令权限控制器
     /// 支持：
     /// - Glob 模式白名单/黑名单
     /// - 工具级权限控制
     /// - 批量操作检测（>5 个元素需确认）
-    /// - 链式命令分段验证
-    /// - Shell 重定向检测
     /// </summary>
+    /// <remarks>
+    /// E3D 环境通过 PML 执行命令，不经过 Shell。
+    /// PML 脚本的危险操作检测由 PmlValidator 负责（PURGE/DELETE DB 等）。
+    /// 本类只负责工具级权限控制（Allow/Ask/Block）和批量操作检测。
+    /// </remarks>
     public class CommandPermissionController
     {
         private readonly List<PermissionRule> _rules;
-        private readonly HashSet<string> _dangerousPatterns;
         private readonly HashSet<string> _writeTools;
 
         /// <summary>
@@ -44,10 +46,6 @@ namespace E3DCopilot.Core.Security
         public CommandPermissionController()
         {
             _rules = new List<PermissionRule>();
-            _dangerousPatterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ">", ">>", "<", "|", "&&", ";", "rm", "del", "format", "drop"
-            };
             _writeTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "modify", "execute_pml", "export", "set_attribute", "delete", "create"
@@ -93,22 +91,6 @@ namespace E3DCopilot.Core.Security
 
             // 3. 只读工具默认 Allow
             return AccessMode.Allow;
-        }
-
-        /// <summary>
-        /// 检查参数中是否包含危险操作
-        /// </summary>
-        public bool HasDangerousPattern(string args)
-        {
-            if (string.IsNullOrWhiteSpace(args))
-                return false;
-
-            foreach (var pattern in _dangerousPatterns)
-            {
-                if (args.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return true;
-            }
-            return false;
         }
 
         /// <summary>

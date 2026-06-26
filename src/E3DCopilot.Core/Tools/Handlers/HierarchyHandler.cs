@@ -51,13 +51,13 @@ namespace E3DCopilot.Core.Tools.Handlers
                 switch (direction.ToLower())
                 {
                     case "info":
-                        return GetElementInfo(element);
+                        return await GetElementInfo(element);
                     case "up":
                         return GetParents(element, depth);
                     case "down":
-                        return GetChildren(element, depth);
+                        return await GetChildren(element, depth);
                     case "both":
-                        return GetFullTree(element, depth);
+                        return await GetFullTree(element, depth);
                     default:
                         return ToolResult.Fail($"Unknown direction: {direction}");
                 }
@@ -68,7 +68,7 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
         }
 
-        private ToolResult GetElementInfo(string element)
+        private async Task<ToolResult> GetElementInfo(string element)
         {
             var sb = new StringBuilder();
             sb.AppendLine($"元素: {element}");
@@ -89,7 +89,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                 sb.AppendLine($"  父级: {parent}");
 
             // 查询子元素
-            var children = QueryChildren(element);
+            var children = await QueryChildrenAsync(element);
             if (children.Count > 0)
             {
                 sb.AppendLine($"  子元素 ({children.Count} 个):");
@@ -130,13 +130,13 @@ namespace E3DCopilot.Core.Tools.Handlers
             return ToolResult.Ok(sb.ToString().TrimEnd());
         }
 
-        private ToolResult GetChildren(string element, int depth)
+        private async Task<ToolResult> GetChildren(string element, int depth)
         {
             var sb = new StringBuilder();
             sb.AppendLine($"向下浏览: {element}");
             sb.AppendLine();
 
-            int total = TraverseChildren(element, 0, depth, sb);
+            int total = await TraverseChildrenAsync(element, 0, depth, sb);
 
             if (total == 0)
                 sb.AppendLine("（无子元素）");
@@ -144,11 +144,11 @@ namespace E3DCopilot.Core.Tools.Handlers
             return ToolResult.Ok(sb.ToString().TrimEnd(), new { element, totalChildren = total });
         }
 
-        private int TraverseChildren(string element, int currentDepth, int maxDepth, StringBuilder sb)
+        private async Task<int> TraverseChildrenAsync(string element, int currentDepth, int maxDepth, StringBuilder sb)
         {
             if (currentDepth >= maxDepth) return 0;
 
-            var children = QueryChildren(element);
+            var children = await QueryChildrenAsync(element);
             int total = children.Count;
             string indent = new string(' ', currentDepth * 2);
 
@@ -159,32 +159,32 @@ namespace E3DCopilot.Core.Tools.Handlers
                 sb.AppendLine($"{indent}{prefix}{child} ({type})");
 
                 if (currentDepth < maxDepth - 1)
-                    total += TraverseChildren(child, currentDepth + 1, maxDepth, sb);
+                    total += await TraverseChildrenAsync(child, currentDepth + 1, maxDepth, sb);
             }
 
             return total;
         }
 
-        private ToolResult GetFullTree(string element, int depth)
+        private async Task<ToolResult> GetFullTree(string element, int depth)
         {
             var sb = new StringBuilder();
             string type = _dispatcher.GetAttribute(element, "TYPE") ?? "";
             sb.AppendLine($"{element} ({type})");
 
-            int total = TraverseChildren(element, 0, depth, sb);
+            int total = await TraverseChildrenAsync(element, 0, depth, sb);
             return ToolResult.Ok(sb.ToString().TrimEnd(), new { element, totalDescendants = total });
         }
 
-        private List<string> QueryChildren(string parent)
+        private async Task<List<string>> QueryChildrenAsync(string parent)
         {
             try
             {
-                string result = _dispatcher.ExecuteAsync("query", Newtonsoft.Json.JsonConvert.SerializeObject(new
+                string result = await _dispatcher.ExecuteAsync("query", Newtonsoft.Json.JsonConvert.SerializeObject(new
                 {
                     type = "*",
                     scope = parent,
                     limit = 100
-                })).Result;
+                }));
 
                 var json = JObject.Parse(result);
                 var elements = json["elements"] as JArray;

@@ -95,10 +95,22 @@ namespace E3DCopilot.Core.Tools.Handlers
                 if (BlockedExtensions.Contains(ext))
                     return ToolResult.Fail($"Cannot write to binary file type: {ext}");
 
-                // 写入前检查：相同内容跳过
+                // 写入前检查：相同内容跳过（自动检测编码，避免误判）
                 if (File.Exists(fullPath))
                 {
-                    string existing = await Task.Run(() => File.ReadAllText(fullPath, System.Text.Encoding.UTF8), ct);
+                    string existing = await Task.Run(() =>
+                    {
+                        // 检测 BOM 判断编码
+                        byte[] header = new byte[3];
+                        using (var fs = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096))
+                        {
+                            fs.Read(header, 0, Math.Min(3, (int)fs.Length));
+                        }
+                        var enc = (header[0] == 0xFF && header[1] == 0xFE) ? System.Text.Encoding.Unicode
+                                 : (header[0] == 0xFE && header[1] == 0xFF) ? System.Text.Encoding.BigEndianUnicode
+                                 : System.Text.Encoding.UTF8;
+                        return File.ReadAllText(fullPath, enc);
+                    }, ct);
                     if (existing == content)
                         return ToolResult.Ok($"{fullPath} already contains the exact content; no changes made",
                             new { path = fullPath, bytes = content.Length, changed = false });

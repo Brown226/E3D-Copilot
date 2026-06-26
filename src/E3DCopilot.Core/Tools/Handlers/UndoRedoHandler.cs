@@ -99,6 +99,27 @@ namespace E3DCopilot.Core.Tools.Handlers
                 });
 
                 var result = await _dispatcher.ExecuteAsync("modify", modifyArgs);
+
+                // 检查 modify 是否成功
+                bool modifyOk = true;
+                if (!string.IsNullOrEmpty(result) && result.StartsWith("{"))
+                {
+                    try
+                    {
+                        var j = Newtonsoft.Json.Linq.JObject.Parse(result);
+                        var successToken = j["success"];
+                        if (successToken != null && successToken.Value<bool>() == false)
+                            modifyOk = false;
+                    }
+                    catch { }
+                }
+
+                if (!modifyOk)
+                {
+                    sb.AppendLine($"✗ 撤销失败: {entry.Element}.{entry.Attribute}");
+                    break;
+                }
+
                 manager.PushRedo(entry);
                 undone++;
 
@@ -138,6 +159,27 @@ namespace E3DCopilot.Core.Tools.Handlers
                 });
 
                 var result = await _dispatcher.ExecuteAsync("modify", modifyArgs);
+
+                // 检查 modify 是否成功
+                bool modifyOk = true;
+                if (!string.IsNullOrEmpty(result) && result.StartsWith("{"))
+                {
+                    try
+                    {
+                        var j = Newtonsoft.Json.Linq.JObject.Parse(result);
+                        var successToken = j["success"];
+                        if (successToken != null && successToken.Value<bool>() == false)
+                            modifyOk = false;
+                    }
+                    catch { }
+                }
+
+                if (!modifyOk)
+                {
+                    sb.AppendLine($"✗ 重做失败: {entry.Element}.{entry.Attribute}");
+                    break;
+                }
+
                 manager.PushUndo(entry);
                 redone++;
 

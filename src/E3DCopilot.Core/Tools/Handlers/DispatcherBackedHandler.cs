@@ -33,6 +33,23 @@ namespace E3DCopilot.Core.Tools.Handlers
             try
             {
                 var result = await _dispatcher.ExecuteAsync(Name, args);
+
+                // 检测 dispatcher 返回的错误信息
+                if (!string.IsNullOrEmpty(result) && result.StartsWith("{"))
+                {
+                    try
+                    {
+                        var j = JObject.Parse(result);
+                        var successToken = j["success"];
+                        if (successToken != null && successToken.Value<bool>() == false)
+                        {
+                            var msg = j["error"]?.ToString() ?? j["message"]?.ToString() ?? "Unknown error";
+                            return ToolResult.Fail($"{Name} failed: {msg}");
+                        }
+                    }
+                    catch { /* 不是 JSON，按纯文本处理 */ }
+                }
+
                 // 最小安全方案：Text 不变（LLM 侧零影响），Data 放结构化 meta 供前端渲染
                 var meta = new JObject
                 {

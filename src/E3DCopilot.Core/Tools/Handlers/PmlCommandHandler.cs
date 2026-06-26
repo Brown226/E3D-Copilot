@@ -54,6 +54,23 @@ namespace E3DCopilot.Core.Tools.Handlers
                 }
 
                 var result = await _dispatcher.ExecuteAsync("execute_pml", args);
+
+                // 检测 dispatcher 返回的错误信息
+                if (!string.IsNullOrEmpty(result) && result.StartsWith("{"))
+                {
+                    try
+                    {
+                        var j = JObject.Parse(result);
+                        var successToken = j["success"];
+                        if (successToken != null && successToken.Value<bool>() == false)
+                        {
+                            var msg = j["error"]?.ToString() ?? j["message"]?.ToString() ?? "Unknown error";
+                            return ToolResult.Fail($"PML execution failed: {msg}");
+                        }
+                    }
+                    catch { /* 不是 JSON，按纯文本处理 */ }
+                }
+
                 // 最小安全方案：Text 不变，Data 放结构化 meta 供前端渲染
                 var meta = new JObject
                 {
@@ -116,10 +133,8 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (Regex.IsMatch(s, @"^(OUTPUT\s+)?CE\.ATTRIBUTE\s*\(\s*['""][\w*]+['""]\s*\)\s*$", RegexOptions.IgnoreCase))
                 return true;
 
-            // ── 规则 5：object.eval 中包含 attributes（典型 AI 生成模式）──
-            //   object.eval('collect !!primary.attributes()')
-            if (sUpper.Contains("OBJECT.EVAL") && sUpper.Contains("ATTRIBUTES"))
-                return true;
+            // ── 规则 5 已移除：原规则拦截所有 OBJECT.EVAL + ATTRIBUTES 组合，
+            //    但很多合法的复杂属性处理需要通过 PML 执行，误杀率太高 ──
 
             // ── 规则 6：collect !!primary.attributes() 或 !!primary.attributes() 独立语句 ──
             if (Regex.IsMatch(s, @"^(COLLECT\s+)?[!$]+PRIMARY\.ATTRIBUTES\s*\(\s*\)\s*$", RegexOptions.IgnoreCase))

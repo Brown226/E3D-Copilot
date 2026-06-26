@@ -128,56 +128,30 @@ namespace E3DCopilot.Core.Tools.Handlers
                 if (questionsArray == null || questionsArray.Count == 0)
                     return ToolResult.Fail("at least one question is required");
 
-                // 解析 — 兼容新旧两种格式
                 var qs = new List<AskQuestion>();
 
-                // ── 新格式：questions 数组 ──
-                if (questionsArray != null && questionsArray.Count > 0)
+                // ── 解析 questions 数组 ──
+                for (int i = 0; i < questionsArray.Count; i++)
                 {
-                    for (int i = 0; i < questionsArray.Count; i++)
-                    {
-                        var q = questionsArray[i];
-                        string header = q.Value<string>("header")?.Trim();
-                        string question = q.Value<string>("question")?.Trim();
-                        bool multiSelect = q.Value<bool?>("multiSelect") ?? false;
-                        var optionsArray = q["options"] as JArray;
+                    var q = questionsArray[i];
+                    string header = q.Value<string>("header")?.Trim();
+                    string question = q.Value<string>("question")?.Trim();
+                    bool multiSelect = q.Value<bool?>("multiSelect") ?? false;
+                    var optionsArray = q["options"] as JArray;
 
-                        if (string.IsNullOrEmpty(header))
-                            return ToolResult.Fail($"question {i + 1}: header is required");
-                        if (string.IsNullOrEmpty(question))
-                            return ToolResult.Fail($"question {i + 1}: question text is required");
-                        if (optionsArray == null || optionsArray.Count < 2)
-                            return ToolResult.Fail($"question {i + 1}: at least 2 options are required");
-
-                        qs.Add(new AskQuestion
-                        {
-                            Id = $"q{i + 1}",
-                            Header = header,
-                            Prompt = question,
-                            Options = ParseOptions(optionsArray, i),
-                            Multi = multiSelect
-                        });
-                    }
-                }
-                // ── 旧格式兼容：单个 question + options ──
-                else
-                {
-                    string question = json.Value<string>("question")?.Trim();
-                    var optionsArray = json["options"] as JArray;
-                    bool multiSelect = json.Value<bool?>("multiSelect") ?? false;
-                    string header = json.Value<string>("header")?.Trim();
-
+                    if (string.IsNullOrEmpty(header))
+                        return ToolResult.Fail($"question {i + 1}: header is required");
                     if (string.IsNullOrEmpty(question))
-                        return ToolResult.Fail("at least one question is required (use 'question' for single or 'questions[]' for multiple)");
+                        return ToolResult.Fail($"question {i + 1}: question text is required");
                     if (optionsArray == null || optionsArray.Count < 2)
-                        return ToolResult.Fail("at least 2 options are required");
+                        return ToolResult.Fail($"question {i + 1}: at least 2 options are required");
 
                     qs.Add(new AskQuestion
                     {
-                        Id = "q1",
-                        Header = header ?? "选择",
+                        Id = $"q{i + 1}",
+                        Header = header,
                         Prompt = question,
-                        Options = ParseOptions(optionsArray, 0),
+                        Options = ParseOptions(optionsArray, i),
                         Multi = multiSelect
                     });
                 }

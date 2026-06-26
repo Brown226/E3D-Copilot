@@ -427,7 +427,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                     var line = lines[i];
                     if (string.IsNullOrWhiteSpace(line)) continue;
                     
-                    var parts = line.Split(',');
+                    var parts = ParseCsvLine(line);
                     if (parts.Length < 10) continue;
                     
                     var material = new MaterialItem
@@ -462,6 +462,44 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
             
             return materials;
+        }
+
+        /// <summary>
+        /// 解析 CSV 行，支持引号内逗号
+        /// </summary>
+        private static string[] ParseCsvLine(string line)
+        {
+            var fields = new List<string>();
+            bool inQuotes = false;
+            var sb = new System.Text.StringBuilder();
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (c == '"')
+                {
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        sb.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        inQuotes = !inQuotes;
+                    }
+                }
+                else if (c == ',' && !inQuotes)
+                {
+                    fields.Add(sb.ToString());
+                    sb.Clear();
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+            }
+            fields.Add(sb.ToString());
+            return fields.ToArray();
         }
 
         /// <summary>

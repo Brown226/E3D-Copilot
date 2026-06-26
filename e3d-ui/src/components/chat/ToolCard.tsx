@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import type { Message } from '@/types'
 import { DiffView } from './DiffView'
+import MarkdownBlock from '@/components/common/MarkdownBlock'
 
 interface ToolCardProps {
   msg: Message
@@ -243,13 +244,13 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
                 </div>
               )}
 
-              {/* 输出结果 — 带标签 */}
+              {/* 输出结果 — Markdown 渲染（支持表格/代码块等） */}
               {resultStr && !diffData && (
                 <div className="tool__section">
                   <div className="tool__section-label">输出</div>
-                  <pre className="code-viewer" style={{ maxHeight: showAll ? 480 : 280 }}>
-                    {displayResult}
-                  </pre>
+                  <div className="tool__output-md" style={{ maxHeight: showAll ? 480 : 280, overflow: 'auto' }}>
+                    <MarkdownBlock markdown={resultStr} />
+                  </div>
                   {shellPreview?.hasMore && !showAll && (
                     <button className="tool__showall" onClick={() => setShowAll(true)}>
                       显示全部 {shellPreview.total} 行
@@ -322,9 +323,9 @@ function SubToolRow({ msg }: { msg: Message }) {
       </button>
       {expanded && resultPreview && (
         <div className="tool__body">
-          <pre className="code-viewer" style={{ maxHeight: 100, fontSize: 11 }}>
-            {msg.toolError || msg.content}
-          </pre>
+          <div className="tool__output-md" style={{ maxHeight: 100, fontSize: 11, overflow: 'auto' }}>
+            <MarkdownBlock markdown={msg.toolError || msg.content || ''} />
+          </div>
         </div>
       )}
     </div>

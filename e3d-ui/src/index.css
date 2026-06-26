@@ -850,6 +850,34 @@ body {
   color: var(--fg);
 }
 
+/* ── 工具输出 Markdown 渲染区域 ── */
+.tool__output-md {
+  position: relative;
+  margin: 4px 0;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg);
+}
+.tool__output-md .md { font-size: inherit; }
+.tool__output-md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.tool__output-md th, .tool__output-md td {
+  padding: 5px 8px;
+  border: 1px solid var(--border-soft);
+  text-align: left;
+}
+.tool__output-md th {
+  background: var(--bg);
+  font-weight: 600;
+}
+
 /* ── Markdown prose ── */
 .md {
   font-weight: 400;

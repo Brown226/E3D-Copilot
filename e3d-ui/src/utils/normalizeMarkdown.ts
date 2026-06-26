@@ -86,7 +86,17 @@ function normalizeTableRow(line: string): string {
     cleaned.push(p)
   }
 
-  return '|' + cleaned.join('|') + '|'
+  // 5. 去重：LLM 有时输出 | 属性 | 值 | 属性 | 值 这种重复表头
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  for (const c of cleaned) {
+    const key = c.trim().toLowerCase()
+    if (seen.has(key)) continue  // 跳过重复列
+    seen.add(key)
+    deduped.push(c)
+  }
+
+  return '|' + deduped.join('|') + '|'
 }
 
 /**
@@ -215,9 +225,16 @@ export function normalizeMarkdown(text: string): string {
   // 0.5 预处理：拆分 LLM 连写在一起的标题
   text = splitInlineHeadings(text)
 
-  // 0.6 单列 |---| 或 |:---| → 转为水平线（LLM 用它当分隔线）
-  // GFM 表格最少 2 列，单列分隔符 remark-gfm 不认，会原样显示 |---|
-  text = text.replace(/^\|:?-{2,}:?\|$/gm, '---')
+  // 0.6 畸形分隔行 → 标准化或转水平线
+  // GFM 表格最少 2 列，单列 |---| remark-gfm 不认，会原样显示
+  // 匹配条件：|开头结尾 + 中间只有空格/冒号/横杠/管道符 + 至少有一段连续2+横杠
+  text = text.replace(/^\|[\s|:\-]+\|$/gm, (match) => {
+    if (!/-{2,}/.test(match)) return match  // 安全检查：必须含横杠段
+    const cells = match.split('|').filter(c => c.trim().length > 0)
+    if (cells.length === 0) return '---'
+    if (cells.length === 1) return '---'   // 单列 → 转为水平线（GFM 不认单列表格）
+    return '|' + cells.map(() => '---').join('|') + '|'  // 多列 → 标准化分隔行
+  })
 
   const lines = text.split('\n')
   let processed = lines
@@ -243,8 +260,8 @@ export function normalizeMarkdown(text: string): string {
       continue
     }
 
-    // ── 分隔行 ──
-    if (isSeparatorLine(trimmed)) {
+    // ── 分隔行（必须含 |，纯 --- 不在此处理）──
+    if (isSeparatorLine(trimmed) && trimmed.includes('|')) {
       if (!inTable && result.length > 0 && result[result.length - 1] !== '') {
         result.push('')  // 表格前插空行
       }
