@@ -11,6 +11,8 @@ import type { Message } from '@/types'
 
 interface AssistantBubbleProps {
   msg: Message
+  /** true = turn 结束后的最终回复（显示操作栏），false = 中间步骤（隐藏操作栏） */
+  isFinal?: boolean
 }
 
 /** 内联 reasoning 折叠块 — Reasonix 风格 */
@@ -54,7 +56,7 @@ export function ReasoningBlock({ msg }: { msg: Message }) {
   )
 }
 
-export function AssistantBubble({ msg }: AssistantBubbleProps) {
+export function AssistantBubble({ msg, isFinal = true }: AssistantBubbleProps) {
   const [copied, setCopied] = useState(false)
   const rerollLastMessage = useChatStore((s) => s.rerollLastMessage)
 
@@ -94,8 +96,8 @@ export function AssistantBubble({ msg }: AssistantBubbleProps) {
         )}
       </div>
 
-      {/* 操作栏（完成后显示） */}
-      {msg.finalized && (
+      {/* 操作栏（仅最终回复显示，中间步骤不显示） */}
+      {msg.finalized && isFinal && (
         <div className="turn-actions">
           {hasContent && (
             <button className="turn-actions__btn" onClick={handleCopy} title="复制">

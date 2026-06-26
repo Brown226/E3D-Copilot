@@ -118,6 +118,56 @@ function isSeparatorLine(line: string): boolean {
 }
 
 /**
+ * 修复表格列数不一致：数据行列数超过表头列数时拆分
+ * 例如：| NAME | /MDS/FRAMES/VT18 | TYPE | ZONE | → 拆为两行
+ */
+function fixInconsistentColumns(lines: string[]): string[] {
+  const result: string[] = []
+  let headerCols = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    // 检测表头：上一行是分隔行时，当前行是数据行
+    // 先找分隔行确定列数
+    if (isSeparatorLine(trimmed)) {
+      // 统计分隔列数
+      const sepCells = trimmed.split('|').filter(c => c.trim().length > 0 || c === '')
+      // 分隔行格式: |---|---| → split by | 得到 ['', '---', '---', '']
+      headerCols = trimmed.split('|').length - 2 // 减去首尾空串
+      if (headerCols < 1) headerCols = 2
+      result.push(line)
+      continue
+    }
+
+    // 数据行列数是表头的整数倍 → 拆分
+    if (headerCols > 0 && isTableRow(trimmed)) {
+      const cells = trimmed.split('|').filter((_, idx, arr) => {
+        // 保留有意义的列，去掉首尾空串
+        if (idx === 0 || idx === arr.length - 1) return false
+        return true
+      })
+      if (cells.length > headerCols && cells.length % headerCols === 0) {
+        const rowCount = cells.length / headerCols
+        for (let r = 0; r < rowCount; r++) {
+          const rowCells = cells.slice(r * headerCols, (r + 1) * headerCols)
+          result.push('|' + rowCells.join('|') + '|')
+        }
+        continue
+      }
+    }
+
+    // 非表格行或列数一致，直接通过
+    if (!isTableRow(trimmed) && !isSeparatorLine(trimmed)) {
+      headerCols = 0 // 退出表格区域
+    }
+    result.push(line)
+  }
+  return result
+}
+
+/**
  * 主归一化函数
  */
 export function normalizeMarkdown(text: string): string {
@@ -134,12 +184,17 @@ export function normalizeMarkdown(text: string): string {
   text = text.replace(/^\|:?-{2,}:?\|$/gm, '---')
 
   const lines = text.split('\n')
+  let processed = lines
+
+  // 0.7 修复表格列数不一致（数据行列数超过表头）
+  processed = fixInconsistentColumns(processed)
+
   const result: string[] = []
 
   let inTable = false
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+  for (let i = 0; i < processed.length; i++) {
+    const line = processed[i]
     const trimmed = line.trim()
 
     // ── 空行：连续 2+ 空行压缩为 1 个 ──
