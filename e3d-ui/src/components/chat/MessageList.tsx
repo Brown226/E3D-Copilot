@@ -284,15 +284,7 @@ export function MessageList() {
     useChatStore.getState().setPendingApproval(null)
   }, [pendingApproval])
 
-  // AI 提问响应
-  const handleAskUser = useCallback((questionId: string, answer: string) => {
-    import('@/services/bridgeService').then(({ default: bridge }) => {
-      bridge.sendAskResponse(questionId, answer)
-    })
-    useChatStore.getState().setPendingQuestion(null)
-  }, [])
-
-  // 新版多问题回答（对齐 Reasonix AnswerQuestion）
+  // AI 提问响应（统一 AskAnswer 协议）
   const handleAskAnswer = useCallback((askId: string, answers: Array<{ questionId: string; selected: string[] }>) => {
     import('@/services/bridgeService').then(({ default: bridge }) => {
       bridge.sendAskAnswer(askId, answers)
@@ -385,7 +377,7 @@ export function MessageList() {
           {pendingApproval && <ApprovalCard approval={pendingApproval} onAnswer={handleApproval} />}
 
           {/* ═══════ AI 提问卡片 ═══════ */}
-          {pendingQuestion && <AskUserCard question={pendingQuestion} onAnswer={handleAskUser} onAskAnswer={handleAskAnswer} />}
+          {pendingQuestion && <AskUserCard question={pendingQuestion} onAskAnswer={handleAskAnswer} />}
         </div>
       </div>
 

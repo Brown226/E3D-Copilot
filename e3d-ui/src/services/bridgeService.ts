@@ -8,7 +8,6 @@ import type { ToolApprovalMode } from '../store/useChatStore';
 import type {
   UserMessagePayload,
   ApprovalPayload,
-  AskResponsePayload,
   AskRequestPayload,
   WireAskQuestion,
   QuestionAnswerItem,
@@ -143,12 +142,8 @@ class Bridge {
     this.send('user:approve', { id: toolId, allow } as ApprovalPayload);
   }
 
-  sendAskResponse(questionId: string, answer: string): void {
-    this.send('user:ask_response', { questionId, answer } as AskResponsePayload);
-  }
-
   /**
-   * 新版：发送结构化回答（对齐 Reasonix AnswerQuestion）
+   * 发送结构化回答（对齐 Reasonix AnswerQuestion）
    */
   sendAskAnswer(id: string, answers: QuestionAnswerItem[]): void {
     this.send('user:ask_response', { id, answers });

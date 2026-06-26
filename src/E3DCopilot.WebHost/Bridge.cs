@@ -294,15 +294,16 @@ namespace E3DCopilot.WebHost
         {
             if (!payload.HasValue) return;
 
-            var id = payload.Value.TryGetProperty("id", out var idProp)
-                ? idProp.GetString() : null;
+            var json = payload.Value;
 
-            if (string.IsNullOrEmpty(id)) return;
+            var askId = json.TryGetProperty("id", out var idProp)
+                ? idProp.GetString() : null;
+            if (string.IsNullOrEmpty(askId)) return;
 
             var answers = new List<AskAnswer>();
 
             // answers 数组 [{questionId, selected:[]}]
-            if (payload.Value.TryGetProperty("answers", out var answersProp) && answersProp.ValueKind == JsonValueKind.Array)
+            if (json.TryGetProperty("answers", out var answersProp) && answersProp.ValueKind == JsonValueKind.Array)
             {
                 foreach (var ans in answersProp.EnumerateArray())
                 {
@@ -318,10 +319,10 @@ namespace E3DCopilot.WebHost
                 }
             }
 
-            Log($"[Bridge] Received user:ask_response: id={id}, answers={answers.Count}");
+            Log($"[Bridge] Received user:ask_response: id={askId}, answers={answers.Count}");
 
             if (answers.Count > 0)
-                _controller.AnswerQuestion(id, answers);
+                _controller.AnswerQuestion(askId, answers);
         }
 
         /// <summary>
