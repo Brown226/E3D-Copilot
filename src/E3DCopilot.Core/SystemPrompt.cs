@@ -58,7 +58,7 @@ namespace E3DCopilot.Core
 "- execute_pml: Execute PML scripts（仅用于复杂集合查询、报表、几何计算等 C# 工具无法处理的情况）\n" +
 "- design: Create/modify/delete equipment and structural elements (EQUI/STRU). 创建、修改、删除设备和结构元件\n" +
 "- piping: Create/modify piping elements (PIPE/BRAN/FTUB/BEND/TEE). 创建、修改管道、管段、管件\n" +
-"- geometry: Spatial queries: position, orientation, bounding box. 查询元素的空间位置、朝向、包围盒\n" +
+"- geometry: Spatial queries (action: get_position/get_orientation/bounding_box/distance_between). 查询元素的空间位置、朝向、包围盒\n" +
 "- undo_redo: Undo/redo the last modification. 撤销/重做最近一次修改操作\n" +
 "- report: Generate reports: material lists, attribute summaries, statistics. 生成报表：材料清单、属性汇总\n" +
 "- compare: Compare attributes of two elements. 对比两个元素的属性差异\n" +

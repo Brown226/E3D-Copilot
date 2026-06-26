@@ -225,7 +225,7 @@ namespace E3DCopilot.Core.Tools
 
             // 7 个透传 Handler：直接转发到 IToolDispatcher，零业务逻辑
             executor.Register(new DispatcherBackedHandler(dispatcher,
-                "query", "Query E3D elements by type (PIPE/EQUI/STRU/BRAN), name pattern, scope. 按类型/名称/范围查询元素列表。不要用于读取单个元素的属性——用 get_attributes。",
+                "query", "Query E3D elements by type (PIPE/EQUI/STRU/BRAN/ZONE/PROJ), name pattern, scope. 按类型/名称/范围查询元素列表。scope 是搜索起点（递归子元素），如 type=ZONE 应设 scope=\"/\" 或不设。不要用于读取单个元素的属性——用 get_attributes。",
                 @"{""type"":""object"",""properties"":{""type"":{""type"":""string"",""description"":""Element type like PIPE/EQUI/STRU/BRAN""},""name"":{""type"":""string"",""description"":""Name pattern, supports * wildcard""},""scope"":{""type"":""string"",""description"":""Scope DBURI, e.g. ZONE-01 or CE for current element""},""limit"":{""type"":""integer"",""description"":""Max results (default 50)""}},""required"":[""type""]}",
                 true));
             executor.Register(new DispatcherBackedHandler(dispatcher,
@@ -250,7 +250,7 @@ namespace E3DCopilot.Core.Tools
                 false));
             executor.Register(new DispatcherBackedHandler(dispatcher,
                 "geometry", "Spatial geometry queries: position, orientation, bounding box",
-                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""position"",""orientation"",""bbox""],""description"":""Query type""},""element"":{""type"":""string"",""description"":""Element name""}},""required"":[""action"",""element""]}",
+                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""get_position"",""get_orientation"",""bounding_box"",""distance_between""],""description"":""Query type""},""element"":{""type"":""string"",""description"":""Element name""}},""required"":[""action"",""element""]}",
                 true));
 
             // 有实质逻辑的 Handler
