@@ -284,6 +284,9 @@ namespace E3DCopilot.Core.Tools
             executor.Register(new MaterialQueryHandler(dispatcher));
             executor.Register(new PipeInfoHandler(dispatcher));
 
+            // 土建结构出图工具（DESIGN模块内闭环）
+            executor.Register(new StructureDrawingHandler(dispatcher));
+
             // CAD 工具（文件/坐标导入 + AutoCAD 运行时交互）
             executor.Register(new CadImportHandler());   // cad_import
             executor.Register(new AutoCadHandler());     // autocad

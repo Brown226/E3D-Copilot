@@ -15,6 +15,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="1.0.0" />
     <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="5.0.0" />
+    <PackageReference Include="netDxf" Version="3.1.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +34,34 @@
     </Reference>
     <Reference Include="CNPE.ISO.CAD.Core">
       <HintPath>..\..\lib\iso\CNPE.ISO.CAD.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="CNPE.ISO.E3D">
+      <HintPath>..\..\lib\iso\CNPE.ISO.E3D.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- E3D API References -->
+  <ItemGroup>
+    <Reference Include="Aveva.Core">
+      <HintPath>..\..\lib\e3d\Aveva.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Aveva.Core.Database">
+      <HintPath>..\..\lib\e3d\Aveva.Core.Database.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Aveva.Core.Geometry">
+      <HintPath>..\..\lib\e3d\Aveva.Core.Geometry.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Aveva.Core.Global">
+      <HintPath>..\..\lib\e3d\Aveva.Core.Global.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Aveva.ApplicationFramework">
+      <HintPath>..\..\lib\e3d\Aveva.ApplicationFramework.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
