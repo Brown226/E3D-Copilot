@@ -28,9 +28,9 @@ namespace E3DCopilot.Core.Tools.Handlers
             _elementExtractor = new StructureElementExtractor();
         }
 
-        public string Name => "export_structure_drawing";
+        public string Name => "structure_drawing";
 
-        public string Description => "将E3D结构元素导出为CAD二维工程图(DXF格式)，支持平面图、立面图、剖面图";
+        public string Description => "土建结构出图工具：将E3D结构元素(SCTN/STWL/FRMW等)导出为CAD二维工程图(DXF格式)。支持平面图、立面图、剖面图、批量出图和预览。当用户需要导出结构图纸、生成结构DXF、结构出图时使用此工具。";
 
         public string ParameterSchema => "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"export_plan\",\"export_elevation\",\"export_section\",\"batch_export\",\"preview\"],\"description\":\"出图类型：export_plan-平面图,export_elevation-立面图,export_section-剖面图,batch_export-批量导出,preview-预览\"},\"elements\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"结构元素名称列表\"},\"direction\":{\"type\":\"string\",\"enum\":[\"top\",\"front\",\"side\",\"north\",\"south\",\"east\",\"west\"],\"description\":\"投影方向\"},\"output_path\":{\"type\":\"string\",\"description\":\"输出DXF文件完整路径\"},\"output_dir\":{\"type\":\"string\",\"description\":\"批量导出时的输出目录\"},\"exports\":{\"type\":\"array\",\"description\":\"批量导出配置列表\"},\"options\":{\"type\":\"object\",\"properties\":{\"show_dimensions\":{\"type\":\"boolean\",\"default\":true},\"show_hidden_lines\":{\"type\":\"boolean\",\"default\":true},\"scale\":{\"type\":\"string\",\"default\":\"1:100\"},\"title_block\":{\"type\":\"boolean\",\"default\":true},\"title\":{\"type\":\"string\",\"default\":\"结构图\"}}}},\"required\":[\"action\"]}";
 
