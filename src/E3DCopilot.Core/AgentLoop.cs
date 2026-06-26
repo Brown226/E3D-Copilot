@@ -813,7 +813,8 @@ namespace E3DCopilot.Core
                 "undo_redo", "report", "compare", "hierarchy", "batch",
                 "ask", "todo_write", "complete_step", "read_file", "write_file",
                 "run_skill", "grep", "glob", "memory",
-                "cad_import", "autocad"
+                "cad_import", "autocad",
+                "structure_drawing"  // 土建结构出图工具
             };
             foreach (var handler in _executor.GetAllHandlers())
             {

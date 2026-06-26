@@ -77,7 +77,8 @@ namespace E3DCopilot.Core
 "- query_material: Query pipe material codes and specifications. 查询管道材料编码和规格信息。支持按编码、类型、项目查询。\n" +
 "- get_pipe_info: Extract detailed pipe information from E3D. 从E3D中提取管道详细信息，包括属性、分支、管件、支吊架等。\n" +
 "- cad_import: Import CAD drawings from DWG files or coordinate strings to E3D. 从DWG文件或坐标字符串导入建筑模型到E3D。支持parse预览和import生成PML脚本。\n" +
-"- autocad: Connect to running AutoCAD, get selected objects and import to E3D. 连接运行中的AutoCAD，获取选中对象并导入E3D。前置条件：AutoCAD已启动并打开图纸。\n\n" +
+"- autocad: Connect to running AutoCAD, get selected objects and import to E3D. 连接运行中的AutoCAD，获取选中对象并导入E3D。前置条件：AutoCAD已启动并打开图纸。\n" +
+"- structure_drawing: Export structural elements (SCTN/STWL/FRMW) to CAD 2D drawings (DXF format). 土建结构出图工具：将E3D结构元素导出为CAD二维工程图。支持平面图、立面图、剖面图、批量出图和预览。\n\n" +
 
 "## E3D Database Hierarchy\n" +
 "E3D uses a hierarchical database: Project → Zone → SubZone → Element.\n" +
