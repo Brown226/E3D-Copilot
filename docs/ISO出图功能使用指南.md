@@ -1,8 +1,9 @@
 # E小智 ISO出图功能使用指南
 
-> **版本**: v2.1.0  
-> **更新日期**: 2026-06-25  
-> **功能来源**: 集成 CNPE.IC.ISO 项目
+> **版本**: v2.2.0  
+> **更新日期**: 2026-06-26  
+> **功能来源**: 集成 CNPE.IC.ISO 项目  
+> **核心引擎**: `CNPE.ISO.E3D.Draw` → ISODRAFT 模块 → AutoCAD WCF 格式化
 
 ---
 
@@ -67,10 +68,39 @@ AI：配置完成！现在可以使用ISO出图功能了。
 | `project_id` | string | | 项目编号：`1907` / `1916` / `2016` / `2026` |
 | `output_dir` | string | | 输出目录路径 |
 | `cad_exe_path` | string | | AutoCAD可执行文件路径 |
-| `include_material_list` | bool | | 是否包含材料清单 |
-| `template_type` | string | | 模板类型：`standard` / `detailed` / `simplified` |
+| `include_material_list` | bool | | 是否包含材料清单（由ISO模板控制，预留参数） |
+| `template_type` | string | | 模板类型（预留参数，当前由ISODRAFT模板文件控制） |
+| `open_in_cad` | bool | | 生成完成后是否自动用AutoCAD打开DWG文件，默认 `false` |
 
-**使用示例**：
+**JSON 参数示例**：
+
+```json
+// 单个管道生成
+{
+  "action": "generate",
+  "pipe_name": "/PIPE-1001",
+  "project_id": "1907",
+  "output_dir": "D:\\ISO出图结果",
+  "cad_exe_path": "C:\\Program Files\\Autodesk\\AutoCAD 2024\\acad.exe",
+  "open_in_cad": true
+}
+
+// 批量生成
+{
+  "action": "batch_generate",
+  "pipe_names": ["/PIPE-1001", "/PIPE-1002", "/PIPE-1003"],
+  "project_id": "1907",
+  "output_dir": "D:\\ISO出图结果"
+}
+
+// 查询生成状态
+{
+  "action": "query_status",
+  "output_dir": "D:\\ISO出图结果"
+}
+```
+
+**自然语言示例**：
 
 ```
 # 单个管道生成
@@ -309,13 +339,18 @@ AI：配置完成！现在可以使用ISO出图功能了。
 
 ### Q3: ISO图纸生成失败
 
-**原因**：AutoCAD未运行或管道不存在
+**原因**：多种可能 — AutoCAD未安装、管道不存在、ISODRAFT模块异常、模板文件缺失
 
 **解决**：
-1. 确保AutoCAD进程正在运行
-2. 检查管道名称是否正确
-3. 确认E3D中存在该管道
+1. 确认 AutoCAD 已安装且路径配置正确
+2. 检查管道名称是否正确（在E3D中可查询到）
+3. 确认E3D中存在该管道且包含分支（BRAN）
 4. 检查输出目录是否有写入权限
+5. 确认部署文件完整（IsoTemplate、seed.dwg、SKEYS、LoadPlugins.scr）
+6. 查看 Draw 返回的错误消息（ToolResult 中包含）
+
+> **注意**：`Draw.Detail()` 内部会启动一个独立的 AutoCAD 进程（通过 WCF 命名管道通信），
+> 不需要预先手动启动 AutoCAD。如果生成失败，AutoCAD 可能会弹出 MessageBox 显示错误。
 
 ### Q4: 如何修改默认配置
 
@@ -334,40 +369,90 @@ AI：配置完成！现在可以使用ISO出图功能了。
 
 ## 技术架构
 
+### 出图流程（generate / batch_generate）
+
 ```
 用户自然语言
     ↓
-E小智 AI Agent
+E小智 AI Agent → generate_iso_drawing 工具
     ↓
-┌─────────────────────────────────────────┐
-│  ISO出图工具层                           │
-│  ├─ generate_iso_drawing (ISO生成)      │
-│  ├─ query_material (材料查询)            │
-│  ├─ get_pipe_info (管道信息)             │
-│  └─ manage_autocad (AutoCAD管理)        │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  IsoDrawingHandler.ExecuteAsync()                │
+│  1. 读取配置（CopilotConfig.Iso）                │
+│  2. 验证管道存在（PipeReader 构造函数）           │
+│  3. 调用 Draw.Instance.Detail()  ← 后台线程      │
+└──────────────────────────────────────────────────┘
     ↓
-┌─────────────────────────────────────────┐
-│  CNPE.IC.ISO 核心库                      │
-│  ├─ CNPE.ISO.E3D.Core (E3D数据提取)     │
-│  ├─ CNPE.ISO.CAD.Core (CAD图纸生成)     │
-│  └─ CNPE.ISO.Model (数据模型)           │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  CNPE.ISO.E3D.Draw.Detail()                      │
+│  ├─ 创建 CadProxy（启动 AutoCAD，WCF 连接）      │
+│  └─ 对每个管道：                                  │
+│     ├─ IsoItem.SetItemModel()                    │
+│     │  ├─ PcomReader   — 阀门格式化               │
+│     │  ├─ ConnReader    — 接图信息                 │
+│     │  ├─ MaterialReader — 材料信息               │
+│     │  ├─ PipeReader    — 管道属性                 │
+│     │  └─ BranReader    — 焊缝/支架信息           │
+│     ├─ IsoItem.OutputTran()                      │
+│     │  └─ ISODRAFT PML: $M template / TRANSFER   │
+│     ├─ IsoItem.ResetTran()                       │
+│     │  └─ 修改 TRAN（SKEY编号、ATTA点处理）       │
+│     ├─ IsoItem.ConvertTranToDxfs()               │
+│     │  └─ ISODRAFT PML: PROCESS TRANSFERFILE     │
+│     └─ CadProxy.FormatDxf()                      │
+│        └─ WCF → AutoCAD 插件 → 保存 DWG           │
+└──────────────────────────────────────────────────┘
     ↓
-┌─────────────────────────────────────────┐
-│  外部软件                                │
-│  ├─ E3D (管道数据源)                     │
-│  └─ AutoCAD (图纸生成)                   │
-└─────────────────────────────────────────┘
+输出 DWG 文件到 output_dir
 ```
+
+### DLL 依赖关系
+
+```
+E3DCopilot.Core.dll
+  ├─ CNPE.ISO.E3D.dll        ← Draw, IsoItem, CadProxy
+  ├─ CNPE.ISO.E3D.Core.dll   ← PipeReader, BranReader, ConnReader
+  ├─ CNPE.ISO.CAD.Core.dll   ← CAD 格式化核心
+  └─ CNPE.ISO.Model.dll      ← ItemModel, PipeLineInfoModel
+
+运行时传递依赖（E3D 环境提供）：
+  ├─ CNPE.ISO.Common.dll     ← ApplicationEvar, Log, WCFHelper
+  ├─ CNPE.ISO.Contract.dll   ← IDetailIso (WCF 接口)
+  ├─ CNPE.ISO.E3D.Utility.dll ← PmlUtility
+  ├─ CNPE.ISO.E3D.DetailDrawing.dll ← BranElement
+  └─ Aveva.Core.*.dll        ← E3D API
+```
+
+### 部署文件要求
+
+以下文件必须与 `CNPE.ISO.E3D.dll` 放在同一目录（E3D 插件目录）：
+
+| 文件/目录 | 说明 |
+|-----------|------|
+| `IsoTemplate/` | ISODRAFT 模板文件目录 |
+| `seed.dwg` | AutoCAD 种子文件 |
+| `SKEYS` | 管件符号库 |
+| `LoadPlugins.scr` | AutoCAD 插件加载脚本 |
+| `Evars.config` | 环境变量配置（CAD路径、插件目录） |
+| `PIPE.csv` / `BOLT.csv` / `SCTN.csv` / `SUPP.csv` | 材料编码数据 |
 
 ---
 
 ## 更新日志
 
+### v2.2.0 (2026-06-26)
+
+- ✅ **替换 Mock 实现**：`IsoDrawingHandler` 现在调用真实的 `CNPE.ISO.E3D.Draw.Instance.Detail()`
+- ✅ **完整 ISODRAFT 流程**：TRAN 生成 → TRAN 修改 → DXF 转换 → AutoCAD 格式化
+- ✅ **新增 `open_in_cad` 参数**：生成后可选自动打开 DWG 文件
+- ✅ **管道预验证**：通过 `PipeReader` 构造函数验证管道存在性
+- ✅ **批量优化**：一次性传入所有管道，单次 AutoCAD 会话处理
+- ✅ **新增 DLL 引用**：`CNPE.ISO.E3D.dll`（Draw / IsoItem / CadProxy）
+- ✅ **补充部署文档**：IsoTemplate、seed.dwg、SKEYS 等文件要求
+
 ### v2.1.0 (2026-06-25)
 
-- ✅ 新增ISO出图功能
+- ✅ 新增ISO出图功能（Mock 实现）
 - ✅ 新增材料查询功能
 - ✅ 新增管道信息提取功能
 - ✅ 新增AutoCAD进程管理功能

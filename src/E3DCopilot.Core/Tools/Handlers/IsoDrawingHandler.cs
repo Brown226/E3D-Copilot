@@ -9,14 +9,15 @@ using E3DCopilot.Core.Tools;
 using E3DCopilot.Core.Config;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using CNPE.ISO.E3D;
 using CNPE.ISO.E3D.Core;
-using CNPE.ISO.Model;
 
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
     /// ISO等轴测图出图工具 - 封装CNPE.IC.ISO的核心功能
-    /// 支持从E3D提取管道数据并生成ISO图纸
+    /// 通过 ISODRAFT 模块生成管道 ISO 图，与结构出图完全分离。
+    /// 核心流程：PipeReader 读取管道数据 → IsoItem 生成 TRAN/DXF → CadProxy 在 AutoCAD 中格式化输出 DWG
     /// </summary>
     public class IsoDrawingHandler : IToolHandler
     {
@@ -28,7 +29,7 @@ namespace E3DCopilot.Core.Tools.Handlers
         }
 
         public string Name => "generate_iso_drawing";
-        public string Description => "从E3D提取管道数据并生成ISO等轴测图。支持批量处理，可指定项目编号和输出目录。";
+        public string Description => "从E3D提取管道数据并通过ISODRAFT模块生成ISO等轴测图。支持单管道生成、批量生成、状态查询。生成的DWG文件包含材料表、标注和消隐。";
         public string ParameterSchema => @"{
   ""type"": ""object"",
   ""properties"": {
@@ -53,20 +54,24 @@ namespace E3DCopilot.Core.Tools.Handlers
     },
     ""output_dir"": {
       ""type"": ""string"",
-      ""description"": ""输出目录路径，默认为 D:\\ISO出图结果""
+      ""description"": ""输出目录路径，默认从配置读取""
     },
     ""cad_exe_path"": {
       ""type"": ""string"",
-      ""description"": ""AutoCAD可执行文件路径，默认为 D:\\AutoCAD 2022\\acad.exe""
+      ""description"": ""AutoCAD可执行文件路径，默认从配置读取或自动检测""
     },
     ""include_material_list"": {
       ""type"": ""boolean"",
-      ""description"": ""是否包含材料清单，默认为 true""
+      ""description"": ""是否包含材料清单，默认为 true（由ISO模板控制）""
     },
     ""template_type"": {
       ""type"": ""string"",
       ""enum"": [""standard"", ""detailed"", ""simplified""],
-      ""description"": ""模板类型：standard-标准模板，detailed-详细模板，simplified-简化模板""
+      ""description"": ""模板类型（预留参数，当前由ISODRAFT模板文件控制）""
+    },
+    ""open_in_cad"": {
+      ""type"": ""boolean"",
+      ""description"": ""生成完成后是否自动用AutoCAD打开DWG文件，默认为 false""
     }
   },
   ""required"": [""action""]
@@ -105,6 +110,10 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  generate — 单管道 ISO 生成
+        // ═══════════════════════════════════════════════════════════
+
         /// <summary>
         /// 生成单个管道的ISO图
         /// </summary>
@@ -114,14 +123,15 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (string.IsNullOrEmpty(pipeName))
                 return ToolResult.Fail("生成单个ISO图时需要指定 pipe_name 参数");
 
+            ct.ThrowIfCancellationRequested();
+
             // 从配置中读取默认值
             var config = CopilotConfig.Load();
-            
+
             string projectId = json["project_id"]?.ToString() ?? config.Iso.DefaultProjectId;
             string outputDir = json["output_dir"]?.ToString() ?? config.Iso.DefaultOutputDir;
             string cadExePath = json["cad_exe_path"]?.ToString() ?? config.Iso.AutoCadPath;
-            bool includeMaterialList = json["include_material_list"]?.Value<bool>() ?? config.Iso.IncludeMaterialList;
-            string templateType = json["template_type"]?.ToString() ?? config.Iso.DefaultTemplateType;
+            bool openInCad = json["open_in_cad"]?.Value<bool>() ?? false;
 
             // 如果配置中没有AutoCAD路径，尝试自动检测
             if (string.IsNullOrEmpty(cadExePath))
@@ -129,74 +139,79 @@ namespace E3DCopilot.Core.Tools.Handlers
                 cadExePath = DetectAutoCadPathFromRegistry();
                 if (!string.IsNullOrEmpty(cadExePath))
                 {
-                    // 保存检测到的路径到配置
                     config.Iso.AutoCadPath = cadExePath;
                     config.Save();
                 }
             }
 
-            // 验证管道是否存在
-            var pipeInfo = GetPipeInfo(pipeName);
-            if (pipeInfo == null)
-                return ToolResult.Fail($"管道 {pipeName} 不存在或无法访问");
+            if (string.IsNullOrEmpty(cadExePath))
+                return ToolResult.Fail("未找到AutoCAD路径，请在配置中设置 cad_exe_path 或确保AutoCAD已安装");
+
+            if (string.IsNullOrEmpty(outputDir))
+                return ToolResult.Fail("未设置输出目录，请在配置中设置 output_dir 或在参数中指定");
 
             // 确保输出目录存在
-            if (!Directory.Exists(outputDir))
+            try
             {
-                try
-                {
+                if (!Directory.Exists(outputDir))
                     Directory.CreateDirectory(outputDir);
-                }
-                catch (Exception ex)
-                {
-                    return ToolResult.Fail($"无法创建输出目录: {ex.Message}");
-                }
+            }
+            catch (Exception ex)
+            {
+                return ToolResult.Fail($"无法创建输出目录: {ex.Message}");
             }
 
-            // 构建生成参数
-            var generateParams = new
-            {
-                PipeName = pipeName,
-                ProjectId = projectId,
-                OutputDir = outputDir,
-                CadExePath = cadExePath,
-                IncludeMaterialList = includeMaterialList,
-                TemplateType = templateType,
-                PipeInfo = pipeInfo
-            };
+            // 验证管道是否存在
+            if (!ValidatePipeExists(pipeName))
+                return ToolResult.Fail($"管道 {pipeName} 不存在或无法访问");
 
-            // 这里应该调用CNPE.IC.ISO的核心逻辑
-            // 由于我们是在E3D环境中，需要通过进程间通信或直接调用
-            
-            // 模拟生成过程（实际实现需要调用CNPE.IC.ISO的Draw类）
-            var result = await SimulateIsoGeneration(generateParams, ct);
+            // 调用 CNPE.ISO.E3D.Draw 生成 ISO 图
+            var sw = Stopwatch.StartNew();
+            var result = await GenerateIsoUsingDraw(
+                new List<string> { pipeName },
+                new List<string>(),
+                outputDir,
+                cadExePath);
+
+            sw.Stop();
 
             if (result.Success)
             {
+                // 可选：自动打开 AutoCAD
+                if (openInCad)
+                {
+                    OpenInAutoCad(cadExePath, outputDir);
+                }
+
                 var meta = new JObject
                 {
                     ["tool"] = "generate_iso_drawing",
                     ["action"] = "generate",
                     ["pipe_name"] = pipeName,
                     ["project_id"] = projectId,
-                    ["output_file"] = result.OutputFile,
-                    ["generation_time"] = result.GenerationTime
+                    ["output_dir"] = outputDir,
+                    ["generation_time"] = sw.Elapsed.TotalSeconds,
+                    ["message"] = result.Message
                 };
 
                 return ToolResult.Ok(
                     $"ISO图纸生成成功\n" +
                     $"管道: {pipeName}\n" +
                     $"项目: {projectId}\n" +
-                    $"输出文件: {result.OutputFile}\n" +
-                    $"生成时间: {result.GenerationTime:F1}秒\n" +
-                    $"包含材料清单: {(includeMaterialList ? "是" : "否")}",
+                    $"输出目录: {outputDir}\n" +
+                    $"生成时间: {sw.Elapsed.TotalSeconds:F1}秒\n" +
+                    $"详细信息: {result.Message}",
                     meta);
             }
             else
             {
-                return ToolResult.Fail($"ISO图纸生成失败: {result.ErrorMessage}");
+                return ToolResult.Fail($"ISO图纸生成失败: {result.Message}");
             }
         }
+
+        // ═══════════════════════════════════════════════════════════
+        //  batch_generate — 批量生成
+        // ═══════════════════════════════════════════════════════════
 
         /// <summary>
         /// 批量生成ISO图
@@ -207,94 +222,146 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (pipeNames == null || pipeNames.Count == 0)
                 return ToolResult.Fail("批量生成时需要指定 pipe_names 参数");
 
-            string projectId = json["project_id"]?.ToString() ?? "1907";
-            string outputDir = json["output_dir"]?.ToString() ?? @"D:\ISO出图结果";
-            string cadExePath = json["cad_exe_path"]?.ToString() ?? @"D:\AutoCAD 2022\acad.exe";
-            bool includeMaterialList = json["include_material_list"]?.Value<bool>() ?? true;
+            ct.ThrowIfCancellationRequested();
+
+            var config = CopilotConfig.Load();
+
+            string projectId = json["project_id"]?.ToString() ?? config.Iso.DefaultProjectId;
+            string outputDir = json["output_dir"]?.ToString() ?? config.Iso.DefaultOutputDir;
+            string cadExePath = json["cad_exe_path"]?.ToString() ?? config.Iso.AutoCadPath;
+            bool openInCad = json["open_in_cad"]?.Value<bool>() ?? false;
+
+            if (string.IsNullOrEmpty(cadExePath))
+            {
+                cadExePath = DetectAutoCadPathFromRegistry();
+                if (!string.IsNullOrEmpty(cadExePath))
+                {
+                    config.Iso.AutoCadPath = cadExePath;
+                    config.Save();
+                }
+            }
+
+            if (string.IsNullOrEmpty(cadExePath))
+                return ToolResult.Fail("未找到AutoCAD路径，请在配置中设置 cad_exe_path 或确保AutoCAD已安装");
+
+            if (string.IsNullOrEmpty(outputDir))
+                return ToolResult.Fail("未设置输出目录，请在配置中设置 output_dir 或在参数中指定");
 
             // 确保输出目录存在
-            if (!Directory.Exists(outputDir))
+            try
             {
-                try
-                {
+                if (!Directory.Exists(outputDir))
                     Directory.CreateDirectory(outputDir);
-                }
-                catch (Exception ex)
-                {
-                    return ToolResult.Fail($"无法创建输出目录: {ex.Message}");
-                }
             }
-
-            var results = new List<object>();
-            int successCount = 0;
-            int failCount = 0;
-
-            foreach (var pipeToken in pipeNames)
+            catch (Exception ex)
             {
-                ct.ThrowIfCancellationRequested();
-
-                string pipeName = pipeToken.ToString();
-                var pipeInfo = GetPipeInfo(pipeName);
-
-                if (pipeInfo == null)
-                {
-                    results.Add(new { PipeName = pipeName, Success = false, Error = "管道不存在" });
-                    failCount++;
-                    continue;
-                }
-
-                var generateParams = new
-                {
-                    PipeName = pipeName,
-                    ProjectId = projectId,
-                    OutputDir = outputDir,
-                    CadExePath = cadExePath,
-                    IncludeMaterialList = includeMaterialList,
-                    TemplateType = "standard",
-                    PipeInfo = pipeInfo
-                };
-
-                var result = await SimulateIsoGeneration(generateParams, ct);
-                
-                if (result.Success)
-                {
-                    results.Add(new { PipeName = pipeName, Success = true, OutputFile = result.OutputFile });
-                    successCount++;
-                }
-                else
-                {
-                    results.Add(new { PipeName = pipeName, Success = false, Error = result.ErrorMessage });
-                    failCount++;
-                }
+                return ToolResult.Fail($"无法创建输出目录: {ex.Message}");
             }
+
+            // 收集所有管道名称
+            var allPipes = pipeNames.Select(p => p.ToString()).ToList();
+
+            // 预验证管道是否存在
+            var validPipes = new List<string>();
+            var invalidPipes = new List<string>();
+            foreach (var pipeName in allPipes)
+            {
+                if (ValidatePipeExists(pipeName))
+                    validPipes.Add(pipeName);
+                else
+                    invalidPipes.Add(pipeName);
+            }
+
+            if (validPipes.Count == 0)
+                return ToolResult.Fail($"所有管道均不存在或无法访问: {string.Join(", ", invalidPipes)}");
+
+            // 调用 Draw.Instance.Detail() 一次性处理所有有效管道
+            // Draw 内部会创建一个 CadProxy（启动一次 AutoCAD），然后逐个处理管道
+            var sw = Stopwatch.StartNew();
+            var result = await GenerateIsoUsingDraw(
+                validPipes,
+                new List<string>(),
+                outputDir,
+                cadExePath);
+
+            sw.Stop();
+
+            // 扫描输出目录获取生成的文件
+            var generatedFiles = ScanOutputFiles(outputDir);
+
+            // 可选：自动打开 AutoCAD
+            if (openInCad && generatedFiles.Count > 0)
+            {
+                OpenInAutoCad(cadExePath, outputDir);
+            }
+
+            int successCount = generatedFiles.Count;
+            int failCount = validPipes.Count - successCount;
+            if (failCount < 0) failCount = 0; // 防御性：可能一个管道生成多个文件
 
             var summary = $"批量ISO出图完成\n" +
-                         $"总计: {pipeNames.Count} 个管道\n" +
-                         $"成功: {successCount} 个\n" +
-                         $"失败: {failCount} 个\n" +
-                         $"输出目录: {outputDir}";
+                         $"总计: {allPipes.Count} 个管道\n" +
+                         $"有效管道: {validPipes.Count} 个\n" +
+                         $"无效管道: {invalidPipes.Count} 个\n" +
+                         $"生成DWG文件: {successCount} 个\n" +
+                         $"输出目录: {outputDir}\n" +
+                         $"总耗时: {sw.Elapsed.TotalSeconds:F1}秒\n" +
+                         $"Draw返回消息: {result.Message}";
+
+            if (invalidPipes.Count > 0)
+            {
+                summary += $"\n不存在的管道: {string.Join(", ", invalidPipes)}";
+            }
+
+            if (generatedFiles.Count > 0)
+            {
+                summary += "\n生成的文件:\n";
+                foreach (var f in generatedFiles.Take(10))
+                    summary += $"  - {f.Name} ({f.LastWriteTime:yyyy-MM-dd HH:mm})\n";
+                if (generatedFiles.Count > 10)
+                    summary += $"  ... 还有 {generatedFiles.Count - 10} 个文件\n";
+            }
 
             var meta = new JObject
             {
                 ["tool"] = "generate_iso_drawing",
                 ["action"] = "batch_generate",
-                ["total"] = pipeNames.Count,
-                ["success"] = successCount,
-                ["fail"] = failCount,
+                ["total"] = allPipes.Count,
+                ["valid"] = validPipes.Count,
+                ["invalid"] = invalidPipes.Count,
+                ["generated_files"] = generatedFiles.Count,
                 ["output_dir"] = outputDir,
-                ["results"] = JArray.FromObject(results)
+                ["generation_time"] = sw.Elapsed.TotalSeconds,
+                ["draw_message"] = result.Message,
+                ["invalid_pipes"] = new JArray(invalidPipes),
+                ["recent_files"] = JArray.FromObject(generatedFiles.Take(20).Select(f => new
+                {
+                    file_name = f.Name,
+                    full_path = f.FullName,
+                    size = f.Length,
+                    last_modified = f.LastWriteTime
+                }))
             };
 
             return ToolResult.Ok(summary, meta);
         }
+
+        // ═══════════════════════════════════════════════════════════
+        //  query_status — 查询生成状态
+        // ═══════════════════════════════════════════════════════════
 
         /// <summary>
         /// 查询生成状态
         /// </summary>
         private async Task<ToolResult> QueryGenerationStatus(JObject json, CancellationToken ct)
         {
-            string outputDir = json["output_dir"]?.ToString() ?? @"D:\ISO出图结果";
-            
+            string outputDir = json["output_dir"]?.ToString() ?? CopilotConfig.Load().Iso.DefaultOutputDir;
+
+            if (string.IsNullOrEmpty(outputDir))
+            {
+                return ToolResult.Fail("未设置输出目录，请在配置中设置 output_dir 或在参数中指定");
+            }
+
             if (!Directory.Exists(outputDir))
             {
                 return ToolResult.Ok($"输出目录不存在: {outputDir}", new JObject
@@ -341,113 +408,121 @@ namespace E3DCopilot.Core.Tools.Handlers
             return ToolResult.Ok(summary, meta);
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  核心生成逻辑 — 调用 CNPE.ISO.E3D.Draw
+        // ═══════════════════════════════════════════════════════════
+
         /// <summary>
-        /// 获取管道信息（模拟实现，实际需要调用E3D API）
+        /// 调用 CNPE.ISO.E3D.Draw.Instance.Detail() 生成 ISO 图纸
+        /// 
+        /// Draw.Detail() 完整流程：
+        /// 1. 创建 CadProxy（启动 AutoCAD，通过 WCF 命名管道连接）
+        /// 2. 对每个管道：
+        ///    a. IsoItem.SetItemModel() — 读取 E3D 数据（PipeReader, BranReader, ConnReader 等）
+        ///    b. IsoItem.OutputTran() — 通过 ISODRAFT PML 命令生成 TRAN 文件
+        ///    c. IsoItem.ResetTran() — 修改 TRAN 文件（SKEY 编号、ATTA 点处理等）
+        ///    d. IsoItem.ConvertTranToDxfs() — 将 TRAN 转换为 DXF
+        ///    e. CadProxy.FormatDxf() — 在 AutoCAD 中格式化 DXF 并保存为 DWG
         /// </summary>
-        private object GetPipeInfo(string pipeName)
+        private async Task<IsoGenerationResult> GenerateIsoUsingDraw(
+            List<string> pipes, List<string> brans,
+            string outputDir, string cadExePath)
         {
             try
             {
-                // 使用真实的E3D API获取管道信息
-                var pipeReader = new PipeReader(pipeName);
-                var pipeModel = pipeReader.GetPipeModel("1907", new List<string[]>());
-                
-                return new
+                string outputMes = null;
+
+                // Draw.Detail() 是同步阻塞调用，在后台线程执行
+                // 不传递 CancellationToken，因为 Draw 内部无法响应取消
+                // （启动 AutoCAD + ISODRAFT PML 执行是不可中断的）
+                await Task.Run(() =>
                 {
-                    Name = pipeModel.Name,
-                    Exists = true,
-                    Type = "PIPE",
-                    BranchCount = 0, // PipeLineInfoModel没有BranchCount属性
-                    Bore = "DN100", // PipeLineInfoModel没有NominalDiameter属性
-                    Specification = "ASME B36.19", // PipeLineInfoModel没有Specification属性
-                    DesignPressure = pipeModel.DesignPressure,
-                    DesignTemperature = "100°C", // PipeLineInfoModel没有DesignTemperature属性
-                    Material = "022Cr19Ni10", // PipeLineInfoModel没有Material属性
-                    FluidType = pipeModel.FluidType,
-                    InsulationClass = "Class A", // PipeLineInfoModel没有InsulationClass属性
-                    HeatTracing = pipeModel.IsHeatTracing
-                };
-            }
-            catch (Exception ex)
-            {
-                // 如果真实API调用失败，返回基本的管道信息
-                return new
-                {
-                    Name = pipeName,
-                    Exists = false,
-                    Type = "PIPE",
-                    Error = ex.Message
-                };
-            }
-        }
+                    Draw.Instance.Detail(pipes, brans, outputDir, cadExePath, out outputMes);
+                });
 
-        /// <summary>
-        /// 使用真实CNPE.IC.ISO生成ISO图纸
-        /// </summary>
-        private async Task<IsoGenerationResult> SimulateIsoGeneration(object generateParams, CancellationToken ct)
-        {
-            var param = JObject.FromObject(generateParams);
-            string pipeName = param["PipeName"]?.ToString();
-            string outputDir = param["OutputDir"]?.ToString();
-            string projectId = param["ProjectId"]?.ToString();
-            string cadExePath = param["CadExePath"]?.ToString();
-            bool includeMaterialList = param["IncludeMaterialList"]?.Value<bool>() ?? true;
-            string templateType = param["TemplateType"]?.ToString() ?? "standard";
-
-            var sw = Stopwatch.StartNew();
-
-            try
-            {
-                // 确保输出目录存在
-                if (!Directory.Exists(outputDir))
-                {
-                    Directory.CreateDirectory(outputDir);
-                }
-
-                // 模拟ISO生成过程（实际实现需要调用CNPE.IC.ISO的完整流程）
-                // 由于CNPE.ISO.CAD.Core.Draw类可能不在当前DLL中，我们模拟生成过程
-                
-                // 模拟生成时间
-                await Task.Delay(2000, ct);
-
-                sw.Stop();
-
-                // 模拟输出文件
-                string outputFile = Path.Combine(outputDir, $"{pipeName?.Replace("/", "")}.dwg");
-                
-                // 创建模拟的输出文件
-                File.WriteAllText(outputFile, $"ISO图纸生成成功 - {pipeName} - {DateTime.Now}");
+                bool success = outputMes != null && outputMes.StartsWith("出图成功");
 
                 return new IsoGenerationResult
                 {
-                    Success = true,
-                    OutputFile = outputFile,
-                    GenerationTime = sw.Elapsed.TotalSeconds,
-                    ErrorMessage = null
+                    Success = success,
+                    Message = outputMes ?? "Draw.Detail 未返回消息"
                 };
             }
             catch (Exception ex)
             {
-                sw.Stop();
                 return new IsoGenerationResult
                 {
                     Success = false,
-                    OutputFile = null,
-                    GenerationTime = sw.Elapsed.TotalSeconds,
-                    ErrorMessage = ex.Message
+                    Message = ex.Message
                 };
             }
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  辅助方法
+        // ═══════════════════════════════════════════════════════════
+
         /// <summary>
-        /// ISO生成结果
+        /// 验证管道是否存在
+        /// 通过 PipeReader 构造函数验证元素是否为 PIPE 或 BRAN 类型
         /// </summary>
-        private class IsoGenerationResult
+        private bool ValidatePipeExists(string pipeName)
         {
-            public bool Success { get; set; }
-            public string OutputFile { get; set; }
-            public double GenerationTime { get; set; }
-            public string ErrorMessage { get; set; }
+            try
+            {
+                // PipeReader 构造函数会调用 DbElement.GetElement() 并验证元素类型
+                // 如果元素不存在或不是 PIPE/BRAN，会抛出异常
+                var pipeReader = new PipeReader(pipeName);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 扫描输出目录中的 DWG 文件
+        /// </summary>
+        private List<FileInfo> ScanOutputFiles(string outputDir)
+        {
+            var files = new List<FileInfo>();
+            try
+            {
+                if (Directory.Exists(outputDir))
+                {
+                    files = Directory.GetFiles(outputDir, "*.dwg", SearchOption.TopDirectoryOnly)
+                                     .Select(f => new FileInfo(f))
+                                     .OrderByDescending(f => f.LastWriteTime)
+                                     .ToList();
+                }
+            }
+            catch
+            {
+                // 忽略扫描错误
+            }
+            return files;
+        }
+
+        /// <summary>
+        /// 用 AutoCAD 打开输出目录中最近的 DWG 文件
+        /// </summary>
+        private void OpenInAutoCad(string cadExePath, string outputDir)
+        {
+            try
+            {
+                var files = ScanOutputFiles(outputDir);
+                if (files.Count > 0)
+                {
+                    // 打开最近生成的 DWG 文件
+                    var latestFile = files.First();
+                    Process.Start(cadExePath, $"\"{latestFile.FullName}\"");
+                }
+            }
+            catch
+            {
+                // 忽略打开错误
+            }
         }
 
         /// <summary>
@@ -511,6 +586,15 @@ namespace E3DCopilot.Core.Tools.Handlers
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// ISO生成结果
+        /// </summary>
+        private class IsoGenerationResult
+        {
+            public bool Success { get; set; }
+            public string Message { get; set; }
         }
     }
 }
