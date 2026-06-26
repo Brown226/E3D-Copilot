@@ -691,6 +691,13 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
       case 'tool:dispatch': {
         flushDeltaBuffer();  // 确保文本在工具卡片之前渲染
         const p = msg.payload as ToolDispatchPayload;
+        // 如果当前正在累积 assistant 消息，先将其截断，避免 tool 调用后的文本
+        // 被追加到 tool 之前的 assistant 消息中，导致最终总结渲染到工具上面。
+        const targetId = tabId || s.activeTabId;
+        const tab = s.tabs.find((t) => t.id === targetId);
+        if (tab?.currentAssistantMsgId) {
+          s.finalizeAssistantMessage(tab.currentAssistantMsgId, targetId);
+        }
         s.appendMessage({
           role: 'tool_call',
           content: `正在调用 ${p.name}...`,
