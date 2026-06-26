@@ -92,14 +92,17 @@ namespace E3DCopilot.Core.Events
         public static CopilotEvent Error(string message) =>
             new CopilotEvent { Kind = EventKind.Error, Text = message };
 
+        public static CopilotEvent Notice(string message) =>
+            new CopilotEvent { Kind = EventKind.Notice, Text = message };
+
         public static CopilotEvent RetryEvent(string message, int attempt) =>
             new CopilotEvent { Kind = EventKind.Retry, Text = $"{message} (第 {attempt} 次尝试)" };
 
         public static CopilotEvent TurnDone() =>
             new CopilotEvent { Kind = EventKind.TurnDone };
 
-        public static CopilotEvent Notice(string message) =>
-            new CopilotEvent { Kind = EventKind.Notice, Text = message };
+        public static CopilotEvent MessageEvent(string text, string reasoning = null) =>
+            new CopilotEvent { Kind = EventKind.Message, Text = text, Data = reasoning };
     }
 
     // ═══════════════════════════════════════════════════════════

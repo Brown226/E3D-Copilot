@@ -42,6 +42,17 @@ namespace E3DCopilot.Core.Tools.Handlers
                     return ToolResult.Fail("检测到纯属性读取操作，请使用 get_attributes 工具读取属性，它更快且更稳定。");
                 }
 
+                // ── PML 脚本预检（对齐 Reasonix 执行前 safety check）──
+                if (!string.IsNullOrEmpty(script))
+                {
+                    var validation = PmlValidator.Validate(script);
+                    if (!validation.Passed)
+                    {
+                        return ToolResult.Fail($"[PML 预检拦截] {validation.Message}");
+                    }
+                    // 警告级别不阻止，但在 meta 中记录
+                }
+
                 var result = await _dispatcher.ExecuteAsync("execute_pml", args);
                 // 最小安全方案：Text 不变，Data 放结构化 meta 供前端渲染
                 var meta = new JObject

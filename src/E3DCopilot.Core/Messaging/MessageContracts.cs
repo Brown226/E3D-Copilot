@@ -54,6 +54,7 @@ namespace E3DCopilot.Core.Messaging
 
         // === 后端 → 前端 ===
         public const string Pong = "pong";
+        public const string LlmMessage = "llm:message";
         public const string LlmStreamDelta = "llm:stream:delta";
         public const string LlmStreamEnd = "llm:stream:end";
         public const string LlmThinking = "llm:thinking";

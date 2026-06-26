@@ -86,6 +86,10 @@ namespace E3DCopilot.Core
         public CopilotConfig Config { get; }
         public SkillManager Skills { get; }
         public MemoryManager Memory { get; }
+
+        // ── 会话持久化 & 操作快照（对齐 Reasonix save.go + checkpoint.go）──
+        public SessionStore Sessions { get; }
+        public CheckpointManager Checkpoints { get; }
         
         // ── Current model ──
         public string CurrentModelName { get; private set; }
@@ -182,6 +186,13 @@ namespace E3DCopilot.Core
             // 初始化记忆管理器
             Memory = new MemoryManager();
 
+            // 初始化会话存储 & 操作快照管理器
+            var dataDir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "E3DCopilot");
+            Sessions = new SessionStore(System.IO.Path.Combine(dataDir, "sessions"));
+            Checkpoints = new CheckpointManager(System.IO.Path.Combine(dataDir, "checkpoints"));
+
             // 注册 memory 工具（需要 MemoryManager，在 CreateDefault 之后）
             if (Executor.GetHandler("memory") == null)
                 Executor.Register(new Tools.Handlers.MemoryHandler(Memory, _sink));
@@ -275,10 +286,19 @@ namespace E3DCopilot.Core
 
                 _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this, skillManager: Skills,
                     stormSig: StormSig, stormCount: StormCount);
+
+                // ── 会话活跃标记（对齐 Reasonix save.go MarkActive）──
+                Sessions.MarkActive(_session?.SessionPath);
+
                 await _agent.RunAsync(_session, input, images, _cts.Token);
                 // 回写 Storm Breaker 状态（AgentLoop 内部可能已更新）
                 StormSig = _agent.StormSig;
                 StormCount = _agent.StormCount;
+
+                // ── 会话持久化（对齐 Reasonix save.go Save）──
+                Sessions.Save(_session);
+                Sessions.MarkClean(_session?.SessionPath);
+
                 // 正常完成时也要触发 TurnDone
                 try { _sink?.Emit(CopilotEvent.TurnDone()); } catch { }
             }
@@ -461,6 +481,13 @@ namespace E3DCopilot.Core
         /// </summary>
         public void NewSession()
         {
+            // 保存当前会话（对齐 Reasonix save.go — 切换前持久化）
+            if (_session != null && _session.Messages.Count > 0)
+            {
+                Sessions.Save(_session);
+                Sessions.MarkClean(_session.SessionPath);
+            }
+
             // 完成所有待处理的审批（避免旧 AgentLoop 永久挂起）
             foreach (var kvp in _pendingApprovals)
             {
@@ -489,6 +516,49 @@ namespace E3DCopilot.Core
         {
             if (_session == null) return "No session";
             return $"Messages: {_session.Messages.Count} | Mode: {(_session.IsPlanMode ? "Plan" : "Act")}";
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  会话恢复 — 崩溃恢复 & 历史加载（对齐 Reasonix save.go Restore）
+        // ═══════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 恢复指定路径的会话（从 JSONL 加载到当前 _session）
+        /// </summary>
+        public bool RestoreSession(string sessionPath)
+        {
+            if (string.IsNullOrEmpty(sessionPath) || !System.IO.File.Exists(sessionPath))
+                return false;
+
+            var loaded = Sessions.Load(sessionPath);
+            if (loaded == null) return false;
+
+            // 保存当前会话（如果有内容）
+            if (_session != null && _session.Messages.Count > 0)
+            {
+                Sessions.Save(_session);
+                Sessions.MarkClean(_session.SessionPath);
+            }
+
+            _session = loaded;
+            _sink.Emit(CopilotEvent.Notice($"已恢复会话: {sessionPath}"));
+            return true;
+        }
+
+        /// <summary>
+        /// 检查是否有崩溃未恢复的会话，返回列表供前端提示用户
+        /// </summary>
+        public List<CrashedSessionInfo> CheckCrashedSessions()
+        {
+            return Sessions.GetCrashedSessions();
+        }
+
+        /// <summary>
+        /// 列出所有已保存的正常会话（供历史面板使用）
+        /// </summary>
+        public List<SavedSessionInfo> ListSavedSessions()
+        {
+            return Sessions.ListSessions();
         }
 
         public void Dispose()

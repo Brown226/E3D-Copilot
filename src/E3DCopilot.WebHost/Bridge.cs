@@ -454,6 +454,10 @@ namespace E3DCopilot.WebHost
                     SendToFrontend(MessageTypes.LlmStreamDelta, new { delta = evt.Text, tabId });
                     break;
 
+                case EventKind.Message:
+                    SendToFrontend(MessageTypes.LlmMessage, new { text = evt.Text, reasoning = evt.Data, tabId });
+                    break;
+
                 case EventKind.StreamEnd:
                     SendToFrontend(MessageTypes.LlmStreamEnd, new { usage = evt.Data, error = evt.Text, tabId });
                     break;

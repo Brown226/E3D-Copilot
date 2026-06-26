@@ -14,6 +14,9 @@ namespace E3DCopilot.Core
         public int TokenCount { get; set; }
         public bool IsPlanMode { get; set; }
 
+        /// <summary>会话持久化路径（JSONL 文件路径，首次保存时由 SessionStore 赋值）</summary>
+        public string SessionPath { get; set; }
+
         /// <summary>
         /// 追加用户消息
         /// </summary>
