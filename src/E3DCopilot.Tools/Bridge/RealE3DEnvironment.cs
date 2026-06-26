@@ -182,7 +182,7 @@ namespace E3DCopilot.Tools.Bridge
 
         /// <summary>
         /// 在 E3D UI 线程上执行委托（E3D API 非线程安全）
-        /// 使用 Post + TaskCompletionSource 避免线程死锁
+        /// 使用 Post + TaskCompletionSource 避免线程死锁，带 5 秒超时保护
         /// </summary>
         private T InvokeOnUi<T>(Func<T> action)
         {
@@ -206,8 +206,15 @@ namespace E3DCopilot.Tools.Bridge
                 }
             }, null);
 
-            // 等待结果，使用异步避免阻塞线程池线程
-            return tcs.Task.GetAwaiter().GetResult();
+            // 等待结果，带 5 秒超时
+            if (tcs.Task.Wait(TimeSpan.FromSeconds(5)))
+            {
+                return tcs.Task.Result;
+            }
+            else
+            {
+                throw new TimeoutException("E3D UI thread operation timeout (5s). E3D may be unresponsive.");
+            }
         }
 
         private void InvokeOnUi(Action action)
@@ -233,7 +240,11 @@ namespace E3DCopilot.Tools.Bridge
                 }
             }, null);
 
-            tcs.Task.GetAwaiter().GetResult();
+            // 等待结果，带 5 秒超时
+            if (!tcs.Task.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("E3D UI thread operation timeout (5s). E3D may be unresponsive.");
+            }
         }
         public List<ElementInfo> QueryElements(string elementType, string namePattern, string scope, int limit)
         {
@@ -435,21 +446,39 @@ namespace E3DCopilot.Tools.Bridge
             });
         }
 
+        /// <summary>
+        /// 执行 PML 命令（带超时保护，防止卡死）
+        /// </summary>
         public string ExecutePml(string pmlCommand)
         {
-            return InvokeOnUi(() =>
+            // 使用 Task 包装同步调用，添加超时保护
+            var task = Task.Run(() =>
             {
-                try
+                return InvokeOnUi(() =>
                 {
-                    var cmd = Command.CreateCommand(pmlCommand);
-                    bool ok = cmd.RunInPdms();
-                    return ok ? (cmd.Result ?? "") : "Error: PML execution failed";
-                }
-                catch (Exception ex)
-                {
-                    return "Error: " + ex.Message;
-                }
+                    try
+                    {
+                        var cmd = Command.CreateCommand(pmlCommand);
+                        bool ok = cmd.RunInPdms();
+                        return ok ? (cmd.Result ?? "") : "Error: PML execution failed";
+                    }
+                    catch (Exception ex)
+                    {
+                        return "Error: " + ex.Message;
+                    }
+                });
             });
+
+            // 等待任务完成，设置 10 秒超时
+            if (task.Wait(TimeSpan.FromSeconds(10)))
+            {
+                return task.Result;
+            }
+            else
+            {
+                // 超时，尝试取消（但可能无法真正取消正在执行的 PML）
+                return "Error: PML execution timeout (10s). E3D may be busy or unresponsive.";
+            }
         }
 
         public string GetCurrentElementName()
