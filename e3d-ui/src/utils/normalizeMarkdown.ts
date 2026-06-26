@@ -118,50 +118,86 @@ function isSeparatorLine(line: string): boolean {
 }
 
 /**
- * 修复表格列数不一致：数据行列数超过表头列数时拆分
- * 例如：| NAME | /MDS/FRAMES/VT18 | TYPE | ZONE | → 拆为两行
+ * 修复表格列数不一致：
+ * 1. 补齐表头/数据行缺失的尾部 |
+ * 2. 数据行列数超过表头时拆分为多行
  */
 function fixInconsistentColumns(lines: string[]): string[] {
   const result: string[] = []
   let headerCols = 0
+  let pendingHeaderLine = '' // 缓存表头行（分隔行上一行）
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const trimmed = line.trim()
 
-    // 检测表头：上一行是分隔行时，当前行是数据行
-    // 先找分隔行确定列数
+    // 分隔行：确定列数，并回补表头行
     if (isSeparatorLine(trimmed)) {
-      // 统计分隔列数
-      const sepCells = trimmed.split('|').filter(c => c.trim().length > 0 || c === '')
-      // 分隔行格式: |---|---| → split by | 得到 ['', '---', '---', '']
-      headerCols = trimmed.split('|').length - 2 // 减去首尾空串
+      headerCols = trimmed.split('|').length - 2
       if (headerCols < 1) headerCols = 2
+
+      // 回补表头行（如果列数不够则补齐）
+      if (pendingHeaderLine) {
+        const headerCells = pendingHeaderLine.split('|')
+        // 分隔行 split 后有 headerCols+2 个元素（首尾各一个空串）
+        while (headerCells.length < headerCols + 2) {
+          headerCells.splice(headerCells.length - 1, 0, ' ')
+        }
+        result.push(headerCells.join('|'))
+        pendingHeaderLine = ''
+      }
+
       result.push(line)
       continue
     }
 
-    // 数据行列数是表头的整数倍 → 拆分
-    if (headerCols > 0 && isTableRow(trimmed)) {
-      const cells = trimmed.split('|').filter((_, idx, arr) => {
-        // 保留有意义的列，去掉首尾空串
-        if (idx === 0 || idx === arr.length - 1) return false
-        return true
-      })
-      if (cells.length > headerCols && cells.length % headerCols === 0) {
-        const rowCount = cells.length / headerCols
+    // 检测是否为潜在表格行（含 |）
+    if (trimmed.includes('|') && trimmed.indexOf('|') < trimmed.length - 1) {
+      // 计算当前行的列数（split by |，去掉首尾空串）
+      const cellCount = trimmed.split('|').length - 2
+
+      // 如果还没确定表头列数，先缓存这一行作为表头候选
+      if (headerCols === 0) {
+        pendingHeaderLine = trimmed
+        result.push(line)
+        continue
+      }
+
+      // 数据行列数是表头的整数倍 → 拆分
+      if (cellCount > headerCols && cellCount % headerCols === 0) {
+        const cells = trimmed.split('|').filter((_, idx, arr) => {
+          if (idx === 0 || idx === arr.length - 1) return false
+          return true
+        })
+        const rowCount = cellCount / headerCols
         for (let r = 0; r < rowCount; r++) {
           const rowCells = cells.slice(r * headerCols, (r + 1) * headerCols)
           result.push('|' + rowCells.join('|') + '|')
         }
         continue
       }
+
+      // 数据行列数不够表头 → 补齐尾部 |
+      if (cellCount > 0 && cellCount < headerCols) {
+        let fixed = trimmed
+        if (!fixed.endsWith('|')) fixed += '|'
+        // 补齐列数
+        const currentCells = fixed.split('|')
+        while (currentCells.length < headerCols + 2) {
+          currentCells.splice(currentCells.length - 1, 0, ' ')
+        }
+        result.push(currentCells.join('|'))
+        continue
+      }
+
+      // 列数一致，正常通过
+      result.push(line)
+      continue
     }
 
-    // 非表格行或列数一致，直接通过
-    if (!isTableRow(trimmed) && !isSeparatorLine(trimmed)) {
-      headerCols = 0 // 退出表格区域
-    }
+    // 非表格行
+    headerCols = 0
+    pendingHeaderLine = ''
     result.push(line)
   }
   return result
