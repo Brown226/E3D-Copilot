@@ -438,8 +438,9 @@ namespace E3DCopilot.Core.Providers
             {
                 return JObject.Parse(json);
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[VllmProvider] SafeParseParameters failed for json={json?.Substring(0, Math.Min(200, json?.Length ?? 0))}: {ex.Message}");
                 return JObject.FromObject(new { type = "object", properties = new JObject() });
             }
         }

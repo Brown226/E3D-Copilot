@@ -545,6 +545,20 @@ class Bridge {
 let _deltaBuffer: { tabId: string; text: string }[] = [];
 let _deltaFlushScheduled = false;
 
+function flushDeltaBuffer(): void {
+  _deltaFlushScheduled = false;
+  if (_deltaBuffer.length === 0) return;
+  const byTab = new Map<string, string>();
+  for (const d of _deltaBuffer) {
+    byTab.set(d.tabId, (byTab.get(d.tabId) || '') + d.text);
+  }
+  _deltaBuffer = [];
+  const s = useChatStore.getState();
+  for (const [tid, combined] of byTab) {
+    s.appendAssistantDelta(combined, tid);
+  }
+}
+
 // ============================================
 // Bridge 事件 → Store 映射（T2.4）
 // ============================================
@@ -637,36 +651,13 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         _deltaBuffer.push({ tabId: targetId, text: p.delta });
         if (!_deltaFlushScheduled) {
           _deltaFlushScheduled = true;
-          setTimeout(() => {
-            _deltaFlushScheduled = false;
-            if (_deltaBuffer.length === 0) return;
-            const byTab = new Map<string, string>();
-            for (const d of _deltaBuffer) {
-              byTab.set(d.tabId, (byTab.get(d.tabId) || '') + d.text);
-            }
-            _deltaBuffer = [];
-            const s = store.getState();
-            for (const [tid, combined] of byTab) {
-              s.appendAssistantDelta(combined, tid);
-            }
-          }, 16);
+          setTimeout(flushDeltaBuffer, 16);
         }
         break;
       }
 
       case 'llm:stream:end': {
-        // 立即 flush 残留的 delta 缓冲
-        if (_deltaBuffer.length > 0) {
-          const byTab = new Map<string, string>();
-          for (const d of _deltaBuffer) {
-            byTab.set(d.tabId, (byTab.get(d.tabId) || '') + d.text);
-          }
-          _deltaBuffer = [];
-          const flushState = store.getState();
-          for (const [tid, combined] of byTab) {
-            flushState.appendAssistantDelta(combined, tid);
-          }
-        }
+        flushDeltaBuffer();  // flush 残留 delta
         const state = store.getState();
         const targetId = tabId || state.activeTabId;
         const tab = state.tabs.find((t) => t.id === targetId);
@@ -698,6 +689,7 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
       }
 
       case 'tool:dispatch': {
+        flushDeltaBuffer();  // 确保文本在工具卡片之前渲染
         const p = msg.payload as ToolDispatchPayload;
         s.appendMessage({
           role: 'tool_call',

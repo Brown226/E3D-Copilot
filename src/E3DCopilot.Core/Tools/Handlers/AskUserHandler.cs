@@ -76,7 +76,7 @@ namespace E3DCopilot.Core.Tools.Handlers
         ""properties"": {
           ""header"": {
             ""type"": ""string"",
-            ""description"": ""Very short label for the question (a tab title), e.g. ""Library"".""
+            ""description"": ""Very short label for the question (a tab title), e.g. 'Library'.""
           },
           ""question"": {
             ""type"": ""string"",

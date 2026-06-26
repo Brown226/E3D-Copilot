@@ -212,10 +212,10 @@ namespace E3DCopilot.Core
                     if (result.ToolCalls == null || result.ToolCalls.Count == 0)
                     {
                         CopilotLogger.Info("AgentLoop step {0}: 无工具调用，对话结束", step);
-                        return;  // TurnDone 由 Controller 统一发射
+                        return;
                     }
 
-                    // 5. Execute tools — read-only parallel, writer serial（对齐 Reasonix executeBatch）
+                    // 5. Execute tools — read-only parallel, writer serial
                     await ExecuteBatchAsync(session, result.ToolCalls, ct);
 
                     // 6. Context compression
@@ -541,7 +541,7 @@ namespace E3DCopilot.Core
             CopilotRequest request, CancellationToken ct)
         {
             string text = "";
-            string reasoningText = "";  // 累积 reasoning 内容，用于后续工具调用提取
+            string reasoningText = "";
             var toolCalls = new List<ToolCall>();
 
             await _provider.StreamAsync(request, chunk =>
@@ -550,7 +550,6 @@ namespace E3DCopilot.Core
                 {
                     case ChunkType.Reasoning:
                         reasoningText += chunk.Content;
-                        // 只发射给前端，不累积到 text（text 用于 assistant 回复和 XML fallback）
                         _sink.Emit(CopilotEvent.Reasoning(chunk.Content));
                         break;
                     case ChunkType.Text:

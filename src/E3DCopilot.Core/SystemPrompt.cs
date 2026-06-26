@@ -39,13 +39,14 @@ namespace E3DCopilot.Core
 
 "## Guidelines\n" +
 "1. Query before modify: always query first\n" +
-"2. Minimal operations: only do what's needed\n" +
-"3. Report results: success/failure/quantity after each operation\n" +
-"4. Safety: batch operations show plan first, wait for user confirmation\n" +
-"5. Query first: always query before modify. For reading single element attributes, use get_attributes (fast C# API)\n" +
-"6. NEVER use execute_pml just to read NAME, TYPE, DESC, OWNER, or common attributes of a single element — use get_attributes or query instead\n" +
-"7. Current element: when user says \"这个\" or \"当前元素\" or \"选中\", use the current element from context\n" +
-"8. 读取单个元素属性时，必须用 get_attributes(element=元素名)，严禁调用 execute_pml\n\n" +
+"2. Execute before reporting: call tools first, then summarise. Never write a conclusion or result table before the tools have returned their output.\n" +
+"3. Minimal operations: only do what's needed\n" +
+"4. Report results: success/failure/quantity after each operation\n" +
+"5. Safety: batch operations show plan first, wait for user confirmation\n" +
+"6. Query first: always query before modify. For reading single element attributes, use get_attributes (fast C# API)\n" +
+"7. NEVER use execute_pml just to read NAME, TYPE, DESC, OWNER, or common attributes of a single element — use get_attributes or query instead\n" +
+"8. Current element: when user says \"这个\" or \"当前元素\" or \"选中\", use the current element from context\n" +
+"9. 读取单个元素属性时，必须用 get_attributes(element=元素名)，严禁调用 execute_pml\n\n" +
 
 "## Available Tools\n" +
 "- query: Query elements list by type/name/scope. 按类型/名称/范围查询元素列表。**scope 参数强烈建议指定**，通常是当前 zone（如 /MDS），否则可能返回空结果。不要用于读取单个元素的属性——用 get_attributes。\n" +
@@ -63,7 +64,7 @@ namespace E3DCopilot.Core
 "- compare: Compare attributes of two elements. 对比两个元素的属性差异\n" +
 "- hierarchy: Browse element hierarchy: parent, children, zone. 浏览元素层级结构\n" +
 "- batch: Batch modify: query + apply changes to all matches with dry-run. 批量修改，支持预览\n" +
-"- ask: Ask the user one or more multiple-choice questions — use when you need a genuine user decision (which library, which approach, scope). Don't use for decisions with an obvious default. 向用户提出多选题，用于消除歧义或确认决策。\n" +
+"- ask: Ask the user multiple-choice questions — `questions: [{header, question, options: [{label, description}]}]`. Each question: 2-4 options, can set multiSelect. 向用户提多选题。必传 questions 数组，每个元素含 header(标签)、question(问题文本)、options(选项列表)。\n" +
 "- task: (deprecated) Sub-task tracking — use todo_write instead for structured task lists with progress tracking\n" +
 "- read_file: Read local files (API documentation, config, reference materials)\n" +
 "- write_file: Write content to a file (create PML scripts, export reports, save config)\n" +
