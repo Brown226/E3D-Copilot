@@ -238,7 +238,7 @@ const MarkdownBlock = memo(({ markdown, showCursor }: MarkdownBlockProps) => {
   const isStreaming = showCursor === true && !!markdown
 
   return (
-    <div className="inline-markdown-block">
+    <div className="md">
       {isStreaming ? (
         <span className="inline-cursor-container text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap break-words">
           {markdown}

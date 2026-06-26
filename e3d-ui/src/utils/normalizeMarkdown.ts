@@ -1,63 +1,67 @@
 /**
  * normalizeMarkdown — 模型输出 markdown 格式归一化
  *
- * 修复 LLM（尤其是小模型）输出的 markdown 格式问题：
- * 1. 表格行内联：LLM 可能把所有表格行写在一行用 || 分隔 → 拆分为多行
- * 2. 表格：|| → |，||| → |，修复分隔行
- * 3. 表格前后空行保证（GFM 需要）
- * 4. 连续空行规范化
- * 5. 标题前后空行保证
+ * 修复 LLM（尤其是小模型 deepseek-v4-flash）输出的 markdown 格式问题：
+ * 1. 整表单行：LLM 把整个表格写成一行，用 || 或 | | 分隔行 → 拆分为多行
+ * 2. 整个标题写在一起：多个 # 标题连写 → 拆分
+ * 3. 分隔行横杠不够：:-: 只有1个横杠 → 补齐到3个（GFM 要求 3+）
+ * 4. 表格 || → | 归一化
+ * 5. 表格前后空行保证（GFM 需要）
+ * 6. 连续空行压缩
  */
 
-// ── 检测分隔行：至少有一个 --- 且只包含 |、-、:、空格 ──
-const SEPARATOR_RE = /^[\s|:\-]+$/
-
-// ── 检测表格行：至少有两个 | ──
+// ── 检测表格行：至少有两个 | 且含非空内容 ──
 const TABLE_CELL_RE = /\|[^|]+\|[^|]+\|/
 
 /**
- * 预处理：检测并拆分被 LLM 写成单行的内联表格
- * 特征：一行里有多个 || 分隔符 + 至少一个分隔行模式（|---|---|）
+ * 预处理：拆分被 LLM 写成单行的表格
+ *
+ * 识别特征：一行中管道符 ≥ 8 个 + 包含分隔行模式（:---: 或 ---）
+ * 拆分策略：按 |\s*| 替换为换行 + |
  */
 function splitInlineTable(text: string): string {
-  // 检测分隔行模式：|---|---| 或 |:---|:---| 等
-  const sepPattern = /\|[:\s]*---[:\s]*\|/
-  if (!sepPattern.test(text)) return text
+  if (!/\|\s*\|/.test(text)) return text
 
-  // 按 || 拆分为多行（LLM 把表格行连在一起的特征）
-  // 但要小心不要误拆代码块和普通文本
-  const lines = text.split('\n')
-  const result: string[] = []
+  const pipeCount = (text.match(/\|/g) || []).length
+  if (pipeCount < 8) return text
 
-  for (const line of lines) {
-    // 只处理包含表格分隔行特征的行
-    if (!sepPattern.test(line)) {
-      result.push(line)
-      continue
-    }
+  // 检查是否有分隔行特征（:---:、---、:-: 等）
+  const hasSep = /\|:?-{2,}:?\||\|:-:\|/.test(text)
+  if (!hasSep) return text
 
-    // 如果行已经有换行，不需要处理
-    if (line.split('|').length < 8) {
-      result.push(line)
-      continue
-    }
+  // 按 |\s*| 拆分（覆盖 || 和 | | 两种行分隔符）
+  let result = text.replace(/\|\s*\|/g, '\n|')
 
-    // 尝试按 || 拆分（注意：需要保护 |---| 这类分隔行不被拆散）
-    // 策略：在 || 处拆分，但保留 |---| 段完整
-    const parts = line.split(/(?<=\|)\s*\|\|\s*(?=\|)/g)
-    if (parts.length <= 1) {
-      result.push(line)
-      continue
-    }
+  // 修复分隔行横杠：1-2个横杠 → 3个（GFM 要求3+）
+  result = result.replace(/\|:?-{1,2}:?\|/g, (match) => {
+    if (!/-/.test(match)) return match
+    return match.replace(/-{1,2}/g, '---')
+  })
 
-    // 每个 part 是一行
-    for (const part of parts) {
-      const trimmed = part.trim()
-      if (trimmed) result.push(trimmed)
-    }
-  }
+  return result
+}
 
-  return result.join('\n')
+/**
+ * 预处理：拆分被 LLM 连写在一起的标题
+ *
+ * 两轮匹配：
+ * 1. 非#字符 + 2-6个# + 标题文本 → 拆分（安全）
+ * 2. 中文字符/标点 + # + 中文/大写字母 → 拆分（排除 C#、F#）
+ */
+function splitInlineHeadings(text: string): string {
+  let result = text
+
+  // 第一轮：2+ 个 # → 安全拆分
+  result = result.replace(/([^\n#\s])(#{2,6})(\s*[^\s#])/g, (_, prefix, hashes, title) => {
+    return `${prefix}\n\n${hashes}${title}`
+  })
+
+  // 第二轮：中文字符/# 后跟中文/大写字母 → 标题
+  result = result.replace(/([\u4e00-\u9fff，。；：！？、])(#\s*)([\u4e00-\u9fffA-Z])/g, (_, prefix, hashes, title) => {
+    return `${prefix}\n\n#${hashes}${title}`
+  })
+
+  return result
 }
 
 /**
@@ -74,11 +78,9 @@ function normalizeTableRow(line: string): string {
 
   // 4. 拆分列，去除空列（模型重复导致的空白列）
   const parts = fixed.split('|')
-  // 首尾 split 空串（因为行首/尾有 |）
   const cleaned: string[] = []
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i]
-    // 首尾空串跳过，中间空串也跳过（重复管道符产生的）
     if (p === '' && (i === 0 || i === parts.length - 1)) continue
     if (p.trim() === '') continue
     cleaned.push(p)
@@ -91,7 +93,6 @@ function normalizeTableRow(line: string): string {
  * 修复分隔行：提取所有 --- 段，重建标准格式
  */
 function normalizeSeparator(line: string): string {
-  // 提取所有 --- 段（可能带冒号）
   const dashes: string[] = []
   const regex = /:?-{3,}:?/g
   let m: RegExpExecArray | null
@@ -107,18 +108,13 @@ function normalizeSeparator(line: string): string {
   return '|' + dashes.join('|') + '|'
 }
 
-/**
- * 检测是否为表格行（含管道符分隔的多列）
- */
 function isTableRow(line: string): boolean {
   return TABLE_CELL_RE.test(line)
 }
 
-/**
- * 检测是否为分隔行（全是 |、-、:、空格）
- */
 function isSeparatorLine(line: string): boolean {
-  return SEPARATOR_RE.test(line) && line.includes('---')
+  // 分隔行特征：包含横杠，且其余字符只包含 |、-、:、空格
+  return /-/.test(line) && /^[\s|:\-]+$/.test(line)
 }
 
 /**
@@ -129,6 +125,13 @@ export function normalizeMarkdown(text: string): string {
 
   // 0. 预处理：拆分 LLM 写在一行的内联表格
   text = splitInlineTable(text)
+
+  // 0.5 预处理：拆分 LLM 连写在一起的标题
+  text = splitInlineHeadings(text)
+
+  // 0.6 单列 |---| 或 |:---| → 转为水平线（LLM 用它当分隔线）
+  // GFM 表格最少 2 列，单列分隔符 remark-gfm 不认，会原样显示 |---|
+  text = text.replace(/^\|:?-{2,}:?\|$/gm, '---')
 
   const lines = text.split('\n')
   const result: string[] = []

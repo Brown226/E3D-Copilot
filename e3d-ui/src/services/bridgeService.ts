@@ -625,7 +625,7 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
         const targetId = tabId || state.activeTabId;
         
         // 过滤空 delta
-        if (!p.delta || p.delta.trim() === '') break;
+        if (!p.delta || p.delta === '') break;
         
         // 调试：检测重复内容（连续相同的 delta）
         const lastDelta = _deltaBuffer.length > 0 ? _deltaBuffer[_deltaBuffer.length - 1] : null;

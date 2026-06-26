@@ -337,7 +337,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const targetId = tabId || get().activeTabId
     
     // 过滤空 delta，避免无意义的状态更新
-    if (!delta || delta.trim() === '') return
+    if (!delta || delta === '') return
     
     set((s) => {
       const tab = s.tabs.find((t) => t.id === targetId)
