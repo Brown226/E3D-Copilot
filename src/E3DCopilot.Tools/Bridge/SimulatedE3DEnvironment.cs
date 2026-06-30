@@ -106,13 +106,14 @@ namespace E3DCopilot.Tools.Bridge
             return attrs.ContainsKey(attrKey) ? attrs[attrKey] : null;
         }
 
-        public void SetAttribute(string elementName, string attributeName, string value)
+        public bool SetAttribute(string elementName, string attributeName, string value)
         {
             var key = (elementName ?? "").ToUpper();
             if (!_elements.ContainsKey(key))
-                return;
+                return false;
 
             _elements[key][(attributeName ?? "").ToUpper()] = value;
+            return true;
         }
 
         public bool CheckExists(string elementName)

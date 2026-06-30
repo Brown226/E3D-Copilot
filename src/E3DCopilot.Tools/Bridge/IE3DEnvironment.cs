@@ -16,8 +16,8 @@ namespace E3DCopilot.Tools.Bridge
         /// <summary>读取元素属性</summary>
         string GetAttribute(string elementName, string attributeName);
 
-        /// <summary>写入元素属性</summary>
-        void SetAttribute(string elementName, string attributeName, string value);
+        /// <summary>写入元素属性，返回是否成功</summary>
+        bool SetAttribute(string elementName, string attributeName, string value);
 
         /// <summary>检查元素是否存在</summary>
         bool CheckExists(string elementName);

@@ -31,9 +31,9 @@ Desktop.ini
 # Logs
 *.log
 web-ui/nul
-.reasonix/
-deploy/
-git/
+
+# WorkBuddy / Reasonix / deploy
+.workbuddy/
 .reasonix/
 deploy/
 git/
@@ -43,5 +43,11 @@ TestResults/
 test_output.txt
 test_result.txt
 
-# Compiled DLLs in lib/ (build artifacts, not source)
-lib/E3DCopilot.*.dll
+# Compiled frontend output embedded in WebHost
+src/E3DCopilot.WebHost/wwwroot/
+
+# Third-party / compiled DLLs and runtime dependencies
+lib/
+
+# Build error logs
+web-ui-build-error.txt

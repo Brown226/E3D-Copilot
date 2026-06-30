@@ -18,6 +18,7 @@ export function WelcomeScreen() {
   const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
   const setInputValue = useChatStore((s) => s.setInputValue)
   const sessions = useChatStore((s) => s.sessions)
+  const loadSession = useChatStore((s) => s.loadSession)
 
   if (messages.length > 0 || isStreaming) return null
 
@@ -80,6 +81,7 @@ export function WelcomeScreen() {
           {sessions.slice(0, 3).map((session) => (
             <button
               key={session.id}
+              onClick={() => loadSession(session.id)}
               className="w-full text-left px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors truncate"
             >
               {session.title || '新对话'}

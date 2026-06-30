@@ -1,4 +1,4 @@
-﻿﻿﻿using System;
+﻿﻿using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -377,6 +377,13 @@ namespace E3DCopilot.Core.Providers
                 }));
                 // When there are tool_calls, content should be null (OpenAI spec)
                 msg["content"] = null;
+            }
+
+            // DeepSeek 等推理模型要求多轮回传 assistant 的 reasoning_content
+            if (m.Role == MessageRole.Assistant
+                && !string.IsNullOrEmpty(m.ReasoningContent))
+            {
+                msg["reasoning_content"] = m.ReasoningContent;
             }
             // User/System messages with images: use array format for vision models
             else if ((m.Role == MessageRole.User || m.Role == MessageRole.System) 

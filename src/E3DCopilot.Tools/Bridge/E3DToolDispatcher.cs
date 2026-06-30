@@ -196,12 +196,23 @@ namespace E3DCopilot.Tools.Bridge
                     return "{\"success\": false, \"error\": \"缺少 attributes 参数\"}";
                 }
 
-                // 逐属性设置
+                // 逐属性设置，检查每个属性是否成功
                 var setList = new List<string>();
+                var failedList = new List<string>();
                 foreach (var prop in attributes.Properties())
                 {
-                    _env.SetAttribute(dburi, prop.Name, prop.Value?.ToString());
-                    setList.Add($"{prop.Name}={prop.Value}");
+                    string attrName = prop.Name;
+                    string attrValue = prop.Value?.ToString() ?? "";
+                    bool ok = _env.SetAttribute(dburi, attrName, attrValue);
+                    if (ok)
+                        setList.Add($"{attrName}={attrValue}");
+                    else
+                        failedList.Add(attrName);
+                }
+
+                if (failedList.Count > 0)
+                {
+                    return $"{{\"success\": false, \"error\": \"以下属性设置失败: {string.Join(", ", failedList)}\", \"set_ok\": {setList.Count}, \"set_failed\": {failedList.Count}}}";
                 }
 
                 return $"{{\"success\": true, \"message\": \"已设置 {dburi} 的 {attributes.Count} 个属性: {string.Join(", ", setList)}\"}}";
@@ -377,11 +388,11 @@ namespace E3DCopilot.Tools.Bridge
             // which depend on E3D Geometry API (D3Point, D3Line, etc.)
             var result = new JObject
             {
-                ["success"] = true,
+                ["success"] = false,
                 ["type"] = "clearance",
                 ["element"] = element,
                 ["implemented"] = false,
-                ["message"] = "净距检查需要 3D 几何计算，当前尚未实现。可用 calculate 工具进行点/向量运算，或用 query 获取元素坐标后进行手动计算。",
+                ["error"] = "净距检查尚未实现，无法执行检查。",
                 ["alternatives"] = new JArray
                 {
                     "使用 calculate 工具计算两点距离",
@@ -399,11 +410,11 @@ namespace E3DCopilot.Tools.Bridge
         {
             var result = new JObject
             {
-                ["success"] = true,
+                ["success"] = false,
                 ["type"] = "bore_consistency",
                 ["element"] = element,
                 ["implemented"] = false,
-                ["message"] = "管径一致性检查需要遍历管件的 BORE 属性，当前尚未实现。可通过 PML 执行检查。",
+                ["error"] = "管径一致性检查尚未实现，无法执行检查。",
                 ["alternatives"] = new JArray
                 {
                     "使用 query 获取所有管件的 BORE 属性",
@@ -420,11 +431,11 @@ namespace E3DCopilot.Tools.Bridge
         {
             var result = new JObject
             {
-                ["success"] = true,
+                ["success"] = false,
                 ["type"] = "change_status",
                 ["element"] = element,
                 ["implemented"] = false,
-                ["message"] = "变更状态检查需要 E3D 变更追踪功能，当前尚未实现。",
+                ["error"] = "变更状态检查尚未实现，无法执行检查。",
                 ["alternatives"] = new JArray
                 {
                     "通过 execute_pml 执行 PML 脚本检查变更状态"
@@ -440,11 +451,11 @@ namespace E3DCopilot.Tools.Bridge
         {
             var result = new JObject
             {
-                ["success"] = true,
+                ["success"] = false,
                 ["type"] = "room_number",
                 ["element"] = element,
                 ["implemented"] = false,
-                ["message"] = "房间号检查需要遍历设备的 ROOM_NO 属性，当前尚未实现。可通过 PML 执行检查。",
+                ["error"] = "房间号检查尚未实现，无法执行检查。",
                 ["alternatives"] = new JArray
                 {
                     "使用 query 获取设备的 ROOM_NO 属性",
@@ -655,11 +666,17 @@ namespace E3DCopilot.Tools.Bridge
 
                 string result = _env.ExecutePml(command);
 
+                // 检查是否执行失败（ExecutePml 返回 "Error: ..." 表示失败）
+                bool failed = !string.IsNullOrEmpty(result) && result.StartsWith("Error:");
                 var jResult = new JObject
                 {
-                    ["success"] = true,
+                    ["success"] = !failed,
                     ["result"] = result
                 };
+                if (failed)
+                {
+                    jResult["error"] = result;
+                }
                 return jResult.ToString();
             }
             catch (Exception ex)
@@ -724,7 +741,11 @@ namespace E3DCopilot.Tools.Bridge
                         pml += $" ; $P var.X = {x.Value}";
                         pml += $" ; $P var.Y = {y.Value}";
                         pml += $" ; $P var.Z = {z.Value}";
-                        _env.ExecutePml(pml);
+                        string pmlResult = _env.ExecutePml(pml);
+
+                        // 校验 PML 执行结果
+                        if (pmlResult != null && pmlResult.StartsWith("Error:"))
+                            return $"{{\"success\": false, \"error\": \"设置位置失败: {pmlResult}\"}}";
 
                         return $"{{\"success\": true, \"element\": \"{element}\", \"x\": {x}, \"y\": {y}, \"z\": {z}}}";
                     }
@@ -792,7 +813,9 @@ namespace E3DCopilot.Tools.Bridge
                         if (string.IsNullOrEmpty(spec))
                             return "{\"success\": false, \"error\": \"缺少 spec 参数\"}";
 
-                        _env.SetAttribute(pipe, "SPEC", spec);
+                        bool ok = _env.SetAttribute(pipe, "SPEC", spec);
+                        if (!ok)
+                            return $"{{\"success\": false, \"error\": \"设置规格失败，属性未成功写入\"}}";
                         return $"{{\"success\": true, \"pipe\": \"{pipe}\", \"spec\": \"{spec}\"}}";
                     }
 

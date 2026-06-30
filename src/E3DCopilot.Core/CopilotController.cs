@@ -8,6 +8,7 @@ using E3DCopilot.Core.Config;
 using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Memory;
 using E3DCopilot.Core.Providers;
+using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Security;
 using E3DCopilot.Core.Skills;
 using E3DCopilot.Core.Tools;
@@ -228,8 +229,16 @@ namespace E3DCopilot.Core
             ICopilotProvider provider;
             if (providerConfig.Kind == "anthropic")
             {
-                // TODO: implement AnthropicProvider
-                throw new NotSupportedException("Anthropic Provider not yet implemented");
+                // Anthropic 原生 API 尚未实现，降级到 OpenAI 兼容模式
+                // （适用于通过 LiteLLM/OneAPI 等中间层暴露 OpenAI 兼容接口的场景）
+                CopilotLogger.Warn(
+                    "Anthropic Provider 原生实现尚未开发，已降级为 OpenAI 兼容模式。" +
+                    "如果 Anthropic API 端点不兼容 OpenAI 格式，请改用 OpenAI 类型的 Provider 配置。");
+                provider = new VllmProvider(
+                    providerConfig.BaseUrl,
+                    modelName,
+                    providerConfig.ApiKey
+                );
             }
             else
             {

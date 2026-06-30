@@ -232,7 +232,7 @@ namespace E3DCopilot.Core
                     {
                         _streamRecoveries++;
                         if (!string.IsNullOrWhiteSpace(result.Text))
-                            session.AddAssistantMessage(result.Text, null);
+                            session.AddAssistantMessage(result.Text, null, result.Reasoning);
                         string recoveryMsg = result.PartialToolStarted
                             ? "The previous assistant response was interrupted while a tool call was streaming. Continue the same task now. If a tool is still needed, issue a fresh complete tool call from scratch; do not rely on any partial tool-call arguments from the interrupted stream."
                             : !string.IsNullOrWhiteSpace(result.Text)
@@ -246,7 +246,7 @@ namespace E3DCopilot.Core
                     _streamRecoveries = 0;
 
                     // 3. Save assistant message
-                    session.AddAssistantMessage(result.Text, result.ToolCalls);
+                    session.AddAssistantMessage(result.Text, result.ToolCalls, result.Reasoning);
 
                     // 3.5 Emit Message event to finalize the assistant bubble for this LLM call.
                     _sink.Emit(CopilotEvent.MessageEvent(result.Text, result.Reasoning));
@@ -792,7 +792,8 @@ namespace E3DCopilot.Core
                 "ask", "todo_write", "complete_step", "read_file", "write_file",
                 "run_skill", "grep", "glob", "memory",
                 "cad_import", "autocad",
-                "structure_drawing"  // 土建结构出图工具
+                "structure_drawing",  // 土建结构出图工具
+                "generate_iso_drawing", "query_material", "get_pipe_info"  // ISO 出图三件套
             };
             foreach (var handler in _executor.GetAllHandlers())
             {

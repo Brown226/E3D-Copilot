@@ -3,6 +3,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Events;
+using Newtonsoft.Json.Linq;
 
 namespace E3DCopilot.Core.Tools.Handlers
 {

@@ -25,7 +25,7 @@ namespace E3DCopilot.Core.Tools.Handlers
         {
             _dispatcher = dispatcher;
             _drawingService = new DxfDrawingService();
-            _elementExtractor = new StructureElementExtractor();
+            _elementExtractor = new StructureElementExtractor(true);
         }
 
         public string Name => "structure_drawing";

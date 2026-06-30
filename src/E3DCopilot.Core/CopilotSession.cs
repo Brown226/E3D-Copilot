@@ -33,11 +33,13 @@ namespace E3DCopilot.Core
         /// <summary>
         /// 追加助手消息
         /// </summary>
-        public void AddAssistantMessage(string content, List<ToolCall> calls = null)
+        public void AddAssistantMessage(string content, List<ToolCall> calls = null, string reasoning = null)
         {
             var msg = new ChatMessage(MessageRole.Assistant, content);
             if (calls != null && calls.Count > 0)
                 msg.ToolCalls = calls;
+            if (!string.IsNullOrEmpty(reasoning))
+                msg.ReasoningContent = reasoning;
             Messages.Add(msg);
         }
 

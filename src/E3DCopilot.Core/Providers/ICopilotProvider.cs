@@ -25,7 +25,12 @@ namespace E3DCopilot.Core.Providers
         public string Content { get; set; }
         public List<ToolCall> ToolCalls { get; set; }
         public string ToolCallId { get; set; }
-        
+
+        /// <summary>
+        /// 推理模型返回的 reasoning_content（DeepSeek 等需要多轮回传）
+        /// </summary>
+        public string ReasoningContent { get; set; }
+
         /// <summary>
         /// 多模态支持：图片数组（base64 格式）
         /// </summary>

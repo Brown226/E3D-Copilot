@@ -15,7 +15,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="1.0.0" />
     <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="5.0.0" />
-    <PackageReference Include="netDxf" Version="3.1.0" />
+    <PackageReference Include="netDxf" Version="2023.11.10" />
   </ItemGroup>
 
   <ItemGroup>

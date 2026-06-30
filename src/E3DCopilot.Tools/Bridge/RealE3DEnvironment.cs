@@ -182,9 +182,9 @@ namespace E3DCopilot.Tools.Bridge
 
         /// <summary>
         /// 在 E3D UI 线程上执行委托（E3D API 非线程安全）
-        /// 使用 Post + TaskCompletionSource 避免线程死锁，带 5 秒超时保护
+        /// 使用 Post + TaskCompletionSource 避免线程死锁，带可配置超时保护
         /// </summary>
-        private T InvokeOnUi<T>(Func<T> action)
+        private T InvokeOnUi<T>(Func<T> action, int timeoutMs = 5000)
         {
             // 如果当前就在 UI 线程上，直接执行
             if (SynchronizationContext.Current == _uiContext)
@@ -206,18 +206,18 @@ namespace E3DCopilot.Tools.Bridge
                 }
             }, null);
 
-            // 等待结果，带 5 秒超时
-            if (tcs.Task.Wait(TimeSpan.FromSeconds(5)))
+            // 等待结果，带超时
+            if (tcs.Task.Wait(TimeSpan.FromMilliseconds(timeoutMs)))
             {
                 return tcs.Task.Result;
             }
             else
             {
-                throw new TimeoutException("E3D UI thread operation timeout (5s). E3D may be unresponsive.");
+                throw new TimeoutException($"E3D UI thread operation timeout ({timeoutMs / 1000}s). E3D may be unresponsive.");
             }
         }
 
-        private void InvokeOnUi(Action action)
+        private void InvokeOnUi(Action action, int timeoutMs = 5000)
         {
             // 如果当前就在 UI 线程上，直接执行
             if (SynchronizationContext.Current == _uiContext)
@@ -240,10 +240,10 @@ namespace E3DCopilot.Tools.Bridge
                 }
             }, null);
 
-            // 等待结果，带 5 秒超时
-            if (!tcs.Task.Wait(TimeSpan.FromSeconds(5)))
+            // 等待结果，带超时
+            if (!tcs.Task.Wait(TimeSpan.FromMilliseconds(timeoutMs)))
             {
-                throw new TimeoutException("E3D UI thread operation timeout (5s). E3D may be unresponsive.");
+                throw new TimeoutException($"E3D UI thread operation timeout ({timeoutMs / 1000}s). E3D may be unresponsive.");
             }
         }
         public List<ElementInfo> QueryElements(string elementType, string namePattern, string scope, int limit)
@@ -255,18 +255,18 @@ namespace E3DCopilot.Tools.Bridge
 
                 try
                 {
-                    // 确定起始元素
+                    // 确定起始元素 — 使用 ResolveElement 支持多种名称格式
                     DbElement root;
                     if (!string.IsNullOrEmpty(scope) && scope != "/")
                     {
-                        root = DbElement.GetElement(scope);
+                        root = ResolveElement(scope);
                     }
                     else
                     {
                         root = DbElement.GetElement("/");
                     }
 
-                    if (root == null) return results;
+                    if (root == null || !root.IsValid) return results;
 
                     int count = 0;
                     QueryRecursive(root, elementType, namePattern, limit, ref count, results);
@@ -299,7 +299,9 @@ namespace E3DCopilot.Tools.Bridge
                     if (child == null) continue;
 
                     string type = SafeGetAttr(child, "TYPE");
-                    bool typeMatch = string.IsNullOrEmpty(elementType) 
+                    bool typeMatch = string.IsNullOrEmpty(elementType)
+                        || elementType == "*"
+                        || elementType.Equals("ALL", StringComparison.OrdinalIgnoreCase)
                         || type.ToUpper().Contains(elementType.ToUpper());
 
                     string name = SafeGetAttr(child, "NAME");
@@ -342,22 +344,36 @@ namespace E3DCopilot.Tools.Bridge
             });
         }
 
-        public void SetAttribute(string elementName, string attributeName, string value)
+        public bool SetAttribute(string elementName, string attributeName, string value)
         {
-            InvokeOnUi(() =>
+            return InvokeOnUi(() =>
             {
                 try
                 {
                     // 属性写入通过 PML 执行（DbElement 没有直接的 SetAsString API）
-                    string pml = string.Format("{0}.{1} = '{2}'",
-                        elementName.TrimStart('/'),
+                    // 正确写法：先 navigate 到元素，再设置属性
+                    string pml = string.Format("$P var = DB ELEMENT '{0}' ; var.{1} = '{2}'",
+                        elementName.Replace("'", "''"),
                         attributeName.ToUpper(),
                         value.Replace("'", "''"));
-                    ExecutePml(pml);
+                    string result = ExecutePml(pml);
+
+                    // 检查 ExecutePml 返回值（C# 异常和超时会产生 "Error:" 前缀）
+                    if (result != null && result.StartsWith("Error:"))
+                        return false;
+
+                    // 回读验证：PML handle return 会吞掉 PML 级错误，需验证属性是否实际写入
+                    string actualValue = GetAttribute(elementName, attributeName);
+                    if (actualValue == null)
+                        return false;
+
+                    // 值匹配检查（忽略大小写和首尾空格）
+                    return string.Equals(actualValue.Trim(), value.Trim(), StringComparison.OrdinalIgnoreCase);
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine("[RealE3DEnvironment] SetAttribute error: " + ex.Message);
+                    return false;
                 }
             });
         }
@@ -408,15 +424,27 @@ namespace E3DCopilot.Tools.Bridge
                         catch { /* 忽略属性解析错误 */ }
                     }
 
-                    ExecutePml(pml);
+                    string pmlResult = ExecutePml(pml);
+
+                    // 校验 ExecutePml 返回值
+                    if (pmlResult != null && pmlResult.StartsWith("Error:"))
+                    {
+                        return $"{{\"success\": false, \"error\": \"创建元素失败: {pmlResult}\"}}";
+                    }
+
+                    // 验证元素是否实际创建成功
+                    string verifyName = !string.IsNullOrEmpty(name) ? name : parentElement;
+                    bool created = CheckExists(verifyName);
 
                     var result = new JObject
                     {
-                        ["success"] = true,
+                        ["success"] = created,
                         ["name"] = name ?? "",
                         ["type"] = elementType,
                         ["parent"] = parentElement
                     };
+                    if (!created)
+                        result["error"] = "创建后验证失败：元素不存在";
                     return result.ToString();
                 }
                 catch (Exception ex)
@@ -436,8 +464,14 @@ namespace E3DCopilot.Tools.Bridge
                 try
                 {
                     string pml = $"$P var = DB ELEMENT '{elementName.Replace("'", "''")}' ; DELETE $P var";
-                    ExecutePml(pml);
-                    return true;
+                    string result = ExecutePml(pml);
+
+                    // 校验 ExecutePml 返回值
+                    if (result != null && result.StartsWith("Error:"))
+                        return false;
+
+                    // 验证元素是否实际删除
+                    return !CheckExists(elementName);
                 }
                 catch
                 {
@@ -448,36 +482,66 @@ namespace E3DCopilot.Tools.Bridge
 
         /// <summary>
         /// 执行 PML 命令（带超时保护，防止卡死）
+        /// 参考 CNPE 官方 PmlUtility.RunInPdmsAsMac 模式：
+        ///   1. 写入临时文件
+        ///   2. 用 $m "路径" 执行（双引号包裹，支持 PML1+PML2）
+        ///   3. Command.CreateCommand($m "路径").RunInPdms()
         /// </summary>
         public string ExecutePml(string pmlCommand)
         {
-            // 使用 Task 包装同步调用，添加超时保护
+            // 写入临时文件（用 handle return 包裹防止错误弹窗）
+            string tempFile = System.IO.Path.GetTempFileName();
+            try
+            {
+                string wrapped = "handle return\n" + pmlCommand + "\nendhandle";
+                // 使用 UTF-8 编码（避免跨区域设置导致中文 PML 乱码）
+                System.IO.File.WriteAllText(tempFile, wrapped, new System.Text.UTF8Encoding(false));
+
+                // CNPE 官方格式：$m "路径"（双引号，不是单引号）
+                string cmd = "$m \"" + tempFile + "\"";
+                return ExecutePmlDirect(cmd);
+            }
+            catch (Exception ex)
+            {
+                return "Error: " + ex.Message;
+            }
+            finally
+            {
+                try { System.IO.File.Delete(tempFile); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// 直接执行单条 PML 命令（带超时保护）
+        /// </summary>
+        private string ExecutePmlDirect(string pmlCommand)
+        {
             var task = Task.Run(() =>
             {
+                // PML 操作可能较慢，使用 30 秒超时（而非默认 5 秒）
                 return InvokeOnUi(() =>
                 {
                     try
                     {
                         var cmd = Command.CreateCommand(pmlCommand);
                         bool ok = cmd.RunInPdms();
-                        return ok ? (cmd.Result ?? "") : "Error: PML execution failed";
+                        return ok ? (cmd.Result ?? "") : "Error: PML execution failed (RunInPdms returned false)";
                     }
                     catch (Exception ex)
                     {
                         return "Error: " + ex.Message;
                     }
-                });
+                }, 30000);
             });
 
-            // 等待任务完成，设置 10 秒超时
-            if (task.Wait(TimeSpan.FromSeconds(10)))
+            // 外层超时 60 秒（内层 30 秒会先触发）
+            if (task.Wait(TimeSpan.FromSeconds(60)))
             {
                 return task.Result;
             }
             else
             {
-                // 超时，尝试取消（但可能无法真正取消正在执行的 PML）
-                return "Error: PML execution timeout (10s). E3D may be busy or unresponsive.";
+                return "Error: PML execution timeout (60s). E3D may be busy or unresponsive.";
             }
         }
 
@@ -541,11 +605,15 @@ namespace E3DCopilot.Tools.Bridge
         {
             if (string.IsNullOrEmpty(elementName)) return null;
 
-            // 1. 尝试作为 DBURI
-            if (elementName.StartsWith("/"))
+            // 1. 尝试作为 DBURI（带 / 和不带 / 都试试）
+            foreach (var name in new[] { elementName, elementName.TrimStart('/') })
             {
-                var elem = DbElement.GetElement(elementName);
-                if (elem != null) return elem;
+                try
+                {
+                    var elem = DbElement.GetElement(name);
+                    if (elem != null && elem.IsValid) return elem;
+                }
+                catch { }
             }
 
             // 2. 通过遍历根成员按 NAME 匹配
@@ -569,7 +637,9 @@ namespace E3DCopilot.Tools.Bridge
             try
             {
                 string name = SafeGetAttr(parent, "NAME");
-                if (name.Equals(elementName, StringComparison.OrdinalIgnoreCase))
+                var targetName = elementName.TrimStart('/');
+                if (name.Equals(elementName, StringComparison.OrdinalIgnoreCase) ||
+                    name.TrimStart('/').Equals(targetName, StringComparison.OrdinalIgnoreCase))
                     return parent;
             }
             catch { }

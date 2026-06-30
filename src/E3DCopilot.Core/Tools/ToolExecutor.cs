@@ -167,13 +167,11 @@ namespace E3DCopilot.Core.Tools
             var timeoutCts = new CancellationTokenSource();
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
-            // ── Timer-based progress for long-running tools ──
+            // ── Timer-based progress & timeout for all tools ──
             System.Threading.Timer progressTimer = null;
             System.Threading.Timer timeoutTimer = null;
-            if (handler.IsReadOnly == false || toolName == "export" || toolName == "execute_pml"
-                || toolName == "query" || toolName == "modify")
             {
-                // 对写入工具和耗时查询工具启动进度定时器（3秒间隔）
+                // 进度定时器（3秒间隔）
                 progressTimer = new System.Threading.Timer(_ =>
                 {
                     if (sw.IsRunning && sw.ElapsedMilliseconds > 2000)
@@ -182,7 +180,7 @@ namespace E3DCopilot.Core.Tools
                     }
                 }, null, 3000, 3000);
 
-                // 超时定时器（触发取消）
+                // 超时定时器（触发取消）— 所有工具都启用
                 timeoutTimer = new System.Threading.Timer(_ =>
                 {
                     if (sw.IsRunning && !ct.IsCancellationRequested)
@@ -263,11 +261,11 @@ namespace E3DCopilot.Core.Tools
                 false));
             executor.Register(new DispatcherBackedHandler(dispatcher,
                 "design", "Create/modify equipment and structural elements",
-                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""create"",""modify"",""delete""],""description"":""Operation type""},""type"":{""type"":""string"",""description"":""Element type like EQUI/STRU""},""name"":{""type"":""string"",""description"":""Element name""},""attributes"":{""type"":""object"",""description"":""Attributes to set""}},""required"":[""action"",""type""]}",
+                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""create_equipment"",""create_component"",""delete_element"",""set_position""],""description"":""Operation type""},""type"":{""type"":""string"",""description"":""Element type like EQUI/STRU""},""name"":{""type"":""string"",""description"":""Element name""},""parent"":{""type"":""string"",""description"":""Parent element name (for create)""},""element"":{""type"":""string"",""description"":""Target element name (for delete/set_position)""},""attributes"":{""type"":""object"",""description"":""Attributes to set""},""x"":{""type"":""number"",""description"":""X coordinate (for set_position)""},""y"":{""type"":""number"",""description"":""Y coordinate (for set_position)""},""z"":{""type"":""number"",""description"":""Z coordinate (for set_position)""}},""required"":[""action""]}",
                 false));
             executor.Register(new DispatcherBackedHandler(dispatcher,
                 "piping", "Create/modify piping elements (PIPE/BRAN/FTUB/BEND/TEE)",
-                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""create"",""modify""],""description"":""Operation type""},""name"":{""type"":""string"",""description"":""Pipe/Branch name""},""attributes"":{""type"":""object"",""description"":""Attributes to set""}},""required"":[""action""]}",
+                @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""create_pipe"",""create_branch"",""add_fitment"",""set_spec""],""description"":""Operation type""},""name"":{""type"":""string"",""description"":""Pipe/Branch/Fitment name""},""parent"":{""type"":""string"",""description"":""Parent element (for create_pipe)""},""pipe"":{""type"":""string"",""description"":""Pipe name (for create_branch/add_fitment/set_spec)""},""fitmentType"":{""type"":""string"",""description"":""Fitment type like FLANGE/VALVE (for add_fitment)""},""spec"":{""type"":""string"",""description"":""Specification (for set_spec)""},""attributes"":{""type"":""object"",""description"":""Attributes to set""}},""required"":[""action""]}",
                 false));
             executor.Register(new DispatcherBackedHandler(dispatcher,
                 "geometry", "Spatial geometry queries: position, orientation, bounding box",
