@@ -59,31 +59,34 @@ namespace E3DCopilot.Tests
         }
 
         [Test]
-        public async Task RouteAsync_CalculateWithElement_RoutesToExecutePml()
+        public async Task RouteAsync_CalculateWithElement_StaysAsCalculate()
         {
-            var (toolName, _) = await _router.RouteAsync("calculate", "{\"type\": \"distance\", \"element1\": \"PIPE-001\"}");
-            Assert.AreEqual("execute_pml", toolName);
+            // 修复后 calculate 不再路由到 execute_pml（参数格式不兼容）
+            var (toolName, _) = await _router.RouteAsync("calculate", "{\"operation\": \"distance\", \"element1\": \"PIPE-001\"}");
+            Assert.AreEqual("calculate", toolName);
         }
 
         [Test]
-        public async Task RouteAsync_CalculateWithElementKey_RoutesToExecutePml()
+        public async Task RouteAsync_CalculateWithElementKey_StaysAsCalculate()
         {
+            // 修复后 calculate 不再路由到 execute_pml
             var (toolName, _) = await _router.RouteAsync("calculate", "{\"element\": \"EQUI-001\"}");
-            Assert.AreEqual("execute_pml", toolName);
+            Assert.AreEqual("calculate", toolName);
         }
 
         [Test]
         public async Task RouteAsync_CalculateAngle_StaysAsCalculate()
         {
-            var (toolName, _) = await _router.RouteAsync("calculate", "{\"type\": \"angle\"}");
+            var (toolName, _) = await _router.RouteAsync("calculate", "{\"operation\": \"angle\"}");
             Assert.AreEqual("calculate", toolName);
         }
 
         [Test]
-        public async Task RouteAsync_CalculateUnknownType_RoutesToExecutePml()
+        public async Task RouteAsync_CalculateUnknownType_StaysAsCalculate()
         {
-            var (toolName, _) = await _router.RouteAsync("calculate", "{\"type\": \"unknown_calc\"}");
-            Assert.AreEqual("execute_pml", toolName);
+            // 修复后 calculate 不再路由到 execute_pml，由 CalculateHandler 自己处理
+            var (toolName, _) = await _router.RouteAsync("calculate", "{\"operation\": \"unknown_calc\"}");
+            Assert.AreEqual("calculate", toolName);
         }
 
         // ====== Unknown tools ======

@@ -151,14 +151,14 @@ namespace E3DCopilot.Core.Tools
             }
 
             // ponytail: inline JSON parse check (replaced ToolValidator which always got null requiredParams)
-            if (!string.IsNullOrWhiteSpace(args))
+            if (!string.IsNullOrWhiteSpace(effectiveArgs))
             {
-                try { JObject.Parse(args); }
-                catch { return ToolResult.Fail($"Invalid JSON args for {toolName}"); }
+                try { JObject.Parse(effectiveArgs); }
+                catch { return ToolResult.Fail($"Invalid JSON args for {effectiveName}"); }
             }
 
             // 事件发射统一由 AgentLoop.ExecuteOneAsync 负责，此处不再重复发射
-            CopilotLogger.Info("ToolExecutor: {0}, args={1}", effectiveName, args?.Substring(0, Math.Min(200, args?.Length ?? 0)));
+            CopilotLogger.Info("ToolExecutor: {0}, args={1}", effectiveName, effectiveArgs?.Substring(0, Math.Min(200, effectiveArgs?.Length ?? 0)));
 
             var sw = Stopwatch.StartNew();
 
@@ -193,7 +193,7 @@ namespace E3DCopilot.Core.Tools
 
             try
             {
-                var result = await handler.ExecuteAsync(args, linkedCts.Token);
+                var result = await handler.ExecuteAsync(effectiveArgs, linkedCts.Token);
                 sw.Stop();
                 progressTimer?.Dispose();
                 timeoutTimer?.Dispose();

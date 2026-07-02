@@ -62,18 +62,28 @@ namespace E3DCopilot.Core.Tools
         }
 
         /// <summary>
-        /// 检测无限循环：DO 后面没有 WHILE/UNTIL/N 次 的情况
+        /// 检测无限循环：DO 后面没有 WHILE/UNTIL/N TIMES/VALUES 的情况
+        /// PML 安全模式：
+        ///   DO WHILE (cond)     — 条件循环
+        ///   DO UNTIL (cond)     — 条件循环
+        ///   DO N TIMES          — 计数循环
+        ///   DO !var VALUES !arr — 数组迭代（有界）
+        ///   DO !var FROM n TO m — 范围迭代（有界）
+        /// 裸 DO ... ENDDO 才可能是无限循环
         /// </summary>
         private static bool HasInfiniteLoop(string script)
         {
-            // 匹配单独的 DO 行（没有跟随循环条件）
-            // PML 中 DO WHILE / DO UNTIL / DO 10 TIMES 是安全的
-            // 裸 DO ... ENDDO 可能是无限循环
             var lines = script.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var line in lines)
             {
                 var trimmed = line.Trim().ToUpperInvariant();
-                if (trimmed == "DO" || trimmed.StartsWith("DO ") && !trimmed.Contains("WHILE") && !trimmed.Contains("UNTIL") && !Regex.IsMatch(trimmed, @"\d+\s*TIMES"))
+                // 排除所有已知的有界 DO 模式
+                if (trimmed == "DO" || trimmed.StartsWith("DO ")
+                    && !trimmed.Contains("WHILE")
+                    && !trimmed.Contains("UNTIL")
+                    && !trimmed.Contains("VALUES")   // DO !var VALUES !arr
+                    && !trimmed.Contains("FROM")     // DO !var FROM n TO m
+                    && !Regex.IsMatch(trimmed, @"\d+\s*TIMES"))
                 {
                     return true;
                 }

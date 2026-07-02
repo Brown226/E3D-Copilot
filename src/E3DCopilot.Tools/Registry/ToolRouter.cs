@@ -112,25 +112,14 @@ namespace E3DCopilot.Tools.Registry
         }
 
         /// <summary>
-        /// calculate 路由：纯数学运算走 calculate，E3D 元素相关走 execute_pml
+        /// calculate 路由：始终走 calculate，不路由到 execute_pml。
+        /// CalculateHandler 处理纯数学运算；不支持的复杂几何由 LLM 直接调用 execute_pml。
+        /// 此前路由到 execute_pml 但参数格式不兼容（calculate 无 script 字段），导致静默失败。
         /// </summary>
         private (string toolName, string args) RouteCalculate(string args)
         {
-            var json = JObject.Parse(args);
-            string type = json["type"]?.Value<string>() ?? "";
-
-            // 如果参数包含元素名（element/element1），走 execute_pml
-            if (json["element"] != null || json["element1"] != null)
-                return ("execute_pml", args);
-
-            // 纯数学运算走 calculate
-            if (type == "distance" || type == "angle" || type == "midpoint"
-                || type == "vector" || type == "magnitude"
-                || type == "dot_product" || type == "cross_product")
-                return ("calculate", args);
-
-            // 默认走 execute_pml
-            return ("execute_pml", args);
+            // 始终保留为 calculate，由 CalculateHandler 自行判断是否支持
+            return ("calculate", args);
         }
     }
 }

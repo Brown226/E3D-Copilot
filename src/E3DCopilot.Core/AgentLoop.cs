@@ -12,6 +12,7 @@ using E3DCopilot.Core.Providers;
 using E3DCopilot.Core.Security;
 using E3DCopilot.Core.Skills;
 using E3DCopilot.Core.Tools;
+using E3DCopilot.Core.Tools.Handlers;
 using Newtonsoft.Json.Linq;
 
 namespace E3DCopilot.Core
@@ -492,6 +493,39 @@ namespace E3DCopilot.Core
 
             // ── 3. 批量操作检测 ──
             bool isBatch = _permission.IsBatchOperation(call.Arguments);
+
+            // ── 3.1 execute_pml 预检（审批前执行，避免用户批准后被 PmlValidator 拦截）──
+            if (call.Name == "execute_pml")
+            {
+                string script = PmlCommandHandler.ExtractScript(call.Arguments);
+                if (!string.IsNullOrEmpty(script))
+                {
+                    // 检查是否为纯属性读取（拦截并提示用 get_attributes）
+                    if (PmlCommandHandler.IsReadOnlyAttributeQuery(script))
+                    {
+                        string msg = "检测到纯属性读取操作，请使用 get_attributes 工具读取属性，它更快且更稳定。";
+                        _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
+                        _sink?.Emit(CopilotEvent.Error(msg));
+                        _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
+                        return (msg, "blocked by pml pre-check: readonly attribute query");
+                    }
+                    // PmlValidator 高危命令检查
+                    var validation = PmlValidator.Validate(script);
+                    if (!validation.Passed)
+                    {
+                        string msg = $"[PML 预检拦截] {validation.Message}";
+                        _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
+                        _sink?.Emit(CopilotEvent.Error(msg));
+                        _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
+                        return (msg, "blocked by pml pre-check: " + validation.Message);
+                    }
+                    // Warning 级别：不阻止执行，但通知前端显示警告
+                    if (validation.Level == PmlValidationLevel.Warning)
+                    {
+                        _sink?.Emit(CopilotEvent.Notice($"[PML 预检警告] {validation.Message}"));
+                    }
+                }
+            }
 
             // ── 3. 审批检查 ──
             // 安全保障：

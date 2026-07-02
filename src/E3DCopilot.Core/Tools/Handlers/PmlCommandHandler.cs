@@ -35,23 +35,8 @@ namespace E3DCopilot.Core.Tools.Handlers
         {
             try
             {
-                // 提取 script 参数
+                // 提取 script 参数（预检已由 AgentLoop.ExecuteOneAsync 完成，此处不再重复）
                 string script = ExtractScript(args);
-                if (!string.IsNullOrEmpty(script) && IsReadOnlyAttributeQuery(script))
-                {
-                    return ToolResult.Fail("检测到纯属性读取操作，请使用 get_attributes 工具读取属性，它更快且更稳定。");
-                }
-
-                // ── PML 脚本预检（对齐 Reasonix 执行前 safety check）──
-                if (!string.IsNullOrEmpty(script))
-                {
-                    var validation = PmlValidator.Validate(script);
-                    if (!validation.Passed)
-                    {
-                        return ToolResult.Fail($"[PML 预检拦截] {validation.Message}");
-                    }
-                    // 警告级别不阻止，但在 meta 中记录
-                }
 
                 var result = await _dispatcher.ExecuteAsync("execute_pml", args);
 
@@ -71,7 +56,6 @@ namespace E3DCopilot.Core.Tools.Handlers
                     catch { /* 不是 JSON，按纯文本处理 */ }
                 }
 
-                // 最小安全方案：Text 不变，Data 放结构化 meta 供前端渲染
                 var meta = new JObject
                 {
                     ["tool"] = "execute_pml",
@@ -89,7 +73,7 @@ namespace E3DCopilot.Core.Tools.Handlers
         /// <summary>
         /// 从工具调用的 JSON 参数中提取 script 字段内容
         /// </summary>
-        private static string ExtractScript(string args)
+        internal static string ExtractScript(string args)
         {
             if (string.IsNullOrWhiteSpace(args)) return null;
             try
@@ -107,7 +91,7 @@ namespace E3DCopilot.Core.Tools.Handlers
         /// 判断 PML 脚本是否仅为属性读取操作
         /// 若命中则拦截并提示使用 get_attributes 工具
         /// </summary>
-        private static bool IsReadOnlyAttributeQuery(string script)
+        internal static bool IsReadOnlyAttributeQuery(string script)
         {
             if (string.IsNullOrWhiteSpace(script))
                 return false;

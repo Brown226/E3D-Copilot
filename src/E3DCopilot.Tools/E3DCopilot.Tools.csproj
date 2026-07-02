@@ -33,6 +33,12 @@
     <Reference Include="Aveva.Core.Maths.Geometry">
       <HintPath>..\..\lib\e3d\Aveva.Core.Maths.Geometry.dll</HintPath>
     </Reference>
+    <Reference Include="Aveva.Pdms.Shared">
+      <HintPath>..\..\Libs\E3D\Aveva.Pdms.Shared.dll</HintPath>
+    </Reference>
+    <Reference Include="Aveva.Pdms.Database">
+      <HintPath>..\..\Libs\E3D\Aveva.Pdms.Database.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>

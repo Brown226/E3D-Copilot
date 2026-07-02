@@ -67,7 +67,7 @@ namespace E3DCopilot.Tools.Bridge
             // 订阅 CE 变化事件 — 实时跟踪用户选择的元素
             try
             {
-                CurrentElement.CurrentElementChanged += OnCurrentElementChanged;
+                Aveva.Core.Database.CurrentElement.CurrentElementChanged += OnCurrentElementChanged;
             }
             catch
             {
@@ -75,24 +75,23 @@ namespace E3DCopilot.Tools.Bridge
             }
 
             // 订阅多选变化事件 — 实时跟踪用户选中的所有元素
-            // 注意：Selection 类在 Aveva.Pdms.Shared 命名空间，需引用 Aveva.Pdms.Shared.dll
-            // 暂未引用该 DLL，后续添加引用后启用以下代码
-            /*
+            // 注意：Selection 类在 Aveva.Pdms.Shared 命名空间，其 Members 返回 Aveva.Pdms.Database.DbElement
+            // 与现有代码使用的 Aveva.Core.Database.DbElement 是不同类型，故使用完全限定名
             try
             {
-                Selection.SelectionChanged += OnSelectionChanged;
-                var sel = Selection.CurrentSelection;
+                Aveva.Pdms.Shared.Selection.SelectionChanged += OnSelectionChanged;
+                var sel = Aveva.Pdms.Shared.Selection.CurrentSelection;
                 if (sel != null && sel.Members != null)
                 {
                     lock (_selectedLock)
                     {
                         _selectedElementNames.Clear();
-                        foreach (DbElement member in sel.Members)
+                        foreach (Aveva.Pdms.Database.DbElement member in sel.Members)
                         {
                             if (member != null && member.IsValid)
                             {
                                 string n;
-                                try { n = member.GetAsString(DbAttributeInstance.NAME); } catch { n = null; }
+                                try { n = member.GetAsString(Aveva.Pdms.Database.DbAttributeInstance.NAME); } catch { n = null; }
                                 if (!string.IsNullOrEmpty(n))
                                     _selectedElementNames.Add(n);
                             }
@@ -104,13 +103,12 @@ namespace E3DCopilot.Tools.Bridge
             {
                 // E3D 可能尚未完全初始化，忽略订阅失败
             }
-            */
         }
 
         /// <summary>
         /// 当前元素变化时的回调
         /// </summary>
-        private void OnCurrentElementChanged(object sender, CurrentElementChangedEventArgs e)
+        private void OnCurrentElementChanged(object sender, Aveva.Core.Database.CurrentElementChangedEventArgs e)
         {
             try
             {
@@ -136,25 +134,23 @@ namespace E3DCopilot.Tools.Bridge
 
         /// <summary>
         /// 多选变化时的回调
-        /// 注意：需要先引用 Aveva.Pdms.Shared.dll 并添加 using Aveva.Pdms.Shared;
         /// </summary>
-        /*
-        private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void OnSelectionChanged(object sender, Aveva.Pdms.Shared.SelectionChangedEventArgs e)
         {
             try
             {
                 lock (_selectedLock)
                 {
                     _selectedElementNames.Clear();
-                    var sel = Selection.CurrentSelection;
+                    var sel = Aveva.Pdms.Shared.Selection.CurrentSelection;
                     if (sel != null && sel.Members != null)
                     {
-                        foreach (DbElement member in sel.Members)
+                        foreach (Aveva.Pdms.Database.DbElement member in sel.Members)
                         {
                             if (member != null && member.IsValid)
                             {
                                 string n;
-                                try { n = member.GetAsString(DbAttributeInstance.NAME); } catch { n = null; }
+                                try { n = member.GetAsString(Aveva.Pdms.Database.DbAttributeInstance.NAME); } catch { n = null; }
                                 if (!string.IsNullOrEmpty(n))
                                     _selectedElementNames.Add(n);
                             }
@@ -167,7 +163,6 @@ namespace E3DCopilot.Tools.Bridge
                 // 忽略
             }
         }
-        */
 
         /// <summary>
         /// 获取当前多选的所有元素名称
@@ -483,14 +478,24 @@ namespace E3DCopilot.Tools.Bridge
         /// <summary>
         /// 执行 PML 命令（带超时保护，防止卡死）
         /// 参考 CNPE 官方 PmlUtility.RunInPdmsAsMac 模式：
-        ///   1. 写入临时文件
+        ///   1. 写入临时文件到专用目录（%TEMP%\E3DCopilot\pml\）
         ///   2. 用 $m "路径" 执行（双引号包裹，支持 PML1+PML2）
         ///   3. Command.CreateCommand($m "路径").RunInPdms()
+        /// 专用目录 + 自动清理避免临时文件积累。
         /// </summary>
         public string ExecutePml(string pmlCommand)
         {
-            // 写入临时文件（用 handle return 包裹防止错误弹窗）
-            string tempFile = System.IO.Path.GetTempFileName();
+            // 使用专用临时目录，避免系统临时文件积累
+            string pmlDir = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), "E3DCopilot", "pml");
+            try { System.IO.Directory.CreateDirectory(pmlDir); } catch { }
+
+            // 定期清理超过 24 小时的旧临时文件（每次调用时尝试）
+            CleanOldPmlFiles(pmlDir, TimeSpan.FromHours(24));
+
+            // 用时间戳 + GUID 生成唯一文件名
+            string tempFile = System.IO.Path.Combine(pmlDir,
+                $"pml_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.pml");
             try
             {
                 string wrapped = "handle return\n" + pmlCommand + "\nendhandle";
@@ -512,36 +517,66 @@ namespace E3DCopilot.Tools.Bridge
         }
 
         /// <summary>
-        /// 直接执行单条 PML 命令（带超时保护）
+        /// 清理超过指定时间的旧 PML 临时文件
         /// </summary>
-        private string ExecutePmlDirect(string pmlCommand)
+        private static void CleanOldPmlFiles(string dir, TimeSpan maxAge)
         {
-            var task = Task.Run(() =>
+            try
             {
-                // PML 操作可能较慢，使用 30 秒超时（而非默认 5 秒）
-                return InvokeOnUi(() =>
+                var cutoff = DateTime.Now - maxAge;
+                foreach (var file in System.IO.Directory.GetFiles(dir, "pml_*.pml"))
                 {
                     try
                     {
-                        var cmd = Command.CreateCommand(pmlCommand);
-                        bool ok = cmd.RunInPdms();
-                        return ok ? (cmd.Result ?? "") : "Error: PML execution failed (RunInPdms returned false)";
+                        if (System.IO.File.GetLastWriteTime(file) < cutoff)
+                            System.IO.File.Delete(file);
                     }
-                    catch (Exception ex)
-                    {
-                        return "Error: " + ex.Message;
-                    }
-                }, 30000);
-            });
-
-            // 外层超时 60 秒（内层 30 秒会先触发）
-            if (task.Wait(TimeSpan.FromSeconds(60)))
-            {
-                return task.Result;
+                    catch { /* 跳过被锁定的文件 */ }
+                }
             }
-            else
+            catch { /* 目录不存在等，忽略 */ }
+        }
+
+        /// <summary>
+        /// 直接执行单条 PML 命令（带超时保护）
+        /// 单层 90 秒超时，与 ToolExecutor 的 120 秒外层超时配合。
+        /// </summary>
+        private string ExecutePmlDirect(string pmlCommand)
+        {
+            using (var cts = new System.Threading.CancellationTokenSource(90000))
             {
-                return "Error: PML execution timeout (60s). E3D may be busy or unresponsive.";
+                try
+                {
+                    var task = Task.Run(() =>
+                    {
+                        return InvokeOnUi(() =>
+                        {
+                            try
+                            {
+                                var cmd = Command.CreateCommand(pmlCommand);
+                                bool ok = cmd.RunInPdms();
+                                return ok ? (cmd.Result ?? "") : "Error: PML execution failed (RunInPdms returned false)";
+                            }
+                            catch (Exception ex)
+                            {
+                                return "Error: " + ex.Message;
+                            }
+                        }, 85000); // InvokeOnUi 内层略短于外层，确保由内层先超时
+                    }, cts.Token);
+
+                    if (task.Wait(TimeSpan.FromSeconds(90)))
+                    {
+                        return task.Result;
+                    }
+                    else
+                    {
+                        return "Error: PML execution timeout (90s). E3D may be busy or unresponsive.";
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return "Error: PML execution timeout (90s). E3D may be busy or unresponsive.";
+                }
             }
         }
 
@@ -552,7 +587,7 @@ namespace E3DCopilot.Tools.Bridge
                 // 方法1: CurrentElement.Element 静态属性（推荐，参考项目验证）
                 try
                 {
-                    DbElement current = CurrentElement.Element;
+                    DbElement current = Aveva.Core.Database.CurrentElement.Element;
                     if (current != null && current.IsValid)
                     {
                         string name;
