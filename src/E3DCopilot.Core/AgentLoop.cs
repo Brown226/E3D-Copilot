@@ -118,7 +118,7 @@ namespace E3DCopilot.Core
                 policy.Set("report", ApprovalMode.Auto);
                 policy.Set("compare", ApprovalMode.Auto);
                 policy.Set("hierarchy", ApprovalMode.Auto);
-                policy.Set("batch", ApprovalMode.Ask);
+                policy.Set("batch", ApprovalMode.Auto);
                 policy.Set("cad_import", ApprovalMode.Ask);
                 policy.Set("autocad", ApprovalMode.Ask);
                 policy.Set("todo_write", ApprovalMode.Auto);
@@ -156,7 +156,7 @@ namespace E3DCopilot.Core
                 policy.Set("execute_pml", ApprovalMode.Auto);
                 policy.Set("design", ApprovalMode.Ask);
                 policy.Set("piping", ApprovalMode.Ask);
-                policy.Set("batch", ApprovalMode.Ask);
+                policy.Set("batch", ApprovalMode.Auto);
                 policy.Set("cad_import", ApprovalMode.Auto);
                 policy.Set("autocad", ApprovalMode.Auto);
                 policy.Set("todo_write", ApprovalMode.Auto);
