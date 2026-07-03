@@ -96,6 +96,12 @@ namespace E3DCopilot.Core
 "| Read attribute | `$!val` then `!val.:ATTR` or `!ce.Dbref().:ATTR` |\n" +
 "| Write attribute | `!val.:ATTR = 'value'` (in DO) or `!ce.Dbref().:ATTR = 'value'` |\n" +
 "| Existence check | `var !flag exist $!name` → `TRUEA`/`FALSEA` |\n" +
+"| Reference element | `$P var = DB ELEMENT 'NAME'` → navigate with `$!var` |\n" +
+"| Create element (standard) | `$P parent = DB ELEMENT 'PARENT' ; $P new = NEW TYPE parent` (NEW 后跟 PIPE/BRAN/EQUI/STRU 等标准类型) |\n" +
+"| Create element (special) | `CREATE $P new TYPE FTUB REF DB ELEMENT 'PARENT'` (FTUB/FMTG/SPCON 等特殊类型用 CREATE 而非 NEW) |\n" +
+"| Delete element | `$P var = DB ELEMENT 'NAME' ; DELETE $P var` |\n" +
+"| SQL query (read-only) | `SQL SELECT * FROM E3D_DBA.V_ELEMENT WHERE TYPE = 'PIPE'` **必须写完整 SELECT * ** |\n" +
+"| PML macro exec | `$m \"filepath\"` — only used internally by execute_pml tool |\n" +
 "| Position read | `!pos = !!ce.Position` → `!pos.East/North/Up` |\n" +
 "| Geometry calc | `!dist = !posA.Distance(!posB)` / `!mid = !posA.Mid(!posB)` / `!dir = !posA.Direction(!posB)` |\n" +
 "| Report output | `!report = REPORT(!table)` → `.AddColumn(key, format, heading)` → `.Results(!dtext, !rtext)` |\n" +
