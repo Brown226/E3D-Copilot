@@ -111,7 +111,7 @@ namespace E3DCopilot.Core
                 policy.Set("write_file", ApprovalMode.Ask);
                 policy.Set("run_skill", ApprovalMode.Ask);
                 policy.Set("modify", ApprovalMode.Ask);
-                policy.Set("execute_pml", ApprovalMode.Ask);
+                policy.Set("execute_pml", ApprovalMode.Auto);
                 policy.Set("design", ApprovalMode.Ask);
                 policy.Set("piping", ApprovalMode.Ask);
                 policy.Set("undo_redo", ApprovalMode.Auto);
@@ -147,7 +147,7 @@ namespace E3DCopilot.Core
                 policy.Set("hierarchy", ApprovalMode.Auto);
                 policy.Set("write_file", ApprovalMode.Ask);
                 policy.Set("modify", ApprovalMode.Ask);
-                policy.Set("execute_pml", ApprovalMode.Ask);
+                policy.Set("execute_pml", ApprovalMode.Auto);
                 policy.Set("design", ApprovalMode.Ask);
                 policy.Set("piping", ApprovalMode.Ask);
                 policy.Set("batch", ApprovalMode.Ask);
