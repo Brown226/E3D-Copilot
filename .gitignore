@@ -48,6 +48,7 @@ src/E3DCopilot.WebHost/wwwroot/
 
 # Third-party / compiled DLLs and runtime dependencies
 lib/
+Libs/
 
 # Build error logs
 web-ui-build-error.txt

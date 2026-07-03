@@ -527,14 +527,14 @@ namespace E3DCopilot.Core
                 }
             }
 
-            // ── 3. 审批检查 ──
+            // ── 4. 审批检查 ──
             // 安全保障：
             //   - execute_pml 有 PmlValidator 预检（PURGE/DELETE DB 等高危命令直接阻止）
             //   - 写工具默认 ApprovalMode.Ask（用户审批）
             //   - 批量操作需用户确认
             bool needsApproval = _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask || isBatch;
 
-            // ── 3.1 通知前端工具开始（审批前就发射，让 ToolCard 先显示）──
+            // ── 4.1 通知前端工具开始（审批前就发射，让 ToolCard 先显示）──
             _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
 
             if (needsApproval)

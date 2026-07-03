@@ -21,9 +21,12 @@
     <Reference Include="Microsoft.Web.WebView2.WinForms">
       <HintPath>..\..\lib\webview2\Microsoft.Web.WebView2.WinForms.dll</HintPath>
     </Reference>
-    <Reference Include="Microsoft.Web.WebView2.Core">
+        <Reference Include="Microsoft.Web.WebView2.Core">
       <HintPath>..\..\lib\webview2\Microsoft.Web.WebView2.Core.dll</HintPath>
     </Reference>
+    <None Include="..\..\lib\webview2\WebView2Loader.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- E3D SDK -->
     <Reference Include="Aveva.ApplicationFramework">
       <HintPath>..\..\lib\e3d\Aveva.ApplicationFramework.dll</HintPath>

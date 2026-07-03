@@ -78,12 +78,12 @@ namespace E3DCopilot.Core.Tools
             {
                 var trimmed = line.Trim().ToUpperInvariant();
                 // 排除所有已知的有界 DO 模式
-                if (trimmed == "DO" || trimmed.StartsWith("DO ")
+                if (trimmed == "DO" || (trimmed.StartsWith("DO ")
                     && !trimmed.Contains("WHILE")
                     && !trimmed.Contains("UNTIL")
                     && !trimmed.Contains("VALUES")   // DO !var VALUES !arr
                     && !trimmed.Contains("FROM")     // DO !var FROM n TO m
-                    && !Regex.IsMatch(trimmed, @"\d+\s*TIMES"))
+                    && !Regex.IsMatch(trimmed, @"\d+\s*TIMES")))
                 {
                     return true;
                 }
@@ -113,14 +113,8 @@ namespace E3DCopilot.Core.Tools
 
         private static int CountKeyword(string text, string keyword)
         {
-            int count = 0;
-            int idx = 0;
-            while ((idx = text.IndexOf(keyword, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
-            {
-                count++;
-                idx += keyword.Length;
-            }
-            return count;
+            // 使用词边界匹配，避免子串误匹配（如 "DO" 匹配到 "ENDDO" 中的 "DO"）
+            return Regex.Matches(text, @"\b" + Regex.Escape(keyword) + @"\b", RegexOptions.IgnoreCase).Count;
         }
     }
 

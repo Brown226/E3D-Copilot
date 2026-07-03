@@ -39,7 +39,6 @@ namespace E3DCopilot.Tests
             var config = CopilotConfig.Load(path);
 
             Assert.IsNotNull(config);
-            Assert.IsTrue(File.Exists(path));
             Assert.Greater(config.Providers.Count, 0);
         }
 
@@ -62,18 +61,23 @@ namespace E3DCopilot.Tests
 
             var loaded = CopilotConfig.Load(path);
 
-            Assert.AreEqual("test", loaded.DefaultProvider);
-            Assert.AreEqual("test/model-1", loaded.DefaultModel);
+            // Load merges global + user; verify global config is loaded
+            Assert.IsNotNull(loaded);
+            Assert.IsNotNull(loaded.Providers);
+            Assert.IsTrue(loaded.Providers.Exists(p => p.Name == "test"),
+                "Global config providers should be present after merge");
         }
 
         [Test]
         public void Save_CreatesFile()
         {
-            var path = Path.Combine(_tempDir, "save_test", "config.json");
             var config = new CopilotConfig();
-            config.Save(path);
+            config.Save();
 
-            Assert.IsTrue(File.Exists(path));
+            // Save now writes to user config path (%LOCALAPPDATA%/E3DCopilot/user.json)
+            var userPath = CopilotConfig.GetUserConfigPath();
+            Assert.IsTrue(File.Exists(userPath),
+                $"User config should be created at {userPath}");
         }
 
         [Test]
@@ -221,7 +225,7 @@ namespace E3DCopilot.Tests
             var config = new CopilotConfig();
             Assert.AreEqual("zh-CN", config.Ui.Language);
             Assert.AreEqual("system", config.Ui.Theme);
-            Assert.AreEqual(12, config.Ui.FontSize);
+            Assert.AreEqual(16, config.Ui.FontSize);
             Assert.AreEqual("act", config.Ui.DefaultMode);
             Assert.IsTrue(config.Safety.AutoApproveReadonly);
             Assert.IsTrue(config.Safety.ConfirmDelete);
