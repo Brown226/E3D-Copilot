@@ -16,11 +16,13 @@ namespace E3DCopilot.Core
     ///   - 按 turn 分组：每个用户对话轮次一个 checkpoint 文件
     ///   - modify 操作：记录旧值，可自动回滚
     ///   - execute_pml 操作：记录脚本全文，供手动审查/回滚
-    ///   - 持久化到磁盘：JSON 文件，崩溃后仍可恢复
+    ///   - 文件快照：写文件前备份原内容，支持回滚
+    ///   - 持久化到磁盘：JSON 文件 + 快照文件，崩溃后仍可恢复
     /// </summary>
     public class CheckpointManager
     {
         private readonly string _checkpointsDir;
+        private readonly string _snapshotsDir;
         private Checkpoint _current;
         private readonly object _lock = new object();
         private readonly List<Checkpoint> _completed = new List<Checkpoint>();
@@ -30,8 +32,11 @@ namespace E3DCopilot.Core
             _checkpointsDir = dir ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "E3DCopilot", "checkpoints");
+            _snapshotsDir = Path.Combine(_checkpointsDir, "snapshots");
             if (!Directory.Exists(_checkpointsDir))
                 Directory.CreateDirectory(_checkpointsDir);
+            if (!Directory.Exists(_snapshotsDir))
+                Directory.CreateDirectory(_snapshotsDir);
         }
 
         /// <summary>
@@ -59,6 +64,85 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
+        /// 写文件前快照 — 备份原文件内容（对齐 Reasonix onPreEdit）
+        /// </summary>
+        public string SnapshotFile(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                return null;
+
+            try
+            {
+                string content = File.ReadAllText(filePath);
+                string snapId = $"snap_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}";
+                string snapPath = Path.Combine(_snapshotsDir, snapId);
+                File.WriteAllText(snapPath, content);
+
+                // 记录快照引用到当前操作
+                lock (_lock)
+                {
+                    if (_current != null)
+                    {
+                        _current.Operations.Add(new CheckpointOperation
+                        {
+                            ToolName = "__snapshot__",
+                            Args = snapId,
+                            Timestamp = DateTime.UtcNow,
+                            SnapshotPath = snapPath,
+                            SnapshotOriginalPath = filePath
+                        });
+                    }
+                }
+
+                return snapId;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// 回滚指定 checkpoint 中所有快照文件（对齐 Reasonix rewind）
+        /// </summary>
+        public int RollbackCheckpoint(string checkpointId)
+        {
+            int restored = 0;
+            try
+            {
+                var cp = LoadCheckpoint(checkpointId);
+                if (cp?.Operations == null) return 0;
+
+                foreach (var op in cp.Operations)
+                {
+                    if (op.ToolName == "__snapshot__" &&
+                        !string.IsNullOrEmpty(op.SnapshotPath) &&
+                        !string.IsNullOrEmpty(op.SnapshotOriginalPath))
+                    {
+                        try
+                        {
+                            if (File.Exists(op.SnapshotPath))
+                            {
+                                File.Copy(op.SnapshotPath, op.SnapshotOriginalPath, overwrite: true);
+                                restored++;
+                            }
+                        }
+                        catch { /* 跳过无法恢复的文件 */ }
+                    }
+                }
+            }
+            catch { }
+            return restored;
+        }
+
+        /// <summary>
+        /// 回滚最近一个 checkpoint
+        /// </summary>
+        public int RollbackLatest()
+        {
+            var latest = GetLatestCheckpoint();
+            if (latest == null) return 0;
+            return RollbackCheckpoint(latest.Id);
+        }
+
+        /// <summary>
         /// 记录一次写操作（在工具执行后调用，对齐 Reasonix Snapshot）
         /// </summary>
         public void RecordOperation(string toolName, string args,
@@ -67,6 +151,8 @@ namespace E3DCopilot.Core
             lock (_lock)
             {
                 if (_current == null) return;
+                // 过滤 __snapshot__ 操作（已在 SnapshotFile 中记录）
+                if (toolName == "__snapshot__") return;
                 _current.Operations.Add(new CheckpointOperation
                 {
                     ToolName = toolName,
@@ -268,6 +354,18 @@ namespace E3DCopilot.Core
         /// </summary>
         [JsonProperty("pmlScript", NullValueHandling = NullValueHandling.Ignore)]
         public string PmlScript { get; set; }
+
+        /// <summary>
+        /// 文件快照路径（WriteFile/EditFile 操作前备份）
+        /// </summary>
+        [JsonProperty("snapshotPath", NullValueHandling = NullValueHandling.Ignore)]
+        public string SnapshotPath { get; set; }
+
+        /// <summary>
+        /// 快照对应的原始文件路径
+        /// </summary>
+        [JsonProperty("snapshotOriginalPath", NullValueHandling = NullValueHandling.Ignore)]
+        public string SnapshotOriginalPath { get; set; }
     }
 
     public class CheckpointMeta

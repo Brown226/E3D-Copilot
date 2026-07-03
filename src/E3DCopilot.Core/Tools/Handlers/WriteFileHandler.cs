@@ -72,6 +72,11 @@ namespace E3DCopilot.Core.Tools.Handlers
 
         public bool IsReadOnly => false;
 
+        /// <summary>
+        /// 写前快照回调（由 CopilotController 注入 CheckpointManager.SnapshotFile）
+        /// </summary>
+        internal static Func<string, string> OnBeforeWrite { get; set; }
+
         public async Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default)
         {
             try
@@ -121,6 +126,12 @@ namespace E3DCopilot.Core.Tools.Handlers
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
+                }
+
+                // 写前快照（对齐 Reasonix onPreEdit checkpoint）
+                if (OnBeforeWrite != null && File.Exists(fullPath))
+                {
+                    OnBeforeWrite(fullPath);
                 }
 
                 // 写入文件（UTF-8 无 BOM）

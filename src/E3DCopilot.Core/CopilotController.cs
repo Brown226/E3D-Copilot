@@ -200,6 +200,13 @@ namespace E3DCopilot.Core
             Sessions = new SessionStore(System.IO.Path.Combine(dataDir, "sessions"));
             Checkpoints = new CheckpointManager(System.IO.Path.Combine(dataDir, "checkpoints"));
 
+            // 写前快照注入（对齐 Reasonix onPreEdit checkpoint）
+            Tools.Handlers.WriteFileHandler.OnBeforeWrite = (filePath) =>
+            {
+                Checkpoints.SnapshotFile(filePath);
+                return null;
+            };
+
             // 注册 memory 工具（需要 MemoryManager，在 CreateDefault 之后）
             if (Executor.GetHandler("memory") == null)
                 Executor.Register(new Tools.Handlers.MemoryHandler(Memory, _sink));
