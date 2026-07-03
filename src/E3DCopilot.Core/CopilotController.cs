@@ -180,6 +180,12 @@ namespace E3DCopilot.Core
                 "E3DCopilot", "skills-state.json");
             Skills = new SkillManager(skillStatePath);
 
+            // 添加项目级技能目录（开发模式：从项目根目录读取）
+            var repoSkillsDir = System.IO.Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "skills");
+            if (System.IO.Directory.Exists(repoSkillsDir))
+                Skills.AddSource(repoSkillsDir);
+
             // 注册 run_skill 工具（需要 SkillManager，在 ToolExecutor.CreateDefault 之后）
             if (Executor.GetHandler("run_skill") == null)
                 Executor.Register(new Tools.Handlers.RunSkillHandler(Skills, _sink));
