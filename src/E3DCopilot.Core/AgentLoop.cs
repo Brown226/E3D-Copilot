@@ -125,6 +125,12 @@ namespace E3DCopilot.Core
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
                 policy.Set("glob", ApprovalMode.Auto);
+                // ISO 出图 & 查询工具
+                policy.Set("generate_iso_drawing", ApprovalMode.Auto);
+                policy.Set("query_material", ApprovalMode.Auto);
+                policy.Set("get_pipe_info", ApprovalMode.Auto);
+                // 土建结构出图
+                policy.Set("structure_drawing", ApprovalMode.Auto);
             }
             else
             {
@@ -157,6 +163,12 @@ namespace E3DCopilot.Core
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
                 policy.Set("glob", ApprovalMode.Auto);
+                // ISO 出图 & 查询工具
+                policy.Set("generate_iso_drawing", ApprovalMode.Auto);
+                policy.Set("query_material", ApprovalMode.Auto);
+                policy.Set("get_pipe_info", ApprovalMode.Auto);
+                // 土建结构出图
+                policy.Set("structure_drawing", ApprovalMode.Auto);
             }
 
             return policy;
