@@ -29,9 +29,57 @@ namespace E3DCopilot.Core.Tools.Handlers
     {
         private readonly IEventSink _sink;
 
-        // 当前会话任务列表（静态，同一进程内共享）
+        // 当前会话任务列表（静态，同一进程内共享，跨轮持久化）
         private static readonly List<TodoItem> _todos = new List<TodoItem>();
         private static readonly object _lock = new object();
+
+        // 持久化路径
+        private static readonly string _todoStatePath = System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+            "E3DCopilot", "todo-state.json");
+
+        /// <summary>
+        /// 启动时加载持久化待办
+        /// </summary>
+        static TodoWriteHandler()
+        {
+            try
+            {
+                if (System.IO.File.Exists(_todoStatePath))
+                {
+                    string json = System.IO.File.ReadAllText(_todoStatePath);
+                    var loaded = Newtonsoft.Json.JsonConvert.DeserializeObject<List<TodoItem>>(json);
+                    if (loaded != null && loaded.Count > 0)
+                    {
+                        lock (_lock)
+                        {
+                            _todos.Clear();
+                            _todos.AddRange(loaded);
+                        }
+                    }
+                }
+            }
+            catch { /* 文件损坏忽略 */ }
+        }
+
+        /// <summary>
+        /// 持久化当前待办到磁盘
+        /// </summary>
+        private static void SaveState()
+        {
+            try
+            {
+                lock (_lock)
+                {
+                    string json = Newtonsoft.Json.JsonConvert.SerializeObject(_todos, Newtonsoft.Json.Formatting.Indented);
+                    string dir = System.IO.Path.GetDirectoryName(_todoStatePath);
+                    if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir))
+                        System.IO.Directory.CreateDirectory(dir);
+                    System.IO.File.WriteAllText(_todoStatePath, json);
+                }
+            }
+            catch { /* 持久化失败不影响主流程 */ }
+        }
 
         public TodoWriteHandler(IEventSink sink = null)
         {
@@ -173,6 +221,9 @@ namespace E3DCopilot.Core.Tools.Handlers
                     }
                 }
 
+                // 每次修改后持久化
+                SaveState();
+
                 // 格式化输出
                 int completed, inProgress, pending, cancelled;
                 string output;
@@ -262,6 +313,8 @@ namespace E3DCopilot.Core.Tools.Handlers
                 {
                     nextPending.Status = "in_progress";
                 }
+
+                SaveState();
 
                 return true;
             }
