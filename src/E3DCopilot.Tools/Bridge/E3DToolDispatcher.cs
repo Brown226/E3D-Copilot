@@ -491,10 +491,14 @@ namespace E3DCopilot.Tools.Bridge
                 string queryParam = json["query"]?.ToString();
                 string filePath = json["filePath"]?.ToString();
 
-                // 解析 query 字符串为 elementType + namePattern
-                string elementType = "";
-                string namePattern = "";
-                if (!string.IsNullOrEmpty(queryParam))
+                // 支持直接从 args 读 type/scope（兼容 LLM 调用方式）
+                string elementType = json["type"]?.ToString() ?? "";
+                string namePattern = json["name"]?.ToString() ?? "";
+                string scope = json["scope"]?.ToString() ?? "";
+
+                // 如果 type/scope 已从 args 直接读到，不再解析 query
+                bool hasExplicitType = !string.IsNullOrEmpty(elementType);
+                if (!hasExplicitType && !string.IsNullOrEmpty(queryParam))
                 {
                     // 支持格式: "type=PIPE,name=*" 或直接作为 name pattern
                     if (queryParam.Contains("="))
@@ -531,7 +535,7 @@ namespace E3DCopilot.Tools.Bridge
                 }
 
                 // 查询元素
-                var elements = _env.QueryElements(elementType, namePattern, "", 1000);
+                var elements = _env.QueryElements(elementType, namePattern, scope, 1000);
 
                 // 格式化输出
                 string content;
@@ -799,6 +803,30 @@ namespace E3DCopilot.Tools.Bridge
 
                         if (string.IsNullOrEmpty(pipe))
                             return "{\"success\": false, \"error\": \"缺少 pipe 参数\"}";
+
+                        // FTUB（Fitting Tube）不能通过 NEW 创建，必须用 CREATE
+                        if (fitmentType.Equals("FTUB", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string pml = $"CREATE $P pipe REF DB ELEMENT '{pipe.Replace("'", "''")}'";
+                            pml += $" ; CREATE $P new TYPE FTUB REF $P pipe";
+                            pml += $" ; $P new.NAME = '{name.Replace("'", "''")}'";
+                            if (!string.IsNullOrEmpty(attrs))
+                            {
+                                try
+                                {
+                                    var jattrs = JObject.Parse(attrs);
+                                    foreach (var prop in jattrs.Properties())
+                                    {
+                                        string val = prop.Value?.ToString() ?? "";
+                                        pml += $" ; $P new.{prop.Name.ToUpper()} = '{val.Replace("'", "''")}'";
+                                    }
+                                }
+                                catch { }
+                            }
+                            string result = _env.ExecutePml(pml);
+                            bool failed = !string.IsNullOrEmpty(result) && result.StartsWith("Error:");
+                            return $"{{\"success\": {(!failed).ToString().ToLower()}, \"element\": \"{name}\", \"error\": {(failed ? $"\"{result}\"" : "null")}}}";
+                        }
 
                         return _env.CreateElement(pipe, name, fitmentType, attrs);
                     }
