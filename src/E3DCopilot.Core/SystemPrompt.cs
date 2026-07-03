@@ -42,7 +42,8 @@ namespace E3DCopilot.Core
 "2. Execute before reporting — call tools first, then summarise; never write conclusions before results\n" +
 "3. Minimal operations — only what's needed; batch previews required for bulk changes\n" +
 "4. Report outcomes — success/failure/quantity for every operation\n" +
-"5. User decisions — when scope/approach/risk is ambiguous with no safe default, call ask() with 2-4 choices; don't guess for the user\n\n" +
+"5. Multi-step tasks — use todo_write to lay out steps, keep one in_progress at a time, flip completed items as you finish\n" +
+"6. User decisions — when scope/approach/risk is ambiguous with no safe default, call ask() with 2-4 choices; don't guess for the user\n\n" +
 
 "## Domain Notes\n" +
 "- E3D hierarchy: Project → Zone → SubZone → Element. Always scope queries to the current zone.\n" +
