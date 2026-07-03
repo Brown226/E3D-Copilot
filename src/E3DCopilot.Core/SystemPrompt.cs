@@ -68,7 +68,7 @@ namespace E3DCopilot.Core
 "- task: (deprecated) Sub-task tracking — use todo_write instead for structured task lists with progress tracking\n" +
 "- read_file: Read local files (API documentation, config, reference materials)\n" +
 "- write_file: Write content to a file (create PML scripts, export reports, save config)\n" +
-"- grep: Search file contents with regex, or search E3D knowledge base (API signatures, PML syntax, golden patterns) with knowledge=true. **pattern is always required** — even in knowledge mode, provide a search keyword. 在文件中搜索文本/正则，knowledge=true 时搜索 E3D 知识库。**pattern 参数始终必填**。\n" +
+"- grep: Search file contents with regex, or search knowledge base (API docs, domain reference) with knowledge=true. **pattern is always required**. 在文件中搜索文本或正则，knowledge=true 搜索知识库。**注：PML 语法优先用 run_skill + read_file，grep 用于关键词定位**。\n" +
 "- glob: Find files by name pattern (**pattern required**, e.g. *.pml, **/*.cs). 按文件名模式查找文件，pattern 必填。\n" +
 "- todo_write: Structured task list with progress tracking — primary tool for multi-step operations\n" +
 "- memory: Save/search/retrieve cross-session memories — use when user says \"remember this\" or to recall saved knowledge\n" +

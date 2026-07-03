@@ -521,7 +521,12 @@ namespace E3DCopilot.Tools.Bridge
                         {
                             var cmd = Command.CreateCommand(pmlCommand);
                             bool ok = cmd.RunInPdms();
-                            return ok ? (cmd.Result ?? "") : "Error: PML execution failed (RunInPdms returned false)";
+                            // RunInPdms 返回 false 时 cmd.Result 包含实际 PML 错误信息（行号、语法错误等）
+                            if (ok) return cmd.Result ?? "";
+                            string err = cmd.Result;
+                            if (!string.IsNullOrEmpty(err))
+                                return err;  // 返回 PML 实际错误，如 "(47,15) CP: Syntax error"
+                            return "Error: PML execution failed (RunInPdms returned false)";
                         }
                         catch (Exception ex)
                         {
