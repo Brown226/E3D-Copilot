@@ -24,8 +24,12 @@ function extractTodos(messages: Message[]): TodoItem[] {
     const msg = messages[i]
     if (msg.role === 'tool_call' && msg.toolName === 'todo_write' && msg.toolArgs) {
       try {
-        const args = msg.toolArgs as { todos?: TodoItem[] }
-        if (Array.isArray(args.todos)) return args.todos
+        // toolArgs 来自后端是 JSON 字符串，需要先解析
+        const parsed = typeof msg.toolArgs === 'string'
+          ? JSON.parse(msg.toolArgs)
+          : msg.toolArgs
+        const todos = (parsed as { todos?: TodoItem[] }).todos
+        if (Array.isArray(todos)) return todos
       } catch { /* ignore */ }
     }
   }
