@@ -381,14 +381,14 @@ namespace E3DCopilot.Core
             if (approval == null) return;
             _pendingApprovals[approval.Id] = approval;
 
-            // 审批超时：5分钟后自动拒绝
-            var timeout = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            // 审批超时：2分钟后自动拒绝
+            var timeout = Task.Delay(TimeSpan.FromMinutes(2)).ContinueWith(_ =>
             {
                 if (_pendingApprovals.TryGetValue(approval.Id, out var timedOut))
                 {
-                    timedOut.Complete(false, false);
+                    timedOut.Complete(false, false, timedOut: true);
                     _pendingApprovals.Remove(approval.Id);
-                    _sink.Emit(CopilotEvent.Notice($"Approval timed out: {approval.ToolName}"));
+                    _sink.Emit(CopilotEvent.Notice($"审批超时: {approval.ToolName} 未在 2 分钟内获得确认"));
                 }
             });
 

@@ -10,6 +10,7 @@ namespace E3DCopilot.Core.Security
     {
         public bool Allow { get; set; }
         public bool SessionPersist { get; set; }
+        public bool TimedOut { get; set; }
     }
 
     /// <summary>
@@ -28,12 +29,13 @@ namespace E3DCopilot.Core.Security
         /// <summary>
         /// UI 线程调用：用户点击审批按钮
         /// </summary>
-        public void Complete(bool allow, bool sessionPersist = false)
+        public void Complete(bool allow, bool sessionPersist = false, bool timedOut = false)
         {
             _tcs.TrySetResult(new ApprovalResult
             {
                 Allow = allow,
-                SessionPersist = sessionPersist
+                SessionPersist = sessionPersist,
+                TimedOut = timedOut
             });
         }
 

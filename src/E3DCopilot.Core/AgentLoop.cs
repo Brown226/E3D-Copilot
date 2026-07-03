@@ -563,9 +563,12 @@ namespace E3DCopilot.Core
                 var approvalResult = await approval.WaitAsync(ct);
                 if (!approvalResult.Allow)
                 {
-                    string msg = $"User rejected {call.Name}";
+                    string msg = approvalResult.TimedOut
+                        ? $"审批超时: {call.Name}（2 分钟未确认）"
+                        : $"User rejected {call.Name}";
+                    string reason = approvalResult.TimedOut ? "approval timed out" : "user rejected";
                     _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
-                    return (msg, "user rejected");
+                    return (msg, reason);
                 }
             }
 

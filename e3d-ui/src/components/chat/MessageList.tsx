@@ -260,6 +260,13 @@ export function MessageList() {
     }
   }, [messages.length, lastMsgContentLen])
 
+  // 审批/提问卡片出现时自动滚动到底部（该状态不触发 messages.length 变化）
+  useEffect(() => {
+    if (autoScrollRef.current && (pendingApproval != null || pendingQuestion != null)) {
+      parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: 'smooth' })
+    }
+  }, [pendingApproval, pendingQuestion])
+
   useEffect(() => {
     if (messages.length === 0) {
       autoScrollRef.current = true
