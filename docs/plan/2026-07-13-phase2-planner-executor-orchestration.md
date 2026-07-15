@@ -1,6 +1,7 @@
 # 第二期 Phase 2：Planner-Executor 编排引擎
 
-> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+> **状态：✅ 全部实现并提交（11131da / f50b41d）**
+> 此计划中的 22 项步骤已全部完成。以下为归档记录。
 
 **目标：** 将 `SubagentMode.Planner/Executor` 枚举值变为真正的编排流程——Planner 产出结构化计划，Executor 按依赖并行执行，主 Agent 审查后汇总。
 
@@ -29,7 +30,7 @@
 **文件：**
 - 创建：`src/E3DCopilot.Core/Agents/ExecutionPlan.cs`
 
-- [ ] **步骤 1：编写 ExecutionPlan 类**
+- [x] **步骤 1：编写 ExecutionPlan 类**
 
 ```csharp
 using System.Collections.Generic;
@@ -130,12 +131,12 @@ namespace E3DCopilot.Core.Agents
 }
 ```
 
-- [ ] **步骤 2：构建验证**
+- [x] **步骤 2：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release 2>&1 | Select-String "error|Build succeeded"`
 预期：Build succeeded
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Agents/ExecutionPlan.cs
@@ -149,7 +150,7 @@ git commit -m "feat: ExecutionPlan 数据结构 — 步骤/依赖/并行组"
 **文件：**
 - 创建：`src/E3DCopilot.Core/Agents/Orchestrator.cs`
 
-- [ ] **步骤 1：编写 Orchestrator 类**
+- [x] **步骤 1：编写 Orchestrator 类**
 
 ```csharp
 using System;
@@ -420,12 +421,12 @@ namespace E3DCopilot.Core.Agents
 }
 ```
 
-- [ ] **步骤 2：构建验证**
+- [x] **步骤 2：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release 2>&1 | Select-String "error|Build succeeded"`
 预期：Build succeeded
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Agents/Orchestrator.cs
@@ -439,7 +440,7 @@ git commit -m "feat: Orchestrator Planner-Executor 编排引擎"
 **文件：**
 - 创建：`src/E3DCopilot.Core/Tools/Handlers/OrchestrateHandler.cs`
 
-- [ ] **步骤 1：编写 OrchestrateHandler**
+- [x] **步骤 1：编写 OrchestrateHandler**
 
 ```csharp
 using System;
@@ -517,11 +518,11 @@ namespace E3DCopilot.Core.Tools.Handlers
 }
 ```
 
-- [ ] **步骤 2：构建验证**
+- [x] **步骤 2：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release`
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Tools/Handlers/OrchestrateHandler.cs
@@ -535,7 +536,7 @@ git commit -m "feat: OrchestrateHandler — orchestrate_task 工具"
 **文件：**
 - 修改：`src/E3DCopilot.Core/CopilotController.cs`
 
-- [ ] **步骤 1：在 CreateDefault 中构造 Orchestrator 并注册 OrchestrateHandler**
+- [x] **步骤 1：在 CreateDefault 中构造 Orchestrator 并注册 OrchestrateHandler**
 
 在 `CopilotController.CreateDefault` 方法中（约第 280 行附近，`SubagentRunner` 构造之后）：
 
@@ -558,11 +559,11 @@ public Orchestrator Orchestrator { get; private set; }
 this.Orchestrator = orchestrator;
 ```
 
-- [ ] **步骤 2：构建验证**
+- [x] **步骤 2：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release`
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/CopilotController.cs
@@ -576,7 +577,7 @@ git commit -m "feat: CopilotController 注入 Orchestrator + OrchestrateHandler"
 **文件：**
 - 修改：`src/E3DCopilot.Core/SystemPrompt.cs`
 
-- [ ] **步骤 1：在 BuildBasePrompt 中新增编排规则**
+- [x] **步骤 1：在 BuildBasePrompt 中新增编排规则**
 
 在第 7 条规则后新增第 8 条：
 
@@ -589,13 +590,13 @@ git commit -m "feat: CopilotController 注入 Orchestrator + OrchestrateHandler"
 
 更新后的 Principles 完整为 8 条。
 
-- [ ] **步骤 2：构建验证 + 清除缓存**
+- [x] **步骤 2：构建验证 + 清除缓存**
 
 由于 `SystemPrompt` 使用了静态缓存 `_cachedBasePrompt`，修改后需要重启才能生效。开发阶段可以通过 `SystemPrompt.InvalidateCache()` 强制刷新（如果存在）。如果没有该方法，手动重启 E3D。
 
 运行：`dotnet build src/E3DCopilot.sln -c Release`
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/SystemPrompt.cs
@@ -609,7 +610,7 @@ git commit -m "feat: SystemPrompt 增补编排能力说明（第 8 条）"
 **文件：**
 - 创建：`src/E3DCopilot.Tests/OrchestratorTests.cs`
 
-- [ ] **步骤 1：编写测试**
+- [x] **步骤 1：编写测试**
 
 ```csharp
 using System.Threading;
@@ -716,12 +717,12 @@ namespace E3DCopilot.Tests
 #endif
 ```
 
-- [ ] **步骤 2：运行测试**
+- [x] **步骤 2：运行测试**
 
 运行：`dotnet test src/E3DCopilot.Tests --filter "FullyQualifiedName~Orchestrator" 2>&1`
 预期：7 tests PASS
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Tests/OrchestratorTests.cs src/E3DCopilot.Core/Agents/Orchestrator.cs
@@ -732,17 +733,17 @@ git commit -m "test: Orchestrator 单元测试 + ExtractJson 内部可测方法"
 
 ## 任务 7：端到端编译验证
 
-- [ ] **步骤 1：后端构建**
+- [x] **步骤 1：后端构建**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release 2>&1 | Select-String "error|Build succeeded"`
 预期：Build succeeded. 0 warnings
 
-- [ ] **步骤 2：后端测试**
+- [x] **步骤 2：后端测试**
 
 运行：`dotnet test src/E3DCopilot.Tests 2>&1 | Select-String "Passed|Failed|Test Run"`
 预期：Passed 数 > 265
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git commit -m "chore: Phase 2 端到端验证通过"

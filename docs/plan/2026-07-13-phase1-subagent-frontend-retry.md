@@ -1,6 +1,7 @@
 # 第二期 Phase 1：子代理前端可视化 + 工具重试 + 写模式
 
-> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+> **状态：✅ 全部实现并提交（f50b41d / feec99d）**
+> 此计划中的 43 项步骤已全部完成。以下为归档记录。
 
 **目标：** 子代理运行状态在前端可见、工具调用失败自动重试、子代理支持受控写模式。
 
@@ -35,7 +36,7 @@
 **文件：**
 - 修改：`e3d-ui/src/types/index.ts`
 
-- [ ] **步骤 1：给 Message 接口加 agentName 字段**
+- [x] **步骤 1：给 Message 接口加 agentName 字段**
 
 ```typescript
 // e3d-ui/src/types/index.ts — Message 接口新增一行
@@ -46,12 +47,12 @@ export interface Message {
 }
 ```
 
-- [ ] **步骤 2：验证类型检查通过**
+- [x] **步骤 2：验证类型检查通过**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 预期：仅 3 个已有的未使用变量错误，无新引入错误
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add e3d-ui/src/types/index.ts
@@ -67,7 +68,7 @@ git commit -m "feat: Message 类型新增 agentName 字段"
 
 读 `bridgeService.ts` 找到 `handleToolResult` 和 `handleToolDispatch` 事件处理逻辑（约在 `handleEvent` 函数中，`case 'tool:result'` 和 `case 'tool:dispatch'` 分支）。
 
-- [ ] **步骤 1：在 bridgeService 工具事件处理中读取 agentName 并写入 store**
+- [x] **步骤 1：在 bridgeService 工具事件处理中读取 agentName 并写入 store**
 
 找到 `bridgeService.ts` 中处理 `tool:dispatch` 和 `tool:result` 事件的代码。在每个 `appendMessage` 调用中，如果事件数据含 `agentName`，将其传入消息：
 
@@ -93,7 +94,7 @@ if (agentName) {
 }
 ```
 
-- [ ] **步骤 2：在 useChatStore 中新增 setMessageAgentName 方法**
+- [x] **步骤 2：在 useChatStore 中新增 setMessageAgentName 方法**
 
 ```typescript
 // e3d-ui/src/store/useChatStore.ts — ChatStore 接口新增
@@ -117,12 +118,12 @@ setMessageAgentName: (toolId, agentName, tabId) => {
 },
 ```
 
-- [ ] **步骤 3：验证类型检查**
+- [x] **步骤 3：验证类型检查**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 预期：仅已有错误，无新错误
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add e3d-ui/src/services/bridgeService.ts e3d-ui/src/store/useChatStore.ts
@@ -136,7 +137,7 @@ git commit -m "feat: bridgeService 传递 agentName 到前端消息"
 **文件：**
 - 创建：`e3d-ui/src/components/chat/SubagentPanel.tsx`
 
-- [ ] **步骤 1：编写 SubagentPanel 组件**
+- [x] **步骤 1：编写 SubagentPanel 组件**
 
 ```typescript
 // e3d-ui/src/components/chat/SubagentPanel.tsx
@@ -208,7 +209,7 @@ export function SubagentPanel({ agentName, messages, allMessages, subcalls }: Su
 }
 ```
 
-- [ ] **步骤 2：添加 CSS 样式**
+- [x] **步骤 2：添加 CSS 样式**
 
 在 `e3d-ui/src/styles/` 中找到或新建 `_subagent.scss`：
 
@@ -253,12 +254,12 @@ export function SubagentPanel({ agentName, messages, allMessages, subcalls }: Su
 }
 ```
 
-- [ ] **步骤 3：验证类型检查**
+- [x] **步骤 3：验证类型检查**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 预期：仅已有错误
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add e3d-ui/src/components/chat/SubagentPanel.tsx e3d-ui/src/styles/_subagent.scss
@@ -274,7 +275,7 @@ git commit -m "feat: SubagentPanel 子代理折叠面板组件"
 
 在 `buildDisplayItems` 中，子代理消息（`agentName != null`）不再作为独立 DisplayItem，而是收集到 `Map<string, Message[]>` 中。在 `renderItem` 之外，渲染 SubagentPanel。
 
-- [ ] **步骤 1：在 MessageList 中收集子代理消息并渲染 SubagentPanel**
+- [x] **步骤 1：在 MessageList 中收集子代理消息并渲染 SubagentPanel**
 
 关键修改点：在 `hotDisplayItems` 渲染之后，如果子代理消息集合非空，渲染 SubagentPanel。
 
@@ -314,16 +315,16 @@ if (item.kind === 'message' && item.msg.agentName) {
 ))}
 ```
 
-- [ ] **步骤 2：验证类型检查**
+- [x] **步骤 2：验证类型检查**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 
-- [ ] **步骤 3：手动测试**
+- [x] **步骤 3：手动测试**
 
 启动 dev server：`cd e3d-ui && npm run dev`
 通过 `dispatch_subagent(name="test", task="query pipe info")` 验证前端显示独立面板
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add e3d-ui/src/components/chat/MessageList.tsx
@@ -337,7 +338,7 @@ git commit -m "feat: MessageList 按 agentName 分组渲染子代理面板"
 **文件：**
 - 修改：`e3d-ui/src/components/chat/ToolCard.tsx`
 
-- [ ] **步骤 1：dispatch_subagent 工具显示 Bot 图标**
+- [x] **步骤 1：dispatch_subagent 工具显示 Bot 图标**
 
 在 `ToolCard` 的状态图标区域（约第 225-233 行），`dispatch_subagent` 工具已运行时显示特殊图标：
 
@@ -354,11 +355,11 @@ git commit -m "feat: MessageList 按 agentName 分组渲染子代理面板"
 )}
 ```
 
-- [ ] **步骤 2：验证类型检查**
+- [x] **步骤 2：验证类型检查**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add e3d-ui/src/components/chat/ToolCard.tsx
@@ -372,7 +373,7 @@ git commit -m "feat: ToolCard dispatch_subagent 特殊 Bot 图标"
 **文件：**
 - 修改：`src/E3DCopilot.Core/Tools/ToolResult.cs`
 
-- [ ] **步骤 1：给 ToolResult 加 IsRetryable**
+- [x] **步骤 1：给 ToolResult 加 IsRetryable**
 
 ```csharp
 // 在 ToolResult 类中新增：
@@ -387,12 +388,12 @@ public static ToolResult RetryableFail(string error) =>
     new ToolResult { Success = false, Error = error, Text = error, IsRetryable = true };
 ```
 
-- [ ] **步骤 2：构建验证**
+- [x] **步骤 2：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release 2>&1 | Select-String "error|Build succeeded"`
 预期：Build succeeded
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Tools/ToolResult.cs
@@ -406,7 +407,7 @@ git commit -m "feat: ToolResult 新增 IsRetryable 字段和 RetryableFail 工�
 **文件：**
 - 修改：`src/E3DCopilot.Core/Tools/IToolHandler.cs`
 
-- [ ] **步骤 1：添加 MaxRetries 默认实现**
+- [x] **步骤 1：添加 MaxRetries 默认实现**
 
 ```csharp
 // 在 IToolHandler 接口中新增：
@@ -424,7 +425,7 @@ int MaxRetries => 0; // C# 8.0 default interface method — 但需要 net48 兼�
 // 改为在 ToolExecutor 维护一个 Dictionary<string, int> _retryConfig
 ```
 
-- [ ] **步骤 2：实际方案 — ToolExecutor 维护重试配置**
+- [x] **步骤 2：实际方案 — ToolExecutor 维护重试配置**
 
 在 `ToolExecutor` 中：
 
@@ -442,11 +443,11 @@ private int GetMaxRetries(string toolName)
 }
 ```
 
-- [ ] **步骤 3：构建验证**
+- [x] **步骤 3：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release`
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Tools/IToolHandler.cs src/E3DCopilot.Core/Tools/ToolExecutor.cs
@@ -461,7 +462,7 @@ git commit -m "feat: ToolExecutor 新增 SetMaxRetries 重试配置"
 - 修改：`src/E3DCopilot.Core/Tools/ToolExecutor.cs`
 - 修改：`src/E3DCopilot.Tests/ToolExecutorTests.cs`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```csharp
 // E3DCopilot.Tests/ToolExecutorTests.cs 新增
@@ -548,12 +549,12 @@ public class FatalHandler : IToolHandler
 }
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`dotnet test src/E3DCopilot.Tests --filter "FullyQualifiedName~Retryable" 2>&1`
 预期：FAIL，3 个测试全部失败
 
-- [ ] **步骤 3：实现重试逻辑**
+- [x] **步骤 3：实现重试逻辑**
 
 在 `ToolExecutor.ExecuteAsync`（单工具执行方法）中，在执行后加入重试循环：
 
@@ -611,12 +612,12 @@ public async Task<ToolResult> ExecuteAsync(ToolCall call, CancellationToken ct =
 }
 ```
 
-- [ ] **步骤 4：运行测试确认通过**
+- [x] **步骤 4：运行测试确认通过**
 
 运行：`dotnet test src/E3DCopilot.Tests --filter "FullyQualifiedName~Retryable" 2>&1`
 预期：3 tests PASS
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Tools/ToolExecutor.cs src/E3DCopilot.Tests/ToolExecutorTests.cs
@@ -632,7 +633,7 @@ git commit -m "feat: ToolExecutor 指数退避重试逻辑"
 - 修改：`src/E3DCopilot.Core/Agents/SubagentRunner.cs`
 - 修改：`src/E3DCopilot.Tests/SubagentTests.cs`
 
-- [ ] **步骤 1：编写测试**
+- [x] **步骤 1：编写测试**
 
 ```csharp
 // SubagentTests.cs 新增
@@ -669,7 +670,7 @@ public void SubagentRunner_WriteMode_UsesFullToolset()
 }
 ```
 
-- [ ] **步骤 2：修改 SubagentDispatchHandler — 参数 schema 加 readonly**
+- [x] **步骤 2：修改 SubagentDispatchHandler — 参数 schema 加 readonly**
 
 ```csharp
 // SubagentDispatchHandler.ParameterSchema 新增 readonly 参数
@@ -694,7 +695,7 @@ public string ParameterSchema => @"{
 public bool IsReadOnly => true; // 派发本身是只读动作
 ```
 
-- [ ] **步骤 3：修改 ExecuteAsync 读取 readonly 参数**
+- [x] **步骤 3：修改 ExecuteAsync 读取 readonly 参数**
 
 ```csharp
 // SubagentDispatchHandler.ExecuteAsync 中，解析参数后
@@ -711,7 +712,7 @@ var ctx = new SubagentContext
 };
 ```
 
-- [ ] **步骤 4：SubagentRunner 按 IsReadOnly 动态过滤**
+- [x] **步骤 4：SubagentRunner 按 IsReadOnly 动态过滤**
 
 ```csharp
 // SubagentRunner.RunAsync 中，现有逻辑已处理：
@@ -720,12 +721,12 @@ var ctx = new SubagentContext
 // 当 IsReadOnly=false 时，不调用 FilterReadOnly()，使用完整工具集。
 ```
 
-- [ ] **步骤 5：运行测试**
+- [x] **步骤 5：运行测试**
 
 运行：`dotnet test src/E3DCopilot.Tests --filter "FullyQualifiedName~Subagent" 2>&1`
 预期：所有已有测试 + 新增测试通过
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Tools/Handlers/SubagentDispatchHandler.cs src/E3DCopilot.Core/Agents/SubagentRunner.cs src/E3DCopilot.Tests/SubagentTests.cs
@@ -739,7 +740,7 @@ git commit -m "feat: 子代理写模式 — readonly 参数化，默认只读"
 **文件：**
 - 修改：`e3d-ui/src/components/chat/ApprovalCard.tsx`
 
-- [ ] **步骤 1：批准卡片显示子代理名称**
+- [x] **步骤 1：批准卡片显示子代理名称**
 
 在 `ApprovalCard` 组件中，如果 `pendingApproval` 包含 `agentName`，显示在描述中：
 
@@ -765,11 +766,11 @@ export interface PendingApproval {
 }
 ```
 
-- [ ] **步骤 2：验证类型检查**
+- [x] **步骤 2：验证类型检查**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add e3d-ui/src/components/chat/ApprovalCard.tsx e3d-ui/src/store/useChatStore.ts
@@ -780,22 +781,22 @@ git commit -m "feat: 审批卡片显示子代理来源 AgentName"
 
 ## 任务 11：端到端编译验证
 
-- [ ] **步骤 1：后端构建**
+- [x] **步骤 1：后端构建**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release 2>&1 | Select-String "error|Build succeeded"`
 预期：Build succeeded. 0 warnings
 
-- [ ] **步骤 2：后端测试**
+- [x] **步骤 2：后端测试**
 
 运行：`dotnet test src/E3DCopilot.Tests 2>&1 | Select-String "Passed|Failed|Test Run"`
 预期：Passed 数 > 260
 
-- [ ] **步骤 3：前端类型检查**
+- [x] **步骤 3：前端类型检查**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 预期：仅 3 个已有错误
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git commit -m "chore: Phase 1 端到端验证通过"

@@ -1,6 +1,7 @@
 # 第二期 Phase 3-4：跨会话记忆 + 对话分支 + 评估检测 + Coordinator 架构
 
-> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+> **状态：✅ 全部实现并提交（feec99d / f50b41d）**
+> 此计划中的 31 项步骤已全部完成。以下为归档记录。
 
 **目标：** E5 跨会话记忆共享（用户画像恢复）、E6 对话分支回退（checkpoint/rollback）、E8 评估与幻觉检测（置信度标记）、E7 多 Agent Coordinator 架构统一。
 
@@ -33,7 +34,7 @@
 **文件：**
 - 修改：`src/E3DCopilot.Core/CopilotController.cs`
 
-- [ ] **步骤 1：在 CopilotController 初始化时调用 LoadProfile**
+- [x] **步骤 1：在 CopilotController 初始化时调用 LoadProfile**
 
 在 `CopilotController` 构造函数或 `CreateDefault` 中，`MemoryManager` 构造后：
 
@@ -48,11 +49,11 @@ if (memory != null)
 
 确认 `MemoryManager` 已有 `LoadProfile()` 方法。如果没有，在任务 2 中补充。
 
-- [ ] **步骤 2：构建验证**
+- [x] **步骤 2：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release`
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/CopilotController.cs
@@ -68,7 +69,7 @@ git commit -m "feat: CopilotController 启动时自动加载用户画像"
 
 读 `MemoryManager.cs` 确认 `LoadProfile` 和 `UserProfile` 已存在。如果缺失，添加：
 
-- [ ] **步骤 1：确认 MemoryManager 已有 UserProfile 和 LoadProfile**
+- [x] **步骤 1：确认 MemoryManager 已有 UserProfile 和 LoadProfile**
 
 ```csharp
 // 检查 MemoryManager 是否有：
@@ -147,12 +148,12 @@ public void Compact()
 }
 ```
 
-- [ ] **步骤 2：运行已有测试**
+- [x] **步骤 2：运行已有测试**
 
 运行：`dotnet test src/E3DCopilot.Tests --filter "FullyQualifiedName~MemoryManager" 2>&1`
 预期：全部通过
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Memory/MemoryManager.cs
@@ -166,7 +167,7 @@ git commit -m "feat: MemoryManager LoadProfile/SaveProfile/Compact"
 **文件：**
 - 修改：`src/E3DCopilot.Core/CopilotSession.cs`
 
-- [ ] **步骤 1：添加 Checkpoint 和 Rollback 方法**
+- [x] **步骤 1：添加 Checkpoint 和 Rollback 方法**
 
 ```csharp
 // CopilotSession 新增字段
@@ -222,11 +223,11 @@ public class SessionSnapshot
 }
 ```
 
-- [ ] **步骤 2：构建验证**
+- [x] **步骤 2：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release`
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/CopilotSession.cs
@@ -241,7 +242,7 @@ git commit -m "feat: CopilotSession Checkpoint/Rollback 对话分支"
 - 修改：`e3d-ui/src/components/chat/MessageRow.tsx`
 - 修改：`e3d-ui/src/store/useChatStore.ts`
 
-- [ ] **步骤 1：在用户消息右侧加「从这继续」按钮**
+- [x] **步骤 1：在用户消息右侧加「从这继续」按钮**
 
 在 `MessageRow.tsx` 中，用户消息 (`role === 'user'`) 的渲染区添加 hover 可见的按钮：
 
@@ -258,7 +259,7 @@ git commit -m "feat: CopilotSession Checkpoint/Rollback 对话分支"
 )}
 ```
 
-- [ ] **步骤 2：在 useChatStore 中实现 rollbackToMessage**
+- [x] **步骤 2：在 useChatStore 中实现 rollbackToMessage**
 
 ```typescript
 // useChatStore 接口新增
@@ -284,11 +285,11 @@ rollbackToMessage: (messageId) => {
 },
 ```
 
-- [ ] **步骤 3：验证类型检查**
+- [x] **步骤 3：验证类型检查**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add e3d-ui/src/components/chat/MessageRow.tsx e3d-ui/src/store/useChatStore.ts
@@ -303,7 +304,7 @@ git commit -m "feat: 前端「从这继续」对话回退按钮"
 - 修改：`src/E3DCopilot.Core/Events/CopilotEvent.cs`
 - 修改：`src/E3DCopilot.Core/AgentLoop.cs`
 
-- [ ] **步骤 1：CopilotEvent 新增 Confidence 字段**
+- [x] **步骤 1：CopilotEvent 新增 Confidence 字段**
 
 ```csharp
 // CopilotEvent 新增
@@ -311,7 +312,7 @@ git commit -m "feat: 前端「从这继续」对话回退按钮"
 public string Confidence { get; set; }
 ```
 
-- [ ] **步骤 2：AgentLoop 后处理 — 数值交叉验证**
+- [x] **步骤 2：AgentLoop 后处理 — 数值交叉验证**
 
 在 `AgentLoop` 中，助手消息完成后（`case ChunkType.StreamEnd` 之后），添加后处理逻辑：
 
@@ -356,7 +357,7 @@ private static void ExtractNumbers(string text, Dictionary<string, double> numbe
 }
 ```
 
-- [ ] **步骤 3：前端低置信度标记**
+- [x] **步骤 3：前端低置信度标记**
 
 在 `MessageRow.tsx` 中，如果消息包含 `lowConfidence` 标记，显示 ⚠️：
 
@@ -367,11 +368,11 @@ private static void ExtractNumbers(string text, Dictionary<string, double> numbe
 )}
 ```
 
-- [ ] **步骤 4：构建验证**
+- [x] **步骤 4：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release`
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Events/CopilotEvent.cs src/E3DCopilot.Core/AgentLoop.cs e3d-ui/src/components/chat/MessageRow.tsx
@@ -385,7 +386,7 @@ git commit -m "feat: 评估与幻觉检测 — Confidence + 数值交叉验证"
 **文件：**
 - 创建：`src/E3DCopilot.Core/Agents/Coordinator.cs`
 
-- [ ] **步骤 1：编写 Coordinator 核心类**
+- [x] **步骤 1：编写 Coordinator 核心类**
 
 ```csharp
 using System;
@@ -516,7 +517,7 @@ namespace E3DCopilot.Core.Agents
 }
 ```
 
-- [ ] **步骤 2：CopilotConfig 新增 SpecializedAgents**
+- [x] **步骤 2：CopilotConfig 新增 SpecializedAgents**
 
 ```csharp
 // CopilotConfig 新增
@@ -531,7 +532,7 @@ public class SpecializedAgentConfig
 }
 ```
 
-- [ ] **步骤 3：CopilotController 注入 Coordinator**
+- [x] **步骤 3：CopilotController 注入 Coordinator**
 
 ```csharp
 // 在 CopilotController.CreateDefault 中，SubagentRunner 构造之后
@@ -540,11 +541,11 @@ coordinator.LoadFromConfig(); // 从配置加载预置 Agent
 this.Coordinator = coordinator;
 ```
 
-- [ ] **步骤 4：构建验证**
+- [x] **步骤 4：构建验证**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release`
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src/E3DCopilot.Core/Agents/Coordinator.cs src/E3DCopilot.Core/Config/CopilotConfig.cs src/E3DCopilot.Core/CopilotController.cs
@@ -558,7 +559,7 @@ git commit -m "feat: Coordinator — Agent 注册表 + Handoff + 缓存"
 **文件：**
 - 创建：`src/E3DCopilot.Tests/CoordinatorTests.cs`
 
-- [ ] **步骤 1：编写测试**
+- [x] **步骤 1：编写测试**
 
 ```csharp
 using E3DCopilot.Core.Agents;
@@ -619,12 +620,12 @@ namespace E3DCopilot.Tests
 }
 ```
 
-- [ ] **步骤 2：运行测试**
+- [x] **步骤 2：运行测试**
 
 运行：`dotnet test src/E3DCopilot.Tests --filter "FullyQualifiedName~Coordinator" 2>&1`
 预期：4 tests PASS
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src/E3DCopilot.Tests/CoordinatorTests.cs
@@ -635,22 +636,22 @@ git commit -m "test: Coordinator 单元测试"
 
 ## 任务 8：端到端编译验证
 
-- [ ] **步骤 1：后端构建**
+- [x] **步骤 1：后端构建**
 
 运行：`dotnet build src/E3DCopilot.sln -c Release 2>&1 | Select-String "error|Build succeeded"`
 预期：Build succeeded. 0 warnings
 
-- [ ] **步骤 2：后端全量测试**
+- [x] **步骤 2：后端全量测试**
 
 运行：`dotnet test src/E3DCopilot.Tests 2>&1 | Select-String "Passed|Failed|Test Run"`
 预期：Passed 数 > 275
 
-- [ ] **步骤 3：前端类型检查**
+- [x] **步骤 3：前端类型检查**
 
 运行：`cd e3d-ui && npx tsc -b --noEmit 2>&1`
 预期：仅 3 个已有错误
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git commit -m "chore: Phase 3-4 端到端验证通过"
