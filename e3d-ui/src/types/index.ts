@@ -39,6 +39,8 @@ export interface Message {
   durationMs?: number;
   /** 是否已完成（流式结束） */
   finalized?: boolean;
+  /** 来源 Agent 名称（null = 主 Agent，非 null = 子代理名） */
+  agentName?: string;
   /** 附件（用户消息） */
   attachments?: Attachment[];
 }
