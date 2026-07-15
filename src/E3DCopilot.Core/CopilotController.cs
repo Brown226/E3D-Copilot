@@ -8,10 +8,13 @@ using E3DCopilot.Core.Config;
 using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Memory;
 using E3DCopilot.Core.Providers;
+using E3DCopilot.Core.Tools.Mcp;
 using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Security;
 using E3DCopilot.Core.Skills;
 using E3DCopilot.Core.Tools;
+using E3DCopilot.Core.Agents;
+using E3DCopilot.Core.Tools.Handlers;
 
 namespace E3DCopilot.Core
 {
@@ -238,29 +241,17 @@ namespace E3DCopilot.Core
                 (providerConfig, modelName) = config.ResolveModel(config.DefaultModel);
             }
             
-            // Create corresponding provider based on Provider type
+            // 通过 Provider 注册表按 Kind 创建对应 Provider 实例（B1 多厂商支持）
+            // 密钥优先配置，配置为空时回退环境变量（非硬编码）
             ICopilotProvider provider;
-            if (providerConfig.Kind == "anthropic")
+            try
             {
-                // Anthropic 原生 API 尚未实现，降级到 OpenAI 兼容模式
-                // （适用于通过 LiteLLM/OneAPI 等中间层暴露 OpenAI 兼容接口的场景）
-                CopilotLogger.Warn(
-                    "Anthropic Provider 原生实现尚未开发，已降级为 OpenAI 兼容模式。" +
-                    "如果 Anthropic API 端点不兼容 OpenAI 格式，请改用 OpenAI 类型的 Provider 配置。");
-                provider = new VllmProvider(
-                    providerConfig.BaseUrl,
-                    modelName,
-                    providerConfig.ApiKey
-                );
+                provider = ProviderRegistry.Instance.New(providerConfig, modelName);
             }
-            else
+            catch (InvalidOperationException ex)
             {
-                // Default to OpenAI-compatible VllmProvider
-                provider = new VllmProvider(
-                    providerConfig.BaseUrl,
-                    modelName,
-                    providerConfig.ApiKey
-                );
+                CopilotLogger.Warn("Provider 创建失败，降级为 OpenAI 兼容模式: " + ex.Message);
+                provider = new VllmProvider(providerConfig.BaseUrl, modelName, ProviderRegistry.ResolveApiKey(providerConfig));
             }
             
             // ── 关键修复：提前创建 BridgeEventSink ──
@@ -280,6 +271,34 @@ namespace E3DCopilot.Core
             var permission = CommandPermissionController.CreateDefault();
 
             controller = new CopilotController(provider, executor, permission, config, realSink);
+
+            // ── 子代理注入 ──
+            var subagentRunner = new SubagentRunner(provider, realSink, executor, config, controller, permission);
+            executor.Register(new SubagentDispatchHandler(subagentRunner));
+
+            // ── Orchestrator 编排引擎注入 ──
+            var orchestrator = new Orchestrator(provider, realSink, executor, config, controller, permission, subagentRunner);
+            executor.Register(new OrchestrateHandler(orchestrator));
+
+            // ── B2 只读 MCP 客户端注入 ──
+            var mcpRegistry = new McpRegistry();
+            foreach (var mcp in config.McpServers ?? new List<CopilotConfig.McpServerConfig>())
+            {
+                try
+                {
+                    IMcpTransport transport = mcp.Transport == "http"
+                        ? (IMcpTransport)new HttpTransport(mcp.Endpoint)
+                        : new StdioTransport(mcp.Command, (mcp.Args ?? new List<string>()).ToArray(), mcp.TimeoutMs);
+                    mcpRegistry.Register(new McpClient(mcp.Name, transport));
+                }
+                catch (Exception ex)
+                {
+                    CopilotLogger.Warn("MCP server '{0}' 启动失败，已跳过: {1}", mcp.Name, ex.Message);
+                }
+            }
+            if (mcpRegistry.All.Count > 0)
+                executor.Register(new McpToolHandler(mcpRegistry));
+
             return controller;
         }
 
@@ -355,6 +374,21 @@ namespace E3DCopilot.Core
             _provider = newProvider;
             CurrentModelName = modelRef; // 记录当前模型引用（如 "mimo/mimo-v2.5"）
             _sink.Emit(CopilotEvent.Notice($"Provider switched to {newProvider.Name ?? "unknown"}"));
+        }
+
+        /// <summary>
+        /// 按 modelRef（provider/model）从注册表创建并切换 Provider 实例（B1 运行时动态切换）。
+        /// </summary>
+        public void SwitchProvider(string modelRef)
+        {
+            if (string.IsNullOrWhiteSpace(modelRef)) throw new ArgumentNullException(nameof(modelRef));
+            if (_isRunning) throw new InvalidOperationException("Cannot switch provider while a task is running");
+            var (providerConfig, modelName) = Config.ResolveModel(modelRef);
+            if (providerConfig == null) throw new InvalidOperationException($"未找到 Provider 配置: {modelRef}");
+            var newProvider = ProviderRegistry.Instance.New(providerConfig, modelName);
+            _provider = newProvider;
+            CurrentModelName = modelRef;
+            _sink.Emit(CopilotEvent.Notice($"Provider switched to {newProvider.Name ?? modelRef}"));
         }
 
         /// <summary>
