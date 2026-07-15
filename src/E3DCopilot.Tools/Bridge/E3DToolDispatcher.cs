@@ -196,26 +196,43 @@ namespace E3DCopilot.Tools.Bridge
                     return "{\"success\": false, \"error\": \"缺少 attributes 参数\"}";
                 }
 
-                // 逐属性设置，检查每个属性是否成功
+                // 逐属性设置，检查每个属性是否成功，并记录修改前后值用于前端 diff
                 var setList = new List<string>();
                 var failedList = new List<string>();
+                var changes = new List<JObject>();
                 foreach (var prop in attributes.Properties())
                 {
                     string attrName = prop.Name;
                     string attrValue = prop.Value?.ToString() ?? "";
+                    string oldValue = _env.GetAttribute(dburi, attrName) ?? "";
                     bool ok = _env.SetAttribute(dburi, attrName, attrValue);
                     if (ok)
+                    {
                         setList.Add($"{attrName}={attrValue}");
+                        changes.Add(new JObject
+                        {
+                            ["attribute"] = attrName,
+                            ["old"] = oldValue,
+                            ["new"] = attrValue
+                        });
+                    }
                     else
                         failedList.Add(attrName);
                 }
 
                 if (failedList.Count > 0)
                 {
-                    return $"{{\"success\": false, \"error\": \"以下属性设置失败: {string.Join(", ", failedList)}\", \"set_ok\": {setList.Count}, \"set_failed\": {failedList.Count}}}";
+                    return $"{{\"success\": false, \"error\": \"以下属性设置失败: {string.Join(", ", failedList)}\", \"target\": \"{dburi}\", \"set_ok\": {setList.Count}, \"set_failed\": {failedList.Count}}}";
                 }
 
-                return $"{{\"success\": true, \"message\": \"已设置 {dburi} 的 {attributes.Count} 个属性: {string.Join(", ", setList)}\"}}";
+                var resultObj = new JObject
+                {
+                    ["success"] = true,
+                    ["target"] = dburi,
+                    ["message"] = $"已设置 {dburi} 的 {attributes.Count} 个属性: {string.Join(", ", setList)}",
+                    ["changes"] = new JArray(changes)
+                };
+                return resultObj.ToString();
             }
             catch (Exception ex)
             {
@@ -709,7 +726,7 @@ namespace E3DCopilot.Tools.Bridge
                         string parent = json["parent"]?.ToString();
                         string name = json["name"]?.ToString();
                         string type = json["type"]?.ToString()
-                            ?? (action == "create_equipment" ? "EQUIPMENT" : "COMPONENT");
+                            ?? (action == "create_equipment" ? "EQUIP" : "COMPONENT");
                         string attrs = json["attributes"]?.ToString();
 
                         if (string.IsNullOrEmpty(parent))

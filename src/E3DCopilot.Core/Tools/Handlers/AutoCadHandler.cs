@@ -61,6 +61,14 @@ namespace E3DCopilot.Core.Tools.Handlers
     ""wall_thickness"": {
       ""type"": ""number"",
       ""description"": ""默认墙厚(mm)，默认 200""
+    },
+    ""specifications"": {
+      ""type"": ""object"",
+      ""description"": ""各元素类型→规格名的覆盖映射，键为 Wall/Column/Beam，值为规格名（如 /MyWall-SPEC）。默认使用 /Concrete_*-SPEC""
+    },
+    ""database"": {
+      ""type"": ""string"",
+      ""description"": ""目标 DESIGN 数据库名（可选）。提供时脚本先 NEW DB 进入该库，避免当前非设计库根导致 NEW SITE 失败""
     }
   },
   ""required"": [""action""]
@@ -342,8 +350,10 @@ namespace E3DCopilot.Core.Tools.Handlers
             // 转换为建筑元素
             var elements = ConvertSegmentsToElements(segments, wallHeight, wallThickness);
 
-            // 生成 PML 脚本
-            string pmlScript = _pmlGenerator.GenerateBuildingScript(elements);
+            // 解析规格/库覆盖并生成 PML 脚本
+            var specifications = ParseSpecifications(json);
+            string database = json["database"]?.ToString();
+            string pmlScript = _pmlGenerator.GenerateBuildingScript(elements, specifications: specifications, databaseName: database);
 
             var sb = new StringBuilder();
             sb.AppendLine($"✅ 从 AutoCAD 导入准备完成");
@@ -425,6 +435,23 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
 
             return elements;
+        }
+
+        /// <summary>
+        /// 从参数 JSON 解析规格名覆盖映射（元素类型名 → 规格名）
+        /// </summary>
+        private Dictionary<BuildingElementType, string> ParseSpecifications(JObject json)
+        {
+            var dict = new Dictionary<BuildingElementType, string>();
+            if (json["specifications"] is JObject specObj)
+            {
+                foreach (var prop in specObj.Properties())
+                {
+                    if (Enum.TryParse<BuildingElementType>(prop.Name, true, out var t) && !string.IsNullOrEmpty(prop.Value?.ToString()))
+                        dict[t] = prop.Value.ToString();
+                }
+            }
+            return dict;
         }
     }
 }

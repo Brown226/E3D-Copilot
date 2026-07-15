@@ -127,5 +127,5 @@ npm run build
 
 ## 相关文档
 
-- `docs/前端重设计划.md` — 架构设计
+- `docs/compose/前端重设计划.md` — 架构设计
 - `docs/compose/plans/e3d-ui-implementation-plan.md` — 实施计划

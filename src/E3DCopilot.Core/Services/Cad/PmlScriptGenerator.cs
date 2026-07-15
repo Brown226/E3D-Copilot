@@ -13,19 +13,52 @@ namespace E3DCopilot.Core.Services.Cad
     public class PmlScriptGenerator
     {
         /// <summary>
+        /// 各建筑元素类型使用的默认规格名（可由 specifications 参数覆盖）。
+        /// 注意：这些是项目约定的默认混凝土规格；若目标 E3D 库不存在对应规格，请通过 specifications 传入实际规格名。
+        /// </summary>
+        private static readonly Dictionary<BuildingElementType, string> DefaultSpecifications =
+            new Dictionary<BuildingElementType, string>
+        {
+            { BuildingElementType.Wall, "/Concrete_Wall-SPEC" },
+            { BuildingElementType.Column, "/Concrete_Column-SPEC" },
+            { BuildingElementType.Beam, "/Concrete_Beam-SPEC" },
+        };
+
+        /// <summary>
+        /// 根据元素类型与覆盖字典解析实际规格名；未提供覆盖时使用默认规格。
+        /// </summary>
+        private static string GetSpecification(BuildingElementType type, Dictionary<BuildingElementType, string> overrides)
+        {
+            if (overrides != null && overrides.TryGetValue(type, out string spec) && !string.IsNullOrEmpty(spec))
+                return spec;
+            return DefaultSpecifications.TryGetValue(type, out spec) ? spec : null;
+        }
+
+        /// <summary>
         /// 生成建筑元素的 PML 脚本
         /// </summary>
         /// <param name="elements">建筑元素列表</param>
         /// <param name="siteName">SITE 名称</param>
         /// <param name="zoneName">ZONE 名称</param>
+        /// <param name="specifications">各元素类型→规格名的覆盖映射（可选）</param>
+        /// <param name="databaseName">目标 DESIGN 数据库名（可选）；提供时脚本先 NEW DB 进入该库，避免当前非设计库根导致 NEW SITE 失败</param>
         /// <returns>PML 脚本字符串</returns>
-        public string GenerateBuildingScript(List<BuildingElement> elements, string siteName = "IMPORT_SITE", string zoneName = "IMPORT_ZONE")
+        public string GenerateBuildingScript(List<BuildingElement> elements, string siteName = "IMPORT_SITE", string zoneName = "IMPORT_ZONE", Dictionary<BuildingElementType, string> specifications = null, string databaseName = null)
         {
             var sb = new StringBuilder();
 
             // 头部和设置
             sb.AppendLine("$!ECHO 正在导入建筑模型...");
             sb.AppendLine("UNITS /MM");
+
+            // 可选：先切换到指定的 DESIGN 数据库，确保后续 NEW SITE/ZONE/元素在正确的库上下文中执行。
+            // 在 E3D 中结构元素（STWALL/STCOLUMN/STBEAM）必须在 DESIGN 模块的数据库下创建，
+            // 若当前元素不是设计库根，直接 NEW SITE 会失败；提供 databaseName 即可先进入正确的库。
+            if (!string.IsNullOrEmpty(databaseName))
+            {
+                sb.AppendLine($"NEW DB /{databaseName}");
+            }
+
             sb.AppendLine($"NEW SITE /{siteName}");
             sb.AppendLine($"NEW ZONE /{zoneName}");
             sb.AppendLine();
@@ -37,13 +70,13 @@ namespace E3DCopilot.Core.Services.Cad
                 switch (element.Type)
                 {
                     case BuildingElementType.Wall:
-                        GenerateWallScript(sb, element, ref elementCounter);
+                        GenerateWallScript(sb, element, specifications, ref elementCounter);
                         break;
                     case BuildingElementType.Column:
-                        GenerateColumnScript(sb, element, ref elementCounter);
+                        GenerateColumnScript(sb, element, specifications, ref elementCounter);
                         break;
                     case BuildingElementType.Beam:
-                        GenerateBeamScript(sb, element, ref elementCounter);
+                        GenerateBeamScript(sb, element, specifications, ref elementCounter);
                         break;
                     case BuildingElementType.Equipment:
                     case BuildingElementType.Fan:
@@ -63,7 +96,7 @@ namespace E3DCopilot.Core.Services.Cad
         /// <summary>
         /// 生成墙体 PML 脚本
         /// </summary>
-        private void GenerateWallScript(StringBuilder sb, BuildingElement wall, ref int counter)
+        private void GenerateWallScript(StringBuilder sb, BuildingElement wall, Dictionary<BuildingElementType, string> specifications, ref int counter)
         {
             if (wall.Points == null || wall.Points.Count < 2)
                 return;
@@ -80,6 +113,8 @@ namespace E3DCopilot.Core.Services.Cad
             if (wall.Properties.ContainsKey("Thickness"))
                 double.TryParse(wall.Properties["Thickness"].ToString(), out thickness);
 
+            string wallSpec = GetSpecification(BuildingElementType.Wall, specifications);
+
             // 对于直线墙体（2个点）
             if (wall.Points.Count == 2)
             {
@@ -90,7 +125,7 @@ namespace E3DCopilot.Core.Services.Cad
                 sb.AppendLine($"  DESP {thickness:F2} {height:F2}");
                 sb.AppendLine($"  POSS E {start.X:F2} N {start.Y:F2} U {start.Z:F2}");
                 sb.AppendLine($"  POSE E {end.X:F2} N {end.Y:F2} U {end.Z:F2}");
-                sb.AppendLine("  SPRE SPCOMPONENT 3 of SELEC 1 of SPECIFICATION /Concrete_Wall-SPEC");
+                sb.AppendLine($"  SPRE SPCOMPONENT 3 of SELEC 1 of SPECIFICATION {wallSpec}");
                 sb.AppendLine();
             }
             // 对于多边形墙体（闭合环）
@@ -108,7 +143,7 @@ namespace E3DCopilot.Core.Services.Cad
                     sb.AppendLine($"  DESP {thickness:F2} {height:F2}");
                     sb.AppendLine($"  POSS E {start.X:F2} N {start.Y:F2} U {start.Z:F2}");
                     sb.AppendLine($"  POSE E {end.X:F2} N {end.Y:F2} U {end.Z:F2}");
-                    sb.AppendLine("  SPRE SPCOMPONENT 3 of SELEC 1 of SPECIFICATION /Concrete_Wall-SPEC");
+                    sb.AppendLine($"  SPRE SPCOMPONENT 3 of SELEC 1 of SPECIFICATION {wallSpec}");
                     sb.AppendLine();
                 }
             }
@@ -117,7 +152,7 @@ namespace E3DCopilot.Core.Services.Cad
         /// <summary>
         /// 生成柱子 PML 脚本
         /// </summary>
-        private void GenerateColumnScript(StringBuilder sb, BuildingElement column, ref int counter)
+        private void GenerateColumnScript(StringBuilder sb, BuildingElement column, Dictionary<BuildingElementType, string> specifications, ref int counter)
         {
             if (column.Points == null || column.Points.Count < 1)
                 return;
@@ -137,17 +172,19 @@ namespace E3DCopilot.Core.Services.Cad
             if (column.Properties.ContainsKey("Height"))
                 double.TryParse(column.Properties["Height"].ToString(), out height);
 
+            string colSpec = GetSpecification(BuildingElementType.Column, specifications);
+
             sb.AppendLine($"NEW STCOLUMN /{columnName}");
             sb.AppendLine($"  DESP {width:F2} {depth:F2} {height:F2}");
             sb.AppendLine($"  POS E {position.X:F2} N {position.Y:F2} U {position.Z:F2}");
-            sb.AppendLine("  SPRE SPCOMPONENT 1 of SELEC 1 of SPECIFICATION /Concrete_Column-SPEC");
+            sb.AppendLine($"  SPRE SPCOMPONENT 1 of SELEC 1 of SPECIFICATION {colSpec}");
             sb.AppendLine();
         }
 
         /// <summary>
         /// 生成梁 PML 脚本
         /// </summary>
-        private void GenerateBeamScript(StringBuilder sb, BuildingElement beam, ref int counter)
+        private void GenerateBeamScript(StringBuilder sb, BuildingElement beam, Dictionary<BuildingElementType, string> specifications, ref int counter)
         {
             if (beam.Points == null || beam.Points.Count < 2)
                 return;
@@ -165,11 +202,13 @@ namespace E3DCopilot.Core.Services.Cad
             if (beam.Properties.ContainsKey("Height"))
                 double.TryParse(beam.Properties["Height"].ToString(), out height);
 
+            string beamSpec = GetSpecification(BuildingElementType.Beam, specifications);
+
             sb.AppendLine($"NEW STBEAM /{beamName}");
             sb.AppendLine($"  DESP {width:F2} {height:F2}");
             sb.AppendLine($"  POSS E {start.X:F2} N {start.Y:F2} U {start.Z:F2}");
             sb.AppendLine($"  POSE E {end.X:F2} N {end.Y:F2} U {end.Z:F2}");
-            sb.AppendLine("  SPRE SPCOMPONENT 2 of SELEC 1 of SPECIFICATION /Concrete_Beam-SPEC");
+            sb.AppendLine($"  SPRE SPCOMPONENT 2 of SELEC 1 of SPECIFICATION {beamSpec}");
             sb.AppendLine();
         }
 

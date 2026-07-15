@@ -20,6 +20,7 @@ namespace E3DCopilot.Core.Tools
         private readonly Dictionary<string, IToolHandler> _handlers;
         private readonly IEventSink _sink;
         private IToolDispatcher _dispatcher;
+        private readonly Dictionary<string, int> _retryConfig = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// 可选工具路由器 — 将核心工具路由到专用工具
@@ -122,6 +123,49 @@ namespace E3DCopilot.Core.Tools
         }
 
         /// <summary>
+        /// 移除指定名称的工具处理器（用于子代理工具集收紧、防递归）
+        /// </summary>
+        public void RemoveHandler(string name)
+        {
+            if (!string.IsNullOrEmpty(name) && _handlers.ContainsKey(name))
+            {
+                _handlers.Remove(name);
+                _sink?.Emit(CopilotEvent.Notice($"工具已移除: {name}"));
+            }
+        }
+
+        /// <summary>设置工具的最大重试次数（默认 0 = 不重试）</summary>
+        public void SetMaxRetries(string toolName, int maxRetries)
+        {
+            _retryConfig[toolName] = maxRetries;
+        }
+
+        private int GetMaxRetries(string toolName)
+        {
+            return _retryConfig.TryGetValue(toolName, out var r) ? r : 0;
+        }
+
+        /// <summary>
+        /// 返回仅含只读 handler 的 ToolExecutor 浅副本（子代理工具集收紧）
+        /// </summary>
+        public ToolExecutor FilterReadOnly()
+        {
+            var filtered = new ToolExecutor(_sink)
+            {
+                Router = Router,
+                _dispatcher = _dispatcher
+            };
+            foreach (var kvp in _handlers)
+            {
+                if (kvp.Value.IsReadOnly)
+                {
+                    filtered._handlers[kvp.Key] = kvp.Value;
+                }
+            }
+            return filtered;
+        }
+
+        /// <summary>
         /// 执行工具（完整流程：路由 → 校验 → 分派 → 执行 → 结果）
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(string toolName, string args,
@@ -193,13 +237,39 @@ namespace E3DCopilot.Core.Tools
 
             try
             {
-                var result = await handler.ExecuteAsync(effectiveArgs, linkedCts.Token);
+                var retries = GetMaxRetries(effectiveName);
+                ToolResult result = null;
+                int attempt = 0;
+
+                while (attempt <= retries)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    attempt++;
+
+                    result = await handler.ExecuteAsync(effectiveArgs, linkedCts.Token);
+
+                    if (result.Success || !result.IsRetryable)
+                        break;
+
+                    if (attempt <= retries)
+                    {
+                        int delayMs = 100 * (1 << (attempt - 1));
+                        CopilotLogger.Info("ToolExecutor: {0} 重试 {1}/{2}，等待 {3}ms", effectiveName, attempt, retries, delayMs);
+                        await Task.Delay(delayMs, ct);
+                    }
+                }
+
                 sw.Stop();
                 progressTimer?.Dispose();
                 timeoutTimer?.Dispose();
                 timeoutCts.Dispose();
                 linkedCts.Dispose();
                 result.DurationMs = sw.ElapsedMilliseconds;
+
+                if (!result.Success && attempt > 1)
+                {
+                    result.Text = $"[retry exhausted after {attempt} attempts, last error: {result.Error}]";
+                }
 
                 CopilotLogger.Info("ToolExecutor: {0} 完成, success={1}, duration={2}ms", effectiveName, result.Success, result.DurationMs);
                 if (!result.Success)
