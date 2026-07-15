@@ -108,6 +108,8 @@ export interface PendingApproval {
   toolName: string;
   args?: unknown;
   description?: string;
+  /** 来源 Agent 名称 */
+  agentName?: string;
 }
 
 /** AI 主动提问（对齐 Reasonix AskRequest） */
@@ -181,6 +183,7 @@ export interface ChatStore {
   handleToolProgress: (toolId: string, text: string, progress: unknown, tabId?: string) => void;
   finalizeThinkingMessage: (tabId?: string) => void;
   stopStreaming: (tabId?: string) => void;
+  setMessageAgentName: (toolId: string, agentName: string, tabId?: string) => void;
   setPendingApproval: (approval: PendingApproval | null, tabId?: string) => void;
   setPendingQuestion: (question: PendingQuestion | null, tabId?: string) => void;
 
@@ -526,6 +529,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const targetId = tabId || get().activeTabId
     set((s) => ({
       tabs: updateTab(s.tabs, targetId, () => ({ pendingApproval: approval })),
+    }))
+  },
+
+  setMessageAgentName: (toolId, agentName, tabId) => {
+    const targetId = tabId || get().activeTabId
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === targetId
+          ? {
+              ...t,
+              messages: t.messages.map((m) =>
+                m.toolId === toolId ? { ...m, agentName } : m
+              ),
+            }
+          : t
+      ),
     }))
   },
 

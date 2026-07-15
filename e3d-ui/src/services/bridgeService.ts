@@ -8,6 +8,7 @@ import type { ToolApprovalMode } from '../store/useChatStore';
 import type {
   UserMessagePayload,
   ApprovalPayload,
+  ApprovalRequestPayload,
   AskRequestPayload,
   WireAskQuestion,
   QuestionAnswerItem,
@@ -704,6 +705,7 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
           toolId: p.id,
           toolName: p.name,
           toolArgs: p.args,
+          agentName: p.agentName,
         }, tabId);
         break;
       }
@@ -711,22 +713,29 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
       case 'tool:result': {
         const p = msg.payload as ToolResultPayload;
         s.handleToolResult(p.id, p.result, p.error, tabId, p.durationMs);
+        if (p.agentName) {
+          s.setMessageAgentName(p.id, p.agentName, tabId);
+        }
         break;
       }
 
       case 'tool:error': {
         const p = msg.payload as ToolResultPayload;
         s.handleToolResult(p.id, undefined, p.error, tabId, p.durationMs);
+        if (p.agentName) {
+          s.setMessageAgentName(p.id, p.agentName, tabId);
+        }
         break;
       }
 
       case 'tool:approval': {
-        const p = msg.payload as { id: string; name: string; args?: string; description: string };
+        const p = msg.payload as ApprovalRequestPayload;
         s.setPendingApproval({
           toolId: p.id,
           toolName: p.name,
           args: p.args ? JSON.parse(p.args) as unknown : undefined,
           description: p.description,
+          agentName: p.agentName,
         }, tabId);
         break;
       }

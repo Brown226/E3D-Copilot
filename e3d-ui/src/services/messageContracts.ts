@@ -112,6 +112,7 @@ export interface ToolDispatchPayload {
   name: string;
   args?: unknown;
   tabId?: string;
+  agentName?: string;
 }
 
 export interface ToolResultPayload {
@@ -120,6 +121,7 @@ export interface ToolResultPayload {
   error?: string;
   tabId?: string;
   durationMs?: number;
+  agentName?: string;
 }
 
 export interface ApprovalRequestPayload {
@@ -127,6 +129,7 @@ export interface ApprovalRequestPayload {
   name: string;
   args?: string;
   description: string;
+  agentName?: string;
 }
 
 
