@@ -252,6 +252,69 @@ function UsageTab() {
           </div>
         </div>
       </div>
+
+      {/* 推理配置 */}
+      <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-3">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">推理配置</h4>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+            控制 AI 模型的推理行为。部分模型需要特定协议配合。
+          </p>
+        </div>
+
+        {/* 推理强度 */}
+        <div>
+          <label className="block text-sm text-slate-600 dark:text-slate-300 mb-1.5">推理强度</label>
+          <div className="flex gap-1.5">
+            {[
+              { value: 'low', label: '低', desc: '快速响应' },
+              { value: 'medium', label: '中', desc: '平衡' },
+              { value: 'high', label: '高', desc: '深度推理' },
+              { value: 'max', label: '最高', desc: '全力思考' },
+              { value: 'adaptive', label: '自适应', desc: '自动调节' },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => saveSetting('effort', opt.value)}
+                title={opt.desc}
+                className={`flex-1 px-2 py-1.5 text-xs rounded-lg border transition-colors ${
+                  (localStorage.getItem('e3d-setting-effort') || 'high') === opt.value
+                    ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 font-medium'
+                    : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <div className="text-center">{opt.label}</div>
+                <div className="text-[10px] opacity-60">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 推理协议 */}
+        <div>
+          <label className="block text-sm text-slate-600 dark:text-slate-300 mb-1.5">推理协议</label>
+          <div className="flex gap-1.5">
+            {[
+              { value: 'deepseek', label: 'DeepSeek', desc: 'reasoning_effort / thinking' },
+              { value: 'openai', label: 'OpenAI', desc: '标准协议' },
+              { value: 'none', label: '关闭', desc: '不启用推理' },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => saveSetting('reasoningProtocol', opt.value)}
+                className={`flex-1 px-2 py-1.5 text-xs rounded-lg border transition-colors ${
+                  (localStorage.getItem('e3d-setting-reasoningProtocol') || 'deepseek') === opt.value
+                    ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 font-medium'
+                    : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <div className="text-center">{opt.label}</div>
+                <div className="text-[10px] opacity-60">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

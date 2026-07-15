@@ -25,11 +25,20 @@ namespace E3DCopilot.Core.Tools
         /// <summary>附加数据（前端展示用）</summary>
         public object Data { get; set; }
 
+        /// <summary>失败是否可重试（网络错误等可重试，业务错误不可重试）</summary>
+        public bool IsRetryable { get; set; }
+
         public static ToolResult Ok(string text, object data = null) =>
             new ToolResult { Success = true, Text = TruncateOutput(text), Data = data };
 
         public static ToolResult Fail(string error) =>
             new ToolResult { Success = false, Error = error, Text = error };
+
+        public static ToolResult Fail(string error, bool isRetryable) =>
+            new ToolResult { Success = false, Error = error, Text = error, IsRetryable = isRetryable };
+
+        public static ToolResult RetryableFail(string error) =>
+            new ToolResult { Success = false, Error = error, Text = error, IsRetryable = true };
 
         /// <summary>
         /// 截断工具输出：超过 MaxOutputBytes 时保留头尾，中间用截断标记。

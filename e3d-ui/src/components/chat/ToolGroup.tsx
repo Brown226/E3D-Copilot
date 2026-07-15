@@ -10,9 +10,17 @@ import { ToolCard } from './ToolCard'
 
 export type ToolGroupKind = 'explore' | 'modify' | 'delegate' | 'shell'
 
-const EXPLORE_TOOLS = new Set(['read_file', 'ls', 'grep', 'glob', 'web_fetch', 'code_index', 'read_skill', 'mcp__*', 'geometry', 'report', 'compare', 'hierarchy'])
-const MODIFY_TOOLS = new Set(['write_file', 'edit_file', 'multi_edit', 'move_file', 'delete_range', 'delete_symbol', 'notebook_edit', 'design', 'piping', 'batch', 'undo_redo'])
-const DELEGATE_TOOLS = new Set(['run_skill', 'explore', 'research', 'review', 'security_review'])
+// 对齐 E小智 真实工具名（替换原 Reasonix 工具集）
+const EXPLORE_TOOLS = new Set([
+  'query', 'get_attributes', 'check', 'calculate', 'geometry', 'report',
+  'compare', 'hierarchy', 'grep', 'glob', 'read_file', 'query_material',
+  'get_pipe_info', 'memory', 'dispatch_subagent',
+])
+const MODIFY_TOOLS = new Set([
+  'modify', 'design', 'piping', 'batch', 'structure_drawing', 'generate_iso_drawing',
+  'write_file', 'cad_import', 'autocad', 'undo_redo',
+])
+const DELEGATE_TOOLS = new Set(['run_skill'])
 
 export function toolGroupKind(msg: Message): ToolGroupKind | null {
   const name = msg.toolName || ''
@@ -26,8 +34,8 @@ export function toolGroupKind(msg: Message): ToolGroupKind | null {
 
 function kindLabel(kind: ToolGroupKind, count: number) {
   switch (kind) {
-    case 'explore': return `已读 ${count} 个文件`
-    case 'modify': return `已修改 ${count} 个文件`
+    case 'explore': return `已查询 ${count} 次`
+    case 'modify': return `已修改 ${count} 次`
     case 'delegate': return `${count} 个子任务`
     case 'shell': return `${count} 个命令`
   }

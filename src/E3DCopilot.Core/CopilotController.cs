@@ -90,6 +90,7 @@ namespace E3DCopilot.Core
         public CopilotConfig Config { get; }
         public SkillManager Skills { get; }
         public MemoryManager Memory { get; }
+        public Coordinator Coordinator { get; private set; }
 
         // ── 会话持久化 & 操作快照（对齐 Reasonix save.go + checkpoint.go）──
         public SessionStore Sessions { get; }
@@ -195,6 +196,9 @@ namespace E3DCopilot.Core
 
             // 初始化记忆管理器
             Memory = new MemoryManager();
+            // Profile 属性延迟加载用户画像（首次访问时触发 LoadProfile）
+            var profile = Memory.Profile;
+            CopilotLogger.Info("用户画像已加载: 历史工具调用 {0} 次", profile?.ToolUsage?.Count ?? 0);
 
             // 初始化会话存储 & 操作快照管理器
             var dataDir = System.IO.Path.Combine(
@@ -279,6 +283,11 @@ namespace E3DCopilot.Core
             // ── Orchestrator 编排引擎注入 ──
             var orchestrator = new Orchestrator(provider, realSink, executor, config, controller, permission, subagentRunner);
             executor.Register(new OrchestrateHandler(orchestrator));
+
+            // ── Coordinator 多 Agent 统一注入 ──
+            var coordinator = new Coordinator(subagentRunner, realSink, config);
+            coordinator.LoadFromConfig();
+            controller.Coordinator = coordinator;
 
             // ── B2 只读 MCP 客户端注入 ──
             var mcpRegistry = new McpRegistry();

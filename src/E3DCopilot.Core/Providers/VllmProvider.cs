@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using E3DCopilot.Core.Config;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -20,6 +21,7 @@ namespace E3DCopilot.Core.Providers
         private readonly string _baseUrl;
         private readonly string _model;
         private readonly string _apiKey;
+        private readonly CopilotConfig.ProviderConfig _configProvider;
 
         /// <summary>
         /// 重试回调（由 CopilotController 注入，通知前端重试状态）
@@ -110,34 +112,43 @@ namespace E3DCopilot.Core.Providers
 
                     // DeepSeek/其他模型特殊优化（参考 Reasonix 设计）
                     var modelName = request.Model ?? _model;
-                    
-                    // DeepSeek 适配
-                    if (IsDeepSeekModel(modelName))
+                    string effort = request.Effort ?? _configProvider?.Effort ?? "high";
+                    string protocol = request.ReasoningProtocol ?? _configProvider?.ReasoningProtocol ?? "deepseek";
+
+                    // 根据推理协议配置推理字段
+                    if (protocol == "deepseek" || protocol == "openai")
                     {
-                        // DeepSeek Reasoner 系列禁用 temperature，使用 effort 控制
+                        // DeepSeek Reasoner / 推理模型 — 禁用 temperature，用 thinking
                         if (IsDeepSeekReasoningModel(modelName))
                         {
                             bodyObj.Remove("temperature");
-                            
-                            // DeepSeek Reasoner 支持两种推理模式
-                            // 1. thinking.type=enabled (推荐) 2. reasoning_effort=high
                             bodyObj["thinking"] = new JObject
                             {
                                 ["type"] = "enabled"
                             };
+                            // 可选：传递 effort（部分模型支持 reasoning_effort 配合 thinking）
+                            if (!string.IsNullOrEmpty(effort) && effort != "high")
+                                bodyObj["reasoning_effort"] = effort;
                         }
-                        else
+                        else if (IsDeepSeekModel(modelName))
                         {
-                            // DeepSeek Chat 系列支持 standard reasoning_effort
-                            bodyObj["reasoning_effort"] = "high";
+                            // DeepSeek Chat 系列 — 用 reasoning_effort
+                            bodyObj["reasoning_effort"] = effort;
                         }
+                        else if (protocol == "deepseek")
+                        {
+                            // 非 DeepSeek 模型但配置了 deepseek 协议：尝试设 effort
+                            bodyObj["reasoning_effort"] = effort;
+                        }
+                        // openai 协议：不设额外字段，让 API 自行决定
                     }
-                    // MiniMax 适配（可选）
-                    else if (IsMiniMaxModel(modelName))
+
+                    // MiniMax 适配
+                    if (IsMiniMaxModel(modelName))
                     {
                         bodyObj["thinking"] = new JObject
                         {
-                            ["type"] = "adaptive"
+                            ["type"] = effort == "adaptive" ? "adaptive" : "enabled"
                         };
                     }
         

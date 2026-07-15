@@ -36,7 +36,10 @@ namespace E3DCopilot.Core.Config
         public UiConfig Ui { get; set; } = new UiConfig();
         public SafetyConfig Safety { get; set; } = new SafetyConfig();
         public MemoryConfig Memory { get; set; } = new MemoryConfig();
+        /// <summary>只读 MCP server 列表（B2 知识扩展，仅 resources/prompts）</summary>
+        public List<McpServerConfig> McpServers { get; set; } = new List<McpServerConfig>();
         public LoggingConfig Logging { get; set; } = new LoggingConfig();
+        public List<SpecializedAgentConfig> SpecializedAgents { get; set; } = new List<SpecializedAgentConfig>();
         public IsoConfig Iso { get; set; } = new IsoConfig();
 
         /// <summary>
@@ -76,6 +79,12 @@ namespace E3DCopilot.Core.Config
             
             /// <summary>Models that support vision/image input (comma-separated in config)</summary>
             public List<string> VisionModels { get; set; } = new List<string>();
+            
+            /// <summary>推理强度 (low/medium/high/max/adaptive)，仅 DeepSeek Reasoner / Claude 等生效</summary>
+            public string Effort { get; set; } = "high";
+            
+            /// <summary>推理协议 (deepseek/openai/none)，决定 reasoning 流的解析方式</summary>
+            public string ReasoningProtocol { get; set; } = "deepseek";
         }
 
         /// <summary>
@@ -106,6 +115,10 @@ namespace E3DCopilot.Core.Config
             public string FontFamily { get; set; } = "default";
             /// <summary>Agent 执行轮数上限（0 = 不限）</summary>
             public int MaxSteps { get; set; } = 20;
+            /// <summary>Context Compaction 触发比（0~1，当前 token 窗口用满此比例时触发压缩，0 = 禁用）</summary>
+            public double CompactRatio { get; set; } = 0.8;
+            /// <summary>Context Compaction 触发阈值：assistant 消息数超过此值才检查压缩（硬阈值，避免短对话触发）</summary>
+            public int CompactTriggerMessages { get; set; } = 15;
             /// <summary>版本号（如 2.1.0）</summary>
             public string Version { get; set; } = "2.0.0";
             /// <summary>在线说明书链接</summary>
@@ -129,6 +142,22 @@ namespace E3DCopilot.Core.Config
             public bool Enabled { get; set; } = false;
             public int MaxSessions { get; set; } = 100;
             public bool AutoSuggest { get; set; } = true;
+        }
+
+        /// <summary>只读 MCP server 配置（B2）</summary>
+        public class McpServerConfig
+        {
+            public string Name { get; set; }
+            /// <summary>传输方式：stdio | http</summary>
+            public string Transport { get; set; } = "stdio";
+            /// <summary>stdio 启动命令（如 npx）</summary>
+            public string Command { get; set; }
+            /// <summary>stdio 启动参数</summary>
+            public List<string> Args { get; set; } = new List<string>();
+            /// <summary>http 端点</summary>
+            public string Endpoint { get; set; }
+            /// <summary>响应超时（毫秒）</summary>
+            public int TimeoutMs { get; set; } = 30000;
         }
 
         public class LoggingConfig
@@ -431,6 +460,17 @@ namespace E3DCopilot.Core.Config
             
             /// <summary>默认输出目录（用户可自定义）</summary>
             public string DefaultOutputDir { get; set; }
+        }
+
+        /// <summary>
+        /// 专长 Agent 配置（E7 Coordinator）
+        /// </summary>
+        public class SpecializedAgentConfig
+        {
+            public string Name { get; set; }
+            public string SystemPrompt { get; set; }
+            public bool ReadOnly { get; set; } = true;
+            public string DefaultProvider { get; set; }
         }
 
         /// <summary>

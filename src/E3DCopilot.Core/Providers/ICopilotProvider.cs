@@ -113,6 +113,12 @@ namespace E3DCopilot.Core.Providers
         public List<ToolSchema> Tools { get; set; }
         public double Temperature { get; set; } = 0.1;
         public int MaxTokens { get; set; } = 8192;
+        
+        /// <summary>推理强度 (low/medium/high/max/adaptive)，覆盖 ProviderConfig.Effort</summary>
+        public string Effort { get; set; }
+        
+        /// <summary>推理协议 (deepseek/openai/none)，覆盖 ProviderConfig.ReasoningProtocol</summary>
+        public string ReasoningProtocol { get; set; }
     }
 
     /// <summary>

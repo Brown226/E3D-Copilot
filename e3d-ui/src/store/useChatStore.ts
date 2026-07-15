@@ -210,6 +210,8 @@ export interface ChatStore {
   newSession: (bridgeNewSession: () => void) => void;
   rerollLastMessage: (bridgeSend: (text: string, images?: string[]) => void) => void;
   editUserMessage: (messageId: string, newText?: string) => void;
+  /** 回退到指定消息位置（从这继续 — 删除该消息之后的所有消息） */
+  rollbackToMessage: (messageId: string) => void;
   /** 重试状态 */
   isRetrying: boolean;
   setRetrying: (retrying: boolean) => void;
@@ -838,6 +840,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       inputValue: newText ?? msg.content,
       tabs: updateTab(s.tabs, activeTabId, () => ({
         messages: s.tabs.find((t) => t.id === activeTabId)?.messages.slice(0, msgIdx) ?? [],
+        isStreaming: false,
+        currentAssistantMsgId: null,
+        currentThinkingMsgId: null,
+      })),
+    }))
+  },
+
+  rollbackToMessage: (messageId) => {
+    const { activeTabId } = get()
+    set((s) => ({
+      tabs: updateTab(s.tabs, activeTabId, () => ({
+        messages: s.tabs.find((t) => t.id === activeTabId)?.messages
+          .slice(0, s.tabs.find((t) => t.id === activeTabId)?.messages.findIndex((m) => m.id === messageId)) ?? [],
         isStreaming: false,
         currentAssistantMsgId: null,
         currentThinkingMsgId: null,

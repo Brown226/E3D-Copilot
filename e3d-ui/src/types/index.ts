@@ -41,6 +41,8 @@ export interface Message {
   finalized?: boolean;
   /** 来源 Agent 名称（null = 主 Agent，非 null = 子代理名） */
   agentName?: string;
+  /** 置信度标记（high/medium/low，null = 未评估） */
+  confidence?: 'high' | 'medium' | 'low';
   /** 附件（用户消息） */
   attachments?: Attachment[];
 }

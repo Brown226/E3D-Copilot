@@ -56,6 +56,9 @@ namespace E3DCopilot.Core
         // ── 证据账本（对齐 Reasonix evidence.Ledger） ──
         private readonly EvidenceLedger _evidence = new EvidenceLedger();
 
+        /// <summary>子代理嵌套深度（由 SubagentRunner 注入，防无限递归）</summary>
+        public int SubagentDepth { get; set; } = 0;
+
         public AgentLoop(ICopilotProvider provider, IEventSink sink,
             ToolExecutor executor, CommandPermissionController permission,
             CopilotConfig config, CopilotController controller = null,
@@ -591,6 +594,9 @@ namespace E3DCopilot.Core
                 var toolResult = await _executor.ExecuteAsync(call.Name, call.Arguments, ct);
                 CopilotLogger.Info("工具执行完成: {0}, success={1}, duration={2}ms, resultLen={3}", call.Name, toolResult.Success, toolResult.DurationMs, toolResult.Text?.Length ?? 0);
 
+                // C1② 用户画像自动更新：每次工具调用后累积偏好
+                _controller?.Memory?.UpdateProfileFromToolUse(call.Name, call.Arguments, toolResult.Success);
+
                 // ── 写操作 checkpoint 记录（对齐 Reasonix checkpoint.Snapshot）──
                 if (toolResult.Success && !IsParallelisable(call.Name))
                 {
@@ -715,8 +721,10 @@ namespace E3DCopilot.Core
                             _sink.Emit(CopilotEvent.Reasoning(chunk.Content));
                             break;
                         case ChunkType.Text:
-                            text += chunk.Content;
-                            _sink.Emit(CopilotEvent.TextEvent(chunk.Content));
+                            // D1 密钥脱敏：对 LLM 输出逐 chunk 遮蔽密钥/连接串等敏感信息
+                            var safeText = SecretRedactor.Redact(chunk.Content);
+                            text += safeText;
+                            _sink.Emit(CopilotEvent.TextEvent(safeText));
                             break;
                         case ChunkType.ToolCall:
                             partialToolStarted = true;
@@ -894,19 +902,21 @@ namespace E3DCopilot.Core
 
         // ═══════════════════════════════════════════════════════════
         //  MaybeCompact — 上下文压缩（对齐 Reasonix maybeCompact）
-        //  轻量实现：消息数 > 15 时，保留最近 6 条 + 摘要前缀
+        //  从 _config.Ui.CompactRatio + CompactTriggerMessages 读取参数
         // ═══════════════════════════════════════════════════════════
 
         private async Task MaybeCompactAsync(CopilotSession session, CancellationToken ct)
         {
-            const int compactThreshold = 15;  // assistant 消息超过此数量触发
-            const int keepTail = 6;           // 保留最近 N 条消息
+            double ratio = _config?.Ui?.CompactRatio ?? 0.8;
+            int trigger = _config?.Ui?.CompactTriggerMessages ?? 15;
+            if (ratio <= 0) return; // 禁用
 
             var msgs = session.Messages;
             int assistantCount = msgs.Count(m => m.Role == MessageRole.Assistant);
-            if (assistantCount <= compactThreshold) return;
+            if (assistantCount <= trigger) return;
 
-            // 找到保留分割点：保留最后 keepTail 条消息
+            // 找到保留分割点：保留尾部（按 CompactRatio 取反比，最少 6 条）
+            int keepTail = Math.Max(6, (int)(msgs.Count * (1.0 - ratio)));
             int keepFrom = Math.Max(0, msgs.Count - keepTail);
             // 确保分割点后的首条消息不是孤立的 tool 消息
             while (keepFrom < msgs.Count && msgs[keepFrom].Role == MessageRole.Tool)
@@ -1058,6 +1068,15 @@ namespace E3DCopilot.Core
                 sb.AppendLine("</relevant-memories>");
 
                 _sink?.Emit(CopilotEvent.Notice($"记忆上下文: {top.Count} 条相关记忆已注入"));
+
+                // C1②/④ 追加用户画像 + 项目知识库到上下文
+                var profCtx = _controller?.Memory?.GetSystemPromptContext();
+                if (!string.IsNullOrEmpty(profCtx))
+                {
+                    sb.AppendLine();
+                    sb.Append(profCtx);
+                }
+
                 return sb.ToString();
             }
             catch

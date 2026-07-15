@@ -38,8 +38,14 @@ namespace E3DCopilot.Core.Events
         public string ToolId { get; set; }
         public object Data { get; set; }
 
+        /// <summary>来源 Agent 名称（null = 主 Agent，非 null = 子代理名）</summary>
+        public string AgentName { get; set; }
+
         /// <summary>原始核心工具名（路由前），供前端渲染分组用</summary>
         public string CoreToolName { get; set; }
+
+        /// <summary>置信度标记 (high/medium/low)，null = 未评估</summary>
+        public string Confidence { get; set; }
 
         /// <summary>结构化元数据（最小安全方案：供前端渲染，不影响 LLM 的 Text）</summary>
         public object Meta { get; set; }
