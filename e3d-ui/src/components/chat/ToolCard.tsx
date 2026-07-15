@@ -13,6 +13,7 @@ import { useState, useMemo } from 'react'
 import {
   Loader2,
   ChevronRight,
+  Bot,
 } from 'lucide-react'
 import type { Message } from '@/types'
 import { DiffView } from './DiffView'
@@ -45,32 +46,54 @@ function splitPreview(text: string, n: number): { preview: string; total: number
   return { preview: lines.slice(0, n).join('\n'), total, hasMore: true }
 }
 
-/** 工具摘要 — Reasonix 风格 */
+/** 工具摘要 — 对齐后端真实 Schema 字段名 */
 function summarizeTool(name: string, args?: string, error?: string): string {
   if (error) return error.slice(0, 80)
   if (!args) return ''
 
   try {
-    const parsed = JSON.parse(args)
+    const p = JSON.parse(args)
     switch (name) {
-      case 'query': return `${parsed.queryType || ''} ${parsed.elementName || ''}`.trim()
-      case 'modify': return `${parsed.elementName || ''} → ${parsed.attributeName}=${parsed.attributeValue || ''}`.trim()
-      case 'calculate': return parsed.expression || ''
-      case 'export': return parsed.filePath || parsed.format || ''
-      case 'execute_pml': return `PML: ${(parsed.command || parsed.script || '').slice(0, 40)}`
-      case 'grep': return parsed.pattern || parsed.query || ''
-      case 'read_file': return parsed.filePath || parsed.path || ''
-      case 'todo_write': return `${(parsed.todos || []).length} 个任务`
-      case 'complete_step': return `✓ ${parsed.step || ''}`
-      case 'ask': return '询问用户'
-      case 'undo_redo': return parsed.action || ''
-      case 'report': return `${parsed.type || ''} ${parsed.format || ''}`.trim()
-      case 'compare': return `${parsed.element_a || ''} vs ${parsed.element_b || ''}`
-      case 'hierarchy': return `${parsed.direction || 'info'} ${parsed.element || ''}`.trim()
-      case 'batch': return `${parsed.query_type || ''} → ${Object.keys(parsed.attributes || {}).join(',')}`
-      case 'design': return `${parsed.action || ''} ${parsed.type || ''} ${parsed.name || ''}`.trim()
-      case 'piping': return `${parsed.action || ''} ${parsed.name || ''}`.trim()
-      case 'geometry': return `${parsed.action || ''} ${parsed.element || ''}`.trim()
+      case 'query': return [p.type, p.name, p.scope].filter(Boolean).join(' · ')
+      case 'modify': {
+        const target = p.dburi || p.element || ''
+        const attrs = p.attributes
+        if (attrs && typeof attrs === 'object') {
+          const kv = Object.entries(attrs).map(([k, v]) => `${k}=${v ?? ''}`).join(', ')
+          return `${target} → ${kv}`
+        }
+        if (p.attribute) return `${target} → ${p.attribute}=${p.value ?? ''}`
+        return target
+      }
+      case 'check': return `${p.type || ''} ${p.element || p.target || ''}`.trim()
+      case 'get_attributes': return `${p.element || ''}${p.all ? ' (全部)' : ''}`.trim()
+      case 'calculate': return `${p.operation || ''} ${p.expression || ''}`.trim()
+      case 'export': return `${p.action || ''} ${p.format || ''} ${p.filePath || ''}`.trim()
+      case 'execute_pml': return `PML: ${(p.script || '').slice(0, 40)}`
+      case 'report': return `${p.type || ''} ${p.format || ''}`.trim()
+      case 'compare': return `${p.element_a || ''} vs ${p.element_b || ''}`
+      case 'hierarchy': return `${p.direction || 'info'} ${p.element || ''}`.trim()
+      case 'batch': return `${p.query_type || ''} → ${p.attributes ? Object.keys(p.attributes).join(',') : ''}`.trim()
+      case 'design': return `${p.action || ''} ${p.type || ''} ${p.name || ''}`.trim()
+      case 'piping': return `${p.action || ''} ${p.name || p.pipe || ''}`.trim()
+      case 'geometry': return `${p.action || ''} ${p.element || ''}`.trim()
+      case 'read_file': return p.path || p.filePath || ''
+      case 'write_file': return p.path || ''
+      case 'grep': return p.pattern || p.query || ''
+      case 'glob': return p.pattern || ''
+      case 'todo_write': return `${(p.todos || []).length} 个任务`
+      case 'complete_step': return `✓ ${p.step || ''}`
+      case 'ask': return `${(p.questions || []).length} 个问题`
+      case 'undo_redo': return p.action || ''
+      case 'generate_iso_drawing': return `${p.action || ''} ${p.pipe_name || (p.pipe_names && p.pipe_names.length ? p.pipe_names.join(',') : '')}`.trim()
+      case 'query_material': return `${p.action || ''} ${p.keyword || p.material_code || ''}`.trim()
+      case 'get_pipe_info': return `${p.action || ''} ${p.pipe_name || ''}`.trim()
+      case 'structure_drawing': return `${p.action || ''} ${p.direction || ''}`.trim()
+      case 'cad_import': return `${p.action || ''} ${p.file_path || ''}`.trim()
+      case 'autocad': return p.action || ''
+      case 'memory': return `${p.action || ''} ${p.query || p.key || ''}`.trim()
+      case 'run_skill': return p.name || ''
+      case 'dispatch_subagent': return p.name || ''
       default: return ''
     }
   } catch {
@@ -104,8 +127,11 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
   const isError = !!msg.toolError
   const hasSubcalls = subcalls.length > 0
 
-  // 智能默认：修改类工具+出错+运行中 自动展开
-  const AUTO_EXPAND_TOOLS = new Set(['write_file', 'edit_file', 'multi_edit', 'modify', 'move_file', 'delete_range', 'notebook_edit'])
+  // 智能默认：修改类工具+出错+运行中 自动展开（对齐 E小智 真实工具名）
+  const AUTO_EXPAND_TOOLS = new Set([
+    'modify', 'design', 'piping', 'batch', 'structure_drawing',
+    'generate_iso_drawing', 'write_file', 'cad_import', 'autocad', 'undo_redo',
+  ])
   const shouldAutoExpand = isError || isRunning || AUTO_EXPAND_TOOLS.has(msg.toolName || '')
   const open = userOpen ?? shouldAutoExpand
   const toggleOpen = () => setUserOpen((prev) => prev === null ? !shouldAutoExpand : !prev)
@@ -133,7 +159,7 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
     }
   }, [msg.content, msg.toolError])
 
-  // 检测 diff 数据
+  // 检测 diff 数据（modify 工具）
   const diffData = useMemo(() => {
     if (msg.toolName !== 'modify') return null
     try {
@@ -143,11 +169,24 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
       const result = msg.content
         ? (typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content) as Record<string, unknown>
         : null
-      if (args?.oldValue !== undefined && args?.newValue !== undefined) {
-        return { oldText: String(args.oldValue), newText: String(args.newValue), fileName: String(args.filePath || args.elementName || '') }
+      const target = String((result?.target as string) || (args?.dburi as string) || (args?.element as string) || '')
+
+      // 后端 modify 成功时返回 changes: [{ attribute, old, new }]
+      const changes = result?.changes
+      if (Array.isArray(changes) && changes.length > 0) {
+        const oldLines = (changes as Array<Record<string, unknown>>).map((c) => `${c.attribute} = ${c.old ?? ''}`)
+        const newLines = (changes as Array<Record<string, unknown>>).map((c) => `${c.attribute} = ${c.new ?? ''}`)
+        return { oldText: oldLines.join('\n'), newText: newLines.join('\n'), fileName: target }
       }
-      if (result?.oldValue !== undefined && result?.newValue !== undefined) {
-        return { oldText: String(result.oldValue), newText: String(result.newValue), fileName: String(result.filePath || '') }
+
+      // 兜底：无 changes 时从 args 的 attributes 展示将要设置的新值（无旧值）
+      const attrs = args?.attributes
+      if (attrs && typeof attrs === 'object') {
+        const lines = Object.entries(attrs as Record<string, unknown>).map(([k, v]) => `${k} = ${v ?? ''}`)
+        return { oldText: '', newText: lines.join('\n'), fileName: target }
+      }
+      if (args?.attribute) {
+        return { oldText: '', newText: `${args.attribute} = ${args.value ?? ''}`, fileName: target }
       }
     } catch { /* ignore */ }
     return null
@@ -158,8 +197,6 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
     if (!resultStr) return null
     return splitPreview(resultStr, SHELL_PREVIEW_LINES)
   }, [resultStr])
-
-  const displayResult = showAll ? resultStr : shellPreview?.preview
 
   // 摘要
   const summary = isRunning
@@ -186,7 +223,9 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
           {hasSubcalls && <span className="tool__nested-count">⊞{subcalls.length}</span>}
 
           {/* 状态图标 */}
-          {isRunning ? (
+          {msg.toolName === 'dispatch_subagent' ? (
+            <Bot className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+          ) : isRunning ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: 'var(--accent)' }} />
           ) : isError ? (
             <span className="tool__status-icon tool__status-icon--err">✗</span>

@@ -12,7 +12,7 @@
  * - 最终回复和正在进行的步骤始终全量渲染
  */
 
-import { useRef, useEffect, useCallback, useState, useMemo, memo } from 'react'
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import type { Message } from '@/types'
@@ -21,6 +21,7 @@ import { ToolGroup, groupConsecutiveTools, type ToolGroupKind } from './ToolGrou
 import { ApprovalCard } from './ApprovalCard'
 import { AskUserCard } from './AskUserCard'
 import { TodoPanel } from './TodoPanel'
+import { SubagentPanel } from './SubagentPanel'
 
 // ── 分层常量 ──
 const HOT_TURNS = 8
@@ -188,6 +189,19 @@ export function MessageList() {
     return map
   }, [messages])
 
+  // 收集子代理消息（按 agentName 分组）
+  const subagentGroups = useMemo(() => {
+    const groups = new Map<string, Message[]>()
+    for (const msg of messages) {
+      if (msg.agentName) {
+        const list = groups.get(msg.agentName) || []
+        list.push(msg)
+        groups.set(msg.agentName, list)
+      }
+    }
+    return groups
+  }, [messages])
+
   // 过滤掉已被归为子调用的消息（保留 thinking 消息，由 buildDisplayItems 处理）
   const topLevelMessages = useMemo(() => {
     const childIds = new Set<string>()
@@ -226,8 +240,10 @@ export function MessageList() {
   }, [messages, hotStartIdx, topLevelMessages])
 
   // Hot zone display items（含 Compact 折叠）
+  // 子代理消息（agentName != null）由 SubagentPanel 统一渲染，不在主消息流中显示
+  // 跳过后续 item 的生成
   const hotDisplayItems = useMemo(
-    () => buildDisplayItems(hotMessages, subcallMap, isStreaming),
+    () => buildDisplayItems(hotMessages.filter(m => !m.agentName), subcallMap, isStreaming),
     [hotMessages, subcallMap, isStreaming],
   )
 
@@ -379,6 +395,17 @@ export function MessageList() {
           <TodoPanel />
 
           {hotDisplayItems.map((item, i) => renderItem(item, `hot-${i}`, hotMessages))}
+
+          {/* ═══════ 子代理面板 ═══════ */}
+          {Array.from(subagentGroups.entries()).map(([name, msgs]) => (
+            <SubagentPanel
+              key={`subagent-${name}`}
+              agentName={name}
+              messages={msgs}
+              allMessages={hotMessages}
+              subcalls={subcallMap}
+            />
+          ))}
 
           {/* ═══════ 审批卡片 ═══════ */}
           {pendingApproval && <ApprovalCard approval={pendingApproval} onAnswer={handleApproval} />}
