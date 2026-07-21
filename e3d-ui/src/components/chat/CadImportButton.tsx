@@ -65,6 +65,23 @@ export function CadImportButton() {
     sendMessage(bridge.sendUserMessage.bind(bridge), [], message)
   }, [sendMessage, togglePanel, state.coordinates, state.wallHeight, state.wallThickness])
 
+  // ── 打开原生文件对话框选择 DWG/DXF（通过 C# Bridge） ──
+  const openDwgFileDialog = useCallback(async () => {
+    try {
+      const result = await bridge.sendAndWait('dialog:open_file', {
+        title: '选择 DWG/DXF 文件',
+        filter: 'CAD 文件|*.dwg;*.dxf|DWG 文件|*.dwg|DXF 文件|*.dxf|所有文件|*.*'
+      }) as { path?: string } | null;
+      if (result?.path) {
+        togglePanel()
+        const message = `导入 CAD 文件：${result.path}，墙高${state.wallHeight}mm，墙厚${state.wallThickness}mm`
+        sendMessage(bridge.sendUserMessage.bind(bridge), [], message)
+      }
+    } catch {
+      // 对话框取消或后端不可用
+    }
+  }, [sendMessage, togglePanel, state.wallHeight, state.wallThickness])
+
   // ── 渲染状态图标 ──
   if (!state.isOpen) {
     return (
@@ -172,24 +189,18 @@ export function CadImportButton() {
         {/* DWG 文件模式 */}
         {state.mode === 'file' && (
           <div className="space-y-2">
-            <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+            <button
+              onClick={openDwgFileDialog}
+              className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors cursor-pointer"
+            >
               <FileUp className="w-8 h-8 mx-auto mb-2 text-gray-400" />
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                拖拽 DWG 文件到此处，或点击选择文件
+                点击选择 DWG/DXF 文件
               </p>
-              <input
-                type="file"
-                accept=".dwg,.dxf"
-                className="hidden"
-                id="dwg-file-input"
-              />
-              <label
-                htmlFor="dwg-file-input"
-                className="mt-2 inline-block px-4 py-2 bg-gray-100 dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              >
-                选择文件
-              </label>
-            </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                支持 .dwg 和 .dxf 格式
+              </p>
+            </button>
           </div>
         )}
 

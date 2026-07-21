@@ -201,6 +201,50 @@ body {
   animation: blink 1s step-end infinite;
 }
 
+/* ── P4: 微交互动画 ── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.msg {
+  animation: fadeInUp 0.2s var(--ease-out) both;
+}
+
+/* ToolCard 展开/折叠过渡 */
+.tool__body {
+  transition: max-height 0.2s var(--ease-out), opacity 0.15s ease;
+}
+
+/* 按钮 hover 微缩放 */
+.composer__btn--send:not(:disabled):hover {
+  transform: translateY(-1px) scale(1.02);
+}
+
+/* 连接状态呼吸动画（慢速 pulse） */
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── P4: 暗色模式打磨 ── */
+.dark .tool {
+  border-left-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.dark .tool[data-error] {
+  border-left-color: color-mix(in srgb, var(--err) 60%, transparent);
+}
+.dark .code-viewer {
+  background: #1a2332;
+  border-color: #2a3a4e;
+}
+
 /* 滚动条样式（适配暗色） */
 ::-webkit-scrollbar {
   width: 6px;

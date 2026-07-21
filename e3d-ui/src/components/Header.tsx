@@ -32,7 +32,6 @@ export function Header() {
   const bridgeConnected = useChatStore((s) => s.bridgeConnected)
   const toggleSettings = useChatStore((s) => s.toggleSettings)
   const toggleHistory = useChatStore((s) => s.toggleHistory)
-  const newSession = useChatStore((s) => s.newSession)
   const sessions = useChatStore((s) => s.sessions)
 
   const [dark, setDark] = useState(isDarkActive)
@@ -59,11 +58,9 @@ export function Header() {
     window.dispatchEvent(new Event('theme-changed'))
   }, [dark])
 
-  const handleNewSession = () => {
-    import('@/services/bridgeService').then(({ default: bridge }) => {
-      useChatStore.getState().saveSession()
-      newSession(bridge.newSession.bind(bridge))
-    })
+  const handleNewTab = () => {
+    // 纯前端新建标签页，不发送 user:new_session，避免终止后端正在运行的任务
+    useChatStore.getState().createTab()
   }
 
   return (
@@ -71,13 +68,13 @@ export function Header() {
       <div className="flex items-center justify-between">
         {/* 左侧：Logo + 标题 + 状态 */}
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
+          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20">
             <Bot className="w-3.5 h-3.5 text-white" />
           </div>
           <div className="min-w-0">
             <h1 className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight">E小智</h1>
             <div className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 leading-tight">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${bridgeConnected ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${bridgeConnected ? 'bg-emerald-500 animate-[breathe_3s_ease-in-out_infinite]' : 'bg-red-500'}`} />
               <span className="truncate">{currentModel || (bridgeConnected ? '已连接' : '未连接')}</span>
             </div>
           </div>
@@ -86,9 +83,9 @@ export function Header() {
         {/* 右侧：icon-only 按钮 */}
         <div className="flex items-center gap-0.5 shrink-0">
           <button
-            onClick={handleNewSession}
+            onClick={handleNewTab}
             className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-            title="新建对话"
+            title="新建标签页"
           >
             <Plus className="w-4 h-4" />
           </button>

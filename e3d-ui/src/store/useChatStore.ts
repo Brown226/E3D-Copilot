@@ -159,6 +159,8 @@ export interface ChatStore {
   sessions: SessionMeta[];
 
   // === 流式状态追踪 ===
+  /** 当前正在接收后端事件的 Tab ID（锁定机制，防止切换 Tab 后事件写入错误 Tab） */
+  streamingTabId: string | null;
   /** 当前轮次开始时间戳（用于计算运行时长） */
   turnStartAt: number | null;
   /** 当前轮次 token 用量 */
@@ -258,6 +260,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   lastPingTime: null,
   sessionId: generateSessionId(),
   sessions: loadSessionsFromStorage(),
+  streamingTabId: null,
   turnStartAt: null,
   turnTokens: 0,
   sessionTokens: 0,
@@ -330,6 +333,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // 首次进入流式：不创建 assistant 消息，等第一个 text delta 到达时由 appendAssistantDelta 创建
     // 这确保 thinking/tool 消息排在 assistant 消息前面，UI 顺序正确
     set((s) => ({
+      streamingTabId: targetId,  // 锁定：后续事件路由到此 Tab，即使用户切换 Tab
       tabs: updateTab(s.tabs, targetId, () => ({
         isStreaming: true,
         currentAssistantMsgId: existingTab?.currentAssistantMsgId ?? null,
@@ -490,6 +494,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   stopStreaming: (tabId) => {
     const targetId = tabId || get().activeTabId
     set((s) => ({
+      streamingTabId: null,  // 解锁：流式结束，清除锁定
       tabs: s.tabs.map((t) => {
         if (t.id !== targetId) return t
         // Finalize assistant message and clear ID

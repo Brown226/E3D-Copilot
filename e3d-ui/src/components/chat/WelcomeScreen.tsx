@@ -9,7 +9,9 @@ import { useChatStore } from '@/store/useChatStore'
 const QUICK_ACTIONS = [
   { icon: '📋', text: '查询所有设备' },
   { icon: '🔧', text: '创建一根管道' },
-  { icon: '📐', text: '帮我设计一个泵房' },
+  { icon: '📐', text: '导入 CAD 图纸' },
+  { icon: '🖼️', text: '生成 ISO 管道图' },
+  { icon: '🏗️', text: '结构出图 DXF' },
   { icon: '📊', text: '查看当前元素属性' },
 ]
 
@@ -31,9 +33,9 @@ export function WelcomeScreen() {
 
   return (
     <div className="flex flex-col items-center justify-center flex-1 px-4 py-8 space-y-5">
-      {/* Logo */}
-      <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-        <Bot className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+      {/* Logo — 渐变品牌色 */}
+      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+        <Bot className="w-6 h-6 text-white" />
       </div>
 
       {/* 标题 */}
@@ -42,16 +44,16 @@ export function WelcomeScreen() {
         <p className="text-sm text-slate-500 dark:text-slate-400">E3D 工厂设计智能助手</p>
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-2 w-full max-w-xs">
+      {/* Quick Actions — 3列网格 */}
+      <div className="grid grid-cols-3 gap-2 w-full max-w-sm">
         {QUICK_ACTIONS.map((action) => (
           <button
             key={action.text}
             onClick={() => handleQuickAction(action.text)}
-            className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors"
+            className="flex flex-col items-center gap-1.5 px-2 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-slate-700 hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            <span>{action.icon}</span>
-            <span className="truncate">{action.text}</span>
+            <span className="text-base">{action.icon}</span>
+            <span className="truncate w-full text-center">{action.text}</span>
           </button>
         ))}
       </div>

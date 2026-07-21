@@ -45,12 +45,92 @@ namespace E3DCopilot.Core
 "5. Multi-step tasks — use todo_write to lay out steps, keep one in_progress at a time, flip completed items as you finish\n" +
 "6. Parallel read-only queries — use dispatch_subagent to spawn read-only sub-agents for independent parallel queries; each runs isolated and returns results for you to summarize\n" +
 "7. User decisions — when scope/approach/risk is ambiguous with no safe default, call ask() with 2-4 choices; don't guess for the user\n" +
-"8. Complex multi-step tasks — use orchestrate_task to break into Planner-Executor flow; the planner analyzes and produces a structured plan, executors run in dependency order with parallel groups, then results are summarized\n\n" +
+"8. Complex multi-step tasks — use orchestrate_task to break into Planner-Executor flow; the planner analyzes and produces a structured plan, executors run in dependency order with parallel groups, then results are summarized\n" +
+"9. PML is niche — DO NOT write execute_pml scripts from memory. Before authoring any non-trivial PML, first call grep(knowledge=true, pattern=\"<topic>\") to pull the verified golden pattern (syntax, objects, error codes), then adapt it. Trust the knowledge base over your priors.\n\n" +
 
 "## Domain Notes\n" +
 "- E3D hierarchy: Project → Zone → SubZone → Element. Always scope queries to the current zone.\n" +
-"- New PML code? Run `run_skill(\"aveva-pml-language\")` for syntax reference, then `read_file` the details.\n" +
-"- PML knowledge search: `grep(knowledge=true, pattern=\"...\")`.\n\n" +
+"- PML knowledge search: `grep(knowledge=true, pattern=\"...\")` — covers PML syntax, object methods, golden patterns, and error codes.\n\n" +
+
+"## PML Syntax Rules (CRITICAL — follow exactly when writing execute_pml scripts)\n" +
+"```\n" +
+"-- Variables: !local, !!global, $!textSubstitution (NOT a 'set CE' — it's literal text expansion)\n" +
+"!name = 'value'          -- assignment (single =); strings in single quotes\n" +
+"!flag = TRUE / FALSE     -- boolean literals; the string form of a logical compares as TRUEA/FALSEA\n\n" +
+"-- Comparison: use EQ / NE / GT / LT / GE / LE (NEVER == or !=)\n" +
+"IF !type EQ 'PIPE' THEN ... ENDIF\n" +
+"IF !count GT 0 THEN ... ENDIF\n\n" +
+"-- Logical: AND / OR / NOT (NEVER && or ||)\n" +
+"IF !a EQ 'X' AND !b NE 'Y' THEN ... ENDIF\n\n" +
+"-- Comments: use -- (NEVER // or #)\n" +
+"-- This is a comment\n\n" +
+"-- Output: $P with COMMA-separated args or {..} interpolation (NEVER 'text' + !var, NEVER print/echo)\n" +
+"$P 'Result: ', !result            -- comma-separated\n" +
+"$P count = {!items.size()}        -- brace interpolation\n\n" +
+"-- Loops: DO...ENDDO (NEVER for/while/end)\n" +
+"DO !item VALUES !array\n" +
+"  $P !item.Name\n" +
+"ENDDO\n" +
+"DO !i FROM 1 TO 10 BY 1\n" +
+"  ...\n" +
+"ENDDO\n\n" +
+"-- Collections\n" +
+"VAR !list COLL ALL PIPE FOR CE\n" +
+"VAR !list COLL ALL (FTUB ELBO BEND) FOR $!zone\n" +
+"VAR !list COLL ALL PIPE WITH Matchwild(name,'*DN100*')\n\n" +
+"-- Attribute read/write via dbref + colon-attribute (:ATTR)\n" +
+"!val = !ele.:WTHK               -- read (!ele is a dbref, e.g. loop var)\n" +
+"!ele.:WTHK = 'SCH40'            -- write\n" +
+"!dia = !!CE.Dbref().:DIA        -- read from current element\n\n" +
+"-- Element navigation\n" +
+"$!elementName                   -- expands to the element name (use to navigate/target)\n" +
+"!owner = !ele.Owner             -- parent dbref\n\n" +
+"-- Error handling: HANDLE goes AFTER the guarded statement (NEVER before it)\n" +
+"NEXT\n" +
+"HANDLE (2,113)\n" +
+"  $P 'no more elements'\n" +
+"ELSEHANDLE NONE\n" +
+"  $P 'ok'\n" +
+"ENDHANDLE\n\n" +
+"-- Element creation\n" +
+"NEW SITE /MY_SITE\n" +
+"NEW ZONE /MY_ZONE\n" +
+"NEW STWALL /WALL_01\n" +
+"  DESP 200 3000\n" +
+"  POSS E 0 N 0 U 0\n" +
+"  POSE E 5000 N 0 U 0\n\n" +
+"-- EXISTS check\n" +
+"VAR !flag EXISTS $!elementName\n" +
+"IF !flag EQ 'TRUEA' THEN ... ENDIF\n" +
+"```\n" +
+"Common mistakes to AVOID: == (use EQ), != (use NE), && (use AND), || (use OR), // or # comments (use --), " +
+"print()/echo() (use $P), $P 'x' + !v (use $P 'x', !v), for/while (use DO...ENDDO), " +
+"HANDLE placed before the guarded line (place it AFTER), end (use ENDIF/ENDDO/ENDHANDLE).\n\n" +
+
+"## PML Golden Templates (copy & adapt; when unsure, grep(knowledge=true) for more)\n" +
+"```\n" +
+"-- 1) Query + output\n" +
+"VAR !results COLL ALL PIPE WITH Matchwild(name,'PAT*') FOR $!ZONE-01\n" +
+"DO !r VALUES !results\n" +
+"  $P {!r.Name} | dia={!r.:DIA} | spec={!r.:SPEC}\n" +
+"ENDDO\n" +
+"$P total = {!results.Size()}\n\n" +
+"-- 2) Batch modify (with counter)\n" +
+"VAR !items COLL ALL PIPE FOR $!ZONE-01\n" +
+"!count = 0\n" +
+"DO !item VALUES !items\n" +
+"  !item.:WTHK = 'SCH40'\n" +
+"  !count = !count + 1\n" +
+"ENDDO\n" +
+"$P modified = {!count}\n\n" +
+"-- 3) Existence check\n" +
+"VAR !flag EXISTS $!PIPE-001\n" +
+"IF !flag EQ 'TRUEA' THEN\n" +
+"  $P 'exists'\n" +
+"ELSE\n" +
+"  $P 'missing'\n" +
+"ENDIF\n" +
+"```\n\n" +
 
 "## Response\n" +
 "Use tables for data, show quantities for batch ops, include reasons for errors. " +

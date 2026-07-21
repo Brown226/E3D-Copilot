@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Database, Edit3, Calculator, Download, Terminal, MessageSquare, Zap } from 'lucide-react'
+import { Database, Edit3, Calculator, Download, Terminal, MessageSquare, Zap, FileUp, PenTool, Box, Link } from 'lucide-react'
 
 interface SlashCommand {
   name: string
@@ -71,6 +71,38 @@ const COMMANDS: SlashCommand[] = [
     icon: <Zap className="w-4 h-4" />,
     template: '',
     keywords: ['plan', '规划', '模式'],
+  },
+  {
+    name: 'cad',
+    label: '/cad',
+    description: '导入 CAD 图纸到 E3D',
+    icon: <FileUp className="w-4 h-4" />,
+    template: '/cad ',
+    keywords: ['cad', 'dwg', '导入', '图纸', 'dxf'],
+  },
+  {
+    name: 'iso',
+    label: '/iso',
+    description: '生成管道 ISO 等轴测图',
+    icon: <PenTool className="w-4 h-4" />,
+    template: '/iso ',
+    keywords: ['iso', '出图', '管道图', '等轴测'],
+  },
+  {
+    name: 'structure',
+    label: '/structure',
+    description: '结构出图（DXF）',
+    icon: <Box className="w-4 h-4" />,
+    template: '/structure ',
+    keywords: ['结构', '出图', 'dxf', '梁', '柱'],
+  },
+  {
+    name: 'autocad',
+    label: '/autocad',
+    description: '连接 AutoCAD 实时联动',
+    icon: <Link className="w-4 h-4" />,
+    template: '/autocad ',
+    keywords: ['autocad', '连接', '联动', '选中'],
   },
 ]
 

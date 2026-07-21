@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Tools;
 using Newtonsoft.Json.Linq;
 
@@ -14,53 +15,85 @@ namespace E3DCopilot.Tools.Bridge
     /// 
     /// 这是 Core → Tools 依赖的关键桥梁：
     /// Core (DbQueryHandler) → IToolDispatcher → E3DToolDispatcher → IE3DEnvironment → E3D API
+    /// 
+    /// 并发安全：写操作通过 E3DOperationQueue 串行化，防止多 Tab 交叉写入
     /// </summary>
     public class E3DToolDispatcher : IToolDispatcher
     {
         private readonly IE3DEnvironment _env;
+        private readonly AuditLogger _auditLogger;
 
         public E3DToolDispatcher(IE3DEnvironment environment)
         {
             _env = environment ?? throw new ArgumentNullException(nameof(environment));
+            _auditLogger = new AuditLogger(); // 默认路径 %LOCALAPPDATA%/.e3dcopilot/audit
         }
 
         /// <summary>
         /// 按名称执行工具并返回结果 JSON 字符串
+        /// 写操作通过 E3DOperationQueue 串行化，读操作直接执行
         /// </summary>
-        public Task<string> ExecuteAsync(string name, string args)
+        public async Task<string> ExecuteAsync(string name, string args)
         {
             switch ((name ?? "").ToLower())
             {
+                // ── 读操作：直接执行（通过 UI 线程串行化）──
                 case "query":
-                    return Task.FromResult(HandleQuery(args));
-
-                case "modify":
-                    return Task.FromResult(HandleModify(args));
+                    return HandleQuery(args);
 
                 case "check":
-                    return Task.FromResult(HandleCheck(args));
+                    return HandleCheck(args);
 
                 case "calculate":
-                    return Task.FromResult(HandleCalculate(args));
+                    return HandleCalculate(args);
+
+                // ── 写操作：通过操作队列串行化，防止多 Tab 交叉写入 ──
+                case "modify":
+                    return await E3DOperationQueue.ExecuteWriteAsync(
+                        () => Task.FromResult(HandleModify(args)),
+                        $"modify:{ExtractTarget(args)}");
 
                 case "export":
-                    return Task.FromResult(HandleExport(args));
+                    return await E3DOperationQueue.ExecuteWriteAsync(
+                        () => Task.FromResult(HandleExport(args)),
+                        "export");
 
                 case "execute_pml":
-                    return Task.FromResult(HandleExecutePml(args));
+                    return await E3DOperationQueue.ExecuteWriteAsync(
+                        () => Task.FromResult(HandleExecutePml(args)),
+                        "execute_pml");
 
                 case "design":
-                    return Task.FromResult(HandleDesign(args));
+                    return await E3DOperationQueue.ExecuteWriteAsync(
+                        () => Task.FromResult(HandleDesign(args)),
+                        "design");
 
                 case "piping":
-                    return Task.FromResult(HandlePiping(args));
+                    return await E3DOperationQueue.ExecuteWriteAsync(
+                        () => Task.FromResult(HandlePiping(args)),
+                        "piping");
 
                 case "geometry":
-                    return Task.FromResult(HandleGeometry(args));
+                    return await E3DOperationQueue.ExecuteWriteAsync(
+                        () => Task.FromResult(HandleGeometry(args)),
+                        "geometry");
 
                 default:
-                    return Task.FromResult($"{{\"success\": false, \"error\": \"未知工具: {name}\"}}");
+                    return $"{{\"success\": false, \"error\": \"未知工具: {name}\"}}";
             }
+        }
+
+        /// <summary>
+        /// 从参数中提取目标元素名（用于日志）
+        /// </summary>
+        private static string ExtractTarget(string args)
+        {
+            try
+            {
+                var json = JObject.Parse(args ?? "{}");
+                return json["dburi"]?.ToString() ?? json["element"]?.ToString() ?? "unknown";
+            }
+            catch { return "unknown"; }
         }
 
         /// <summary>
@@ -215,6 +248,9 @@ namespace E3DCopilot.Tools.Bridge
                             ["old"] = oldValue,
                             ["new"] = attrValue
                         });
+                
+                        // 审计日志：记录属性修改
+                        _auditLogger.LogAttributeChange(dburi, attrName, oldValue, attrValue);
                     }
                     else
                         failedList.Add(attrName);
@@ -689,6 +725,10 @@ namespace E3DCopilot.Tools.Bridge
 
                 // 检查是否执行失败（ExecutePml 返回 "Error: ..." 表示失败）
                 bool failed = !string.IsNullOrEmpty(result) && result.StartsWith("Error:");
+
+                // 审计日志：记录 PML 执行
+                _auditLogger.LogPmlExecution(command, result, !failed);
+
                 var jResult = new JObject
                 {
                     ["success"] = !failed,
@@ -696,13 +736,19 @@ namespace E3DCopilot.Tools.Bridge
                 };
                 if (failed)
                 {
-                    jResult["error"] = result;
+                    // 使用 PmlErrorMapper 将晦涩的错误转换为人类可读的描述
+                    string rawError = result.Substring(6).Trim(); // 移除 "Error:" 前缀
+                    string mappedError = PmlErrorMapper.MapError(rawError);
+                    jResult["error"] = mappedError;
+                    jResult["raw_error"] = rawError; // 保留原始错误供调试
                 }
                 return jResult.ToString();
             }
             catch (Exception ex)
             {
-                return $"{{\"success\": false, \"error\": \"{ex.Message}\"}}";
+                // 异常也通过 PmlErrorMapper 增强
+                string mappedError = PmlErrorMapper.MapError(ex.Message);
+                return $"{{\"success\": false, \"error\": \"{mappedError.Replace("\"", "'")}\"}}";
             }
         }
 

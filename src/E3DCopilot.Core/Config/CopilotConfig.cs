@@ -15,12 +15,12 @@ namespace E3DCopilot.Core.Config
         /// <summary>
         /// Default Provider name (corresponds to Name in Providers list)
         /// </summary>
-        public string DefaultProvider { get; set; } = "qwen37";
+        public string DefaultProvider { get; set; } = "local-proxy";
         
         /// <summary>
         /// Default model name (format: provider/model or plain model name)
         /// </summary>
-        public string DefaultModel { get; set; } = "qwen37/Qwen3.7-Plus";
+        public string DefaultModel { get; set; } = "local-proxy/cbcn/deepseek-v4-pro";
         
         /// <summary>
         /// Provider list, supports multiple LLM services
@@ -295,6 +295,7 @@ namespace E3DCopilot.Core.Config
 
         /// <summary>
         /// 加载配置：全局 + 用户合并，用户优先覆盖
+        /// 如果 config.json 不存在，自动生成模板配置文件
         /// </summary>
         public static CopilotConfig Load(string configPath = null)
         {
@@ -308,6 +309,14 @@ namespace E3DCopilot.Core.Config
                 string globalPath = configPath ?? GetGlobalConfigPath();
                 _globalConfig = LoadFromFile(globalPath);
 
+                // 如果全局配置不存在，自动生成模板配置文件
+                if (_globalConfig == null)
+                {
+                    _globalConfig = new CopilotConfig();
+                    _globalConfig.InitDefaultProviders();
+                    GenerateDefaultConfigFile(globalPath);
+                }
+
                 // Step 2: 加载用户配置（%LOCALAPPDATA%）
                 string userPath = GetUserConfigPath();
                 var userConfig = LoadFromFile(userPath);
@@ -316,6 +325,44 @@ namespace E3DCopilot.Core.Config
                 _instance = MergeConfigs(_globalConfig, userConfig);
 
                 return _instance;
+            }
+        }
+
+        /// <summary>
+        /// 首次启动时自动生成 config.json 模板
+        /// </summary>
+        private static void GenerateDefaultConfigFile(string path)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                var template = new CopilotConfig();
+                template.Providers = new List<ProviderConfig>
+                {
+                    new ProviderConfig
+                    {
+                        Name = "local-proxy",
+                        Kind = "openai",
+                        BaseUrl = "http://localhost:20128/v1",
+                        ApiKey = "",
+                        Models = new List<string> { "cbcn/deepseek-v4-pro", "cbcn/kimi-k2.7", "mimo-v2.5" },
+                        DefaultModel = "cbcn/deepseek-v4-pro",
+                        Temperature = 0.1,
+                        MaxTokens = 8192
+                    }
+                };
+                template.DefaultProvider = "local-proxy";
+                template.DefaultModel = "local-proxy/cbcn/deepseek-v4-pro";
+
+                File.WriteAllText(path, JsonConvert.SerializeObject(template, Formatting.Indented));
+                E3DCopilot.Core.Logging.CopilotLogger.Info("已自动生成配置模板: {0}", path);
+            }
+            catch (Exception ex)
+            {
+                E3DCopilot.Core.Logging.CopilotLogger.Error(ex, "生成默认配置文件失败");
             }
         }
 
@@ -344,9 +391,6 @@ namespace E3DCopilot.Core.Config
             // 如果没有用户配置，直接返回全局配置
             if (user == null)
             {
-                // 确保 Providers 不为空
-                if (global.Providers == null || global.Providers.Count == 0)
-                    global.InitDefaultProviders();
                 return global;
             }
 
@@ -474,49 +518,12 @@ namespace E3DCopilot.Core.Config
         }
 
         /// <summary>
-        /// Initialize default Provider list
+        /// Initialize default Provider list — 不再硬编码，改为自动生成配置文件
         /// </summary>
         internal void InitDefaultProviders()
         {
-            Providers = new List<ProviderConfig>
-            {
-                new ProviderConfig
-                {
-                    Name = "mimo",
-                    Kind = "openai",
-                    BaseUrl = "https://token-plan-cn.xiaomimimo.com/v1",
-                    ApiKey = "",  // 运行环境变量或内网部署时配置
-                    Models = new List<string> { "mimo-v2.5", "mimo-v2-flash" },
-                    DefaultModel = "mimo-v2.5",
-                    Temperature = 0.1,
-                    MaxTokens = 8192
-                },
-                new ProviderConfig
-                {
-                    Name = "local",
-                    Kind = "openai",
-                    BaseUrl = "http://localhost:8000/v1",
-                    ApiKey = "",  // 本地 API，无需密钥
-                    Models = new List<string> { "Qwen3.5-32B", "Qwen3-32B" },
-                    DefaultModel = "Qwen3.5-32B",
-                    Temperature = 0.1,
-                    MaxTokens = 8192
-                },
-                new ProviderConfig
-                {
-                    Name = "qwen37",
-                    Kind = "openai",
-                    BaseUrl = "https://opencode.ai/zen/go/v1",
-                    ApiKey = "",  // 运行环境变量或内网部署时配置
-                    Models = new List<string> { "Qwen3.7-Plus" },
-                    DefaultModel = "Qwen3.7-Plus",
-                    Temperature = 0.1,
-                    MaxTokens = 8192
-                }
-            };
-            
-            DefaultProvider = "local";  // 内网优先使用 local
-            DefaultModel = "local/Qwen3.5-32B";
+            // 不再硬编码 Provider，全部由配置文件管理
+            Providers = new List<ProviderConfig>();
         }
 
         /// <summary>
@@ -524,12 +531,12 @@ namespace E3DCopilot.Core.Config
         /// </summary>
         private void MigrateFromLegacy()
         {
-            // If Providers is empty, it's old config, need migration
+            // If Providers is empty, try to migrate from old Llm config
             if (Providers == null || Providers.Count == 0)
             {
                 Providers = new List<ProviderConfig>();
                 
-                // Create default Provider from old Llm config
+                // Create Provider from old Llm config if available
                 if (Llm != null && !string.IsNullOrEmpty(Llm.BaseUrl))
                 {
                     Providers.Add(new ProviderConfig
@@ -548,10 +555,7 @@ namespace E3DCopilot.Core.Config
                     DefaultProvider = "default";
                     DefaultModel = $"default/{Llm.Model}";
                 }
-                else
-                {
-                    InitDefaultProviders();
-                }
+                // 不再回退到硬编码 Provider，留空由配置文件管理
             }
         }
 

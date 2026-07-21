@@ -480,16 +480,21 @@ namespace E3DCopilot.Tools.Bridge
         ///   1. 写入临时文件
         ///   2. 用 $m "路径" 执行（双引号包裹，支持 PML1+PML2）
         ///   3. Command.CreateCommand($m "路径").RunInPdms()
+        ///
+        /// 错误处理策略：不再前置 handle 块。PML 的 handle/ON ERROR 必须置于被保护语句
+        /// 「之后」，旧方案把 "handle any ... endhandle" 放在脚本前面，既包不住脚本，其引用的
+        /// !!errorText 又是不存在的全局，反而会污染每一次执行。改为直接执行脚本本身，
+        /// 语法/运行时错误由 RunInPdms()==false + cmd.Result（含行列号与错误码）如实回传，
+        /// 再由上层 PmlErrorMapper 转换为可读描述。
         /// </summary>
         public string ExecutePml(string pmlCommand)
         {
-            // 写入临时文件（用 handle return 包裹防止错误弹窗）
             string tempFile = System.IO.Path.GetTempFileName();
             try
             {
-                string wrapped = "handle return\n" + pmlCommand + "\nendhandle";
+                // 直接写入脚本本身（结尾补换行，确保最后一条命令被解析）。
                 // 使用 UTF-8 编码（避免跨区域设置导致中文 PML 乱码）
-                System.IO.File.WriteAllText(tempFile, wrapped, new System.Text.UTF8Encoding(false));
+                System.IO.File.WriteAllText(tempFile, pmlCommand + "\n", new System.Text.UTF8Encoding(false));
 
                 // CNPE 官方格式：$m "路径"（双引号，不是单引号）
                 string cmd = "$m \"" + tempFile + "\"";
@@ -523,9 +528,12 @@ namespace E3DCopilot.Tools.Bridge
                             bool ok = cmd.RunInPdms();
                             // RunInPdms 返回 false 时 cmd.Result 包含实际 PML 错误信息（行号、语法错误等）
                             if (ok) return cmd.Result ?? "";
+                            // 统一加 "Error:" 前缀：cmd.Result 原生错误（如 "(47,15) CP: Syntax error"）
+                            // 本身不带前缀，上层 HandleExecutePml / DeleteElement 等都以 StartsWith("Error:")
+                            // 判定失败——不加前缀会导致失败脚本被误判为成功。
                             string err = cmd.Result;
                             if (!string.IsNullOrEmpty(err))
-                                return err;  // 返回 PML 实际错误，如 "(47,15) CP: Syntax error"
+                                return err.StartsWith("Error:") ? err : "Error: " + err;
                             return "Error: PML execution failed (RunInPdms returned false)";
                         }
                         catch (Exception ex)

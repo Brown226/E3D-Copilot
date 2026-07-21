@@ -569,9 +569,10 @@ function registerStoreMappings(bridgeInstance: Bridge): void {
 
   bridgeInstance.on((msg) => {
     const s = store.getState();
-    // 从 payload 提取 tabId（后端事件可能携带）
+    // 事件路由优先级：后端携带的 tabId > streamingTabId（锁定） > undefined（fallback 到 activeTabId）
+    // 这确保即使用户切换 Tab，流式事件仍写入正确的 Tab
     const payload = msg.payload as Record<string, unknown> | undefined;
-    const tabId = (payload?.tabId as string) || undefined;
+    const tabId = (payload?.tabId as string) || s.streamingTabId || undefined;
 
     switch (msg.type) {
       case 'host:ready':

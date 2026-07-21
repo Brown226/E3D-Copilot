@@ -42,6 +42,14 @@
     </Reference>
   </ItemGroup>
 
+  <!-- Teigha.NET (DWG/DXF 离线解析) -->
+  <ItemGroup>
+    <Reference Include="TD_Mgd_4.00_10">
+      <HintPath>..\..\lib\Teigha\TD_Mgd_4.00_10.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
   <!-- E3D API References -->
   <ItemGroup>
     <Reference Include="Aveva.Core">

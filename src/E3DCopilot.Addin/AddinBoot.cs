@@ -29,6 +29,11 @@ namespace E3DCopilot.Addin
         {
             try
             {
+                // 0. E3D 版本兼容性检测（不兼容时抛出异常阻止启动）
+                E3DVersionDetector.ValidateCompatibility();
+                var versionInfo = E3DVersionDetector.DetectVersion();
+                string versionStr = versionInfo?.FullVersion ?? "未知";
+
                 // 1. 创建 E3D 真实环境
                 var env = new RealE3DEnvironment();
                 var dispatcher = new E3DToolDispatcher(env);
@@ -54,7 +59,7 @@ namespace E3DCopilot.Addin
 
                 string uiMode = _usingWebView ? "WebView2 + React" : "WinForms (降级)";
                 var cmd = Aveva.Core.Utilities.CommandLine.Command.CreateCommand(
-                    "$p E小智 Copilot v1.0 已启动 (" + uiMode + ")");
+                    $"$p E小智 Copilot v1.0 已启动 ({uiMode}, E3D {versionStr})");
                 cmd.RunInPdms();
             }
             catch (Exception ex)

@@ -32,22 +32,23 @@ namespace E3DCopilot.Core.Tools.Handlers
 - status: 检查 AutoCAD 是否运行、是否已连接
 - connect: 连接到 AutoCAD 实例
 - list_objects: 列出当前图纸中的对象（可按图层过滤）
-- get_selection: 获取用户在 AutoCAD 中框选的对象（预览）
-- import_selection: 获取选中对象并生成 PML 导入 E3D
+- import_all: 获取图纸全部对象（按图层过滤）并生成 PML 导入 E3D（非阻塞，推荐）
+- get_selection: 获取用户在 AutoCAD 中框选的对象（预览，需用户交互）
+- import_selection: 获取选中对象并生成 PML 导入 E3D（需用户交互）
 
 典型用法：
 1. 先用 status 确认 AutoCAD 在运行
 2. 用 connect 建立连接
-3. 让用户在 AutoCAD 中选中图形
-4. 用 get_selection 预览，或 import_selection 直接导入";
+3. 用 list_objects 查看图纸图层分布
+4. 用 import_all + layer_filter 按图层导入（推荐，无需用户框选）";
 
         public string ParameterSchema => @"{
   ""type"": ""object"",
   ""properties"": {
     ""action"": {
       ""type"": ""string"",
-      ""enum"": [""status"", ""connect"", ""list_objects"", ""get_selection"", ""import_selection""],
-      ""description"": ""操作类型""
+      ""enum"": [""status"", ""connect"", ""list_objects"", ""import_all"", ""get_selection"", ""import_selection""],
+      ""description"": ""操作类型。import_all 为推荐方式（非阻塞，按图层过滤全量导入）""
     },
     ""layer_filter"": {
       ""type"": ""array"",
@@ -62,13 +63,21 @@ namespace E3DCopilot.Core.Tools.Handlers
       ""type"": ""number"",
       ""description"": ""默认墙厚(mm)，默认 200""
     },
+    ""owner"": {
+      ""type"": ""string"",
+      ""description"": ""目标父元素路径（如 /Copy-of-CIVIL）。提供时直接在该元素下创建子元素，跳过 NEW SITE/ZONE""
+    },
+    ""auto_execute"": {
+      ""type"": ""boolean"",
+      ""description"": ""是否自动执行生成的 PML 脚本（默认 true）。设为 false 则只返回脚本不执行""
+    },
     ""specifications"": {
       ""type"": ""object"",
       ""description"": ""各元素类型→规格名的覆盖映射，键为 Wall/Column/Beam，值为规格名（如 /MyWall-SPEC）。默认使用 /Concrete_*-SPEC""
     },
     ""database"": {
       ""type"": ""string"",
-      ""description"": ""目标 DESIGN 数据库名（可选）。提供时脚本先 NEW DB 进入该库，避免当前非设计库根导致 NEW SITE 失败""
+      ""description"": ""目标 DESIGN 数据库名（可选）。提供时脚本先 NEW DB 进入该库""
     }
   },
   ""required"": [""action""]
@@ -76,11 +85,13 @@ namespace E3DCopilot.Core.Tools.Handlers
 
         private readonly AutoCadComService _autoCadService;
         private readonly PmlScriptGenerator _pmlGenerator;
+        private readonly IToolDispatcher _dispatcher;
 
-        public AutoCadHandler()
+        public AutoCadHandler(IToolDispatcher dispatcher = null)
         {
             _autoCadService = new AutoCadComService();
             _pmlGenerator = new PmlScriptGenerator();
+            _dispatcher = dispatcher;
         }
 
         public async Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default)
@@ -102,8 +113,10 @@ namespace E3DCopilot.Core.Tools.Handlers
                         return HandleGetSelection(json);
                     case "import_selection":
                         return HandleImportSelection(json);
+                    case "import_all":
+                        return HandleImportAll(json);
                     default:
-                        return ToolResult.Fail($"未知操作: {action}，支持: status, connect, list_objects, get_selection, import_selection");
+                        return ToolResult.Fail($"未知操作: {action}，支持: status, connect, list_objects, get_selection, import_selection, import_all");
                 }
             }
             catch (JsonException ex)
@@ -142,7 +155,10 @@ namespace E3DCopilot.Core.Tools.Handlers
             {
                 sb.AppendLine("✅ AutoCAD 已连接");
                 sb.AppendLine($"  当前图纸: {_autoCadService.ActiveDocumentName}");
-                sb.AppendLine("可以使用 get_selection 或 import_selection 操作");
+                var fullPath = _autoCadService.ActiveDocumentPath;
+                if (!string.IsNullOrEmpty(fullPath))
+                    sb.AppendLine($"  文件路径: {fullPath}");
+                sb.AppendLine("推荐使用 import_all + layer_filter 按图层导入");
             }
             else
             {
@@ -155,6 +171,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                 isRunning = true,
                 isConnected,
                 drawingName = isConnected ? _autoCadService.ActiveDocumentName : null,
+                drawingPath = isConnected ? _autoCadService.ActiveDocumentPath : null,
                 status = isConnected ? "connected" : "disconnected"
             });
         }
@@ -168,8 +185,8 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (_autoCadService.Status == AutoCadConnectionStatus.Connected)
             {
                 return ToolResult.Ok(
-                    $"✅ 已经连接到 AutoCAD\n当前图纸: {_autoCadService.ActiveDocumentName}",
-                    new { alreadyConnected = true, drawingName = _autoCadService.ActiveDocumentName }
+                    $"✅ 已经连接到 AutoCAD\n当前图纸: {_autoCadService.ActiveDocumentName}\n文件路径: {_autoCadService.ActiveDocumentPath}",
+                    new { alreadyConnected = true, drawingName = _autoCadService.ActiveDocumentName, drawingPath = _autoCadService.ActiveDocumentPath }
                 );
             }
 
@@ -188,15 +205,19 @@ namespace E3DCopilot.Core.Tools.Handlers
                 var sb = new StringBuilder();
                 sb.AppendLine("✅ 已成功连接到 AutoCAD");
                 sb.AppendLine($"  当前图纸: {_autoCadService.ActiveDocumentName}");
+                var fullPath = _autoCadService.ActiveDocumentPath;
+                if (!string.IsNullOrEmpty(fullPath))
+                    sb.AppendLine($"  文件路径: {fullPath}");
                 sb.AppendLine();
-                sb.AppendLine("现在可以：");
-                sb.AppendLine("  - 在 AutoCAD 中选中图形，然后用 import_selection 导入");
-                sb.AppendLine("  - 用 list_objects 查看图纸中的所有对象");
+                sb.AppendLine("推荐操作：");
+                sb.AppendLine("  - 用 list_objects 查看图纸图层分布");
+                sb.AppendLine("  - 用 import_all + layer_filter 按图层导入（非阻塞，推荐）");
 
                 return ToolResult.Ok(sb.ToString(), new
                 {
                     connected = true,
-                    drawingName = _autoCadService.ActiveDocumentName
+                    drawingName = _autoCadService.ActiveDocumentName,
+                    drawingPath = fullPath
                 });
             }
             else
@@ -234,7 +255,7 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
 
             sb.AppendLine();
-            sb.AppendLine("提示: 使用 get_selection 获取用户选中的对象，或 import_selection 直接导入");
+            sb.AppendLine("提示: 使用 import_all + layer_filter 按图层导入（推荐，非阻塞）");
 
             return ToolResult.Ok(sb.ToString(), new
             {
@@ -315,7 +336,116 @@ namespace E3DCopilot.Core.Tools.Handlers
         }
 
         /// <summary>
+        /// 获取图纸全部对象（按图层过滤）并导入到 E3D（无需用户框选，非阻塞）
+        /// 支持 owner 直接落位 + auto_execute 自动执行 PML
+        /// </summary>
+        private ToolResult HandleImportAll(JObject json)
+        {
+            EnsureConnected();
+
+            var layerFilter = json["layer_filter"]?.ToObject<List<string>>();
+            double wallHeight = json["wall_height"]?.Value<double>() ?? 3000;
+            double wallThickness = json["wall_thickness"]?.Value<double>() ?? 200;
+            string owner = json["owner"]?.ToString();
+            bool autoExecute = json["auto_execute"]?.Value<bool>() ?? true;
+
+            // 使用 GetAllModelSpaceObjects（非阻塞，无需用户交互）
+            var extractResult = _autoCadService.GetAllModelSpaceObjects(layerFilter);
+
+            if (!extractResult.Success)
+                return ToolResult.Fail(extractResult.Error);
+
+            if (extractResult.Segments.Count == 0)
+                return ToolResult.Fail("图纸中未找到有效线段（已按图层过滤）");
+
+            var segments = extractResult.Segments;
+
+            // 合并共线线段
+            segments = TeighaCadParserService.MergeCollinearSegments(segments);
+
+            // 转换为建筑元素
+            var elements = ConvertSegmentsToElements(segments, wallHeight, wallThickness);
+
+            // 解析规格/库覆盖并生成 PML 脚本
+            var specifications = ParseSpecifications(json);
+            string database = json["database"]?.ToString();
+            string pmlScript = _pmlGenerator.GenerateBuildingScript(elements, specifications: specifications, databaseName: database, owner: owner);
+
+            // auto_execute: 直接通过 IToolDispatcher 执行 PML
+            if (autoExecute && _dispatcher != null)
+            {
+                try
+                {
+                    var execArgs = Newtonsoft.Json.JsonConvert.SerializeObject(new { script = pmlScript });
+                    var execResult = _dispatcher.ExecuteAsync("execute_pml", execArgs).GetAwaiter().GetResult();
+
+                    var sbExec = new StringBuilder();
+                    sbExec.AppendLine($"✅ CAD→E3D 导入已执行完成");
+                    sbExec.AppendLine($"  图纸: {extractResult.DrawingName}");
+                    sbExec.AppendLine($"  图层过滤: {(layerFilter != null && layerFilter.Count > 0 ? string.Join(", ", layerFilter) : "无（全部图层）")}");
+                    sbExec.AppendLine($"  有效线段: {segments.Count} 条（合并后）");
+                    sbExec.AppendLine($"  已创建元素: {elements.Count} 个");
+                    sbExec.AppendLine($"  墙高: {wallHeight}mm, 墙厚: {wallThickness}mm");
+                    sbExec.AppendLine($"  落位: {(string.IsNullOrEmpty(owner) ? "新建 SITE/ZONE" : owner)}");
+                    sbExec.AppendLine();
+                    sbExec.AppendLine($"PML 执行结果: {execResult}");
+
+                    return ToolResult.Ok(sbExec.ToString(), new
+                    {
+                        drawingName = extractResult.DrawingName,
+                        entityCount = extractResult.TotalEntities,
+                        segmentCount = segments.Count,
+                        elementCount = elements.Count,
+                        wallHeight,
+                        wallThickness,
+                        layerFilter,
+                        owner,
+                        executed = true,
+                        pmlScript
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return ToolResult.Fail($"PML 执行失败: {ex.Message}\n\n完整 PML 脚本已生成（{elements.Count} 个元素），可用 execute_pml 手动执行。\n落位: {(string.IsNullOrEmpty(owner) ? "新建 SITE/ZONE" : owner)}");
+                }
+            }
+
+            // 不自动执行：返回完整脚本（不截断）
+            var sb = new StringBuilder();
+            sb.AppendLine($"✅ 从 AutoCAD 图纸全量导入准备完成");
+            sb.AppendLine($"  图纸: {extractResult.DrawingName}");
+            sb.AppendLine($"  总对象数: {extractResult.TotalEntities} 个");
+            sb.AppendLine($"  图层过滤: {(layerFilter != null && layerFilter.Count > 0 ? string.Join(", ", layerFilter) : "无（全部图层）")}");
+            sb.AppendLine($"  有效线段: {segments.Count} 条（合并后）");
+            sb.AppendLine($"  将创建元素: {elements.Count} 个");
+            sb.AppendLine($"  墙高: {wallHeight}mm, 墙厚: {wallThickness}mm");
+            sb.AppendLine($"  落位: {(string.IsNullOrEmpty(owner) ? "新建 SITE/ZONE" : owner)}");
+            sb.AppendLine();
+            sb.AppendLine("生成的 PML 脚本:");
+            sb.AppendLine("```pml");
+            sb.AppendLine(pmlScript);
+            sb.AppendLine("```");
+            sb.AppendLine();
+            sb.AppendLine("💡 使用 execute_pml 工具执行生成的 PML 脚本即可在 E3D 中创建元素");
+
+            return ToolResult.Ok(sb.ToString(), new
+            {
+                drawingName = extractResult.DrawingName,
+                entityCount = extractResult.TotalEntities,
+                segmentCount = segments.Count,
+                elementCount = elements.Count,
+                wallHeight,
+                wallThickness,
+                layerFilter,
+                owner,
+                executed = false,
+                pmlScript
+            });
+        }
+
+        /// <summary>
         /// 获取选中对象并导入到 E3D（生成 PML）
+        /// 注意：此操作需要用户在 AutoCAD 中框选对象（阻塞式交互）
         /// </summary>
         private ToolResult HandleImportSelection(JObject json)
         {
@@ -324,6 +454,8 @@ namespace E3DCopilot.Core.Tools.Handlers
             var layerFilter = json["layer_filter"]?.ToObject<List<string>>();
             double wallHeight = json["wall_height"]?.Value<double>() ?? 3000;
             double wallThickness = json["wall_thickness"]?.Value<double>() ?? 200;
+            string owner = json["owner"]?.ToString();
+            bool autoExecute = json["auto_execute"]?.Value<bool>() ?? true;
 
             // 获取选中对象
             var extractResult = _autoCadService.GetSelectedObjects();
@@ -353,8 +485,43 @@ namespace E3DCopilot.Core.Tools.Handlers
             // 解析规格/库覆盖并生成 PML 脚本
             var specifications = ParseSpecifications(json);
             string database = json["database"]?.ToString();
-            string pmlScript = _pmlGenerator.GenerateBuildingScript(elements, specifications: specifications, databaseName: database);
+            string pmlScript = _pmlGenerator.GenerateBuildingScript(elements, specifications: specifications, databaseName: database, owner: owner);
 
+            // auto_execute: 直接通过 IToolDispatcher 执行 PML
+            if (autoExecute && _dispatcher != null)
+            {
+                try
+                {
+                    var execArgs = Newtonsoft.Json.JsonConvert.SerializeObject(new { script = pmlScript });
+                    var execResult = _dispatcher.ExecuteAsync("execute_pml", execArgs).GetAwaiter().GetResult();
+
+                    var sbExec = new StringBuilder();
+                    sbExec.AppendLine($"✅ CAD→E3D 导入已执行完成");
+                    sbExec.AppendLine($"  图纸: {extractResult.DrawingName}");
+                    sbExec.AppendLine($"  有效线段: {segments.Count} 条");
+                    sbExec.AppendLine($"  已创建元素: {elements.Count} 个");
+                    sbExec.AppendLine($"  墙高: {wallHeight}mm, 墙厚: {wallThickness}mm");
+                    sbExec.AppendLine($"  落位: {(string.IsNullOrEmpty(owner) ? "新建 SITE/ZONE" : owner)}");
+                    sbExec.AppendLine();
+                    sbExec.AppendLine($"PML 执行结果: {execResult}");
+
+                    return ToolResult.Ok(sbExec.ToString(), new
+                    {
+                        drawingName = extractResult.DrawingName,
+                        segmentCount = segments.Count,
+                        elementCount = elements.Count,
+                        owner,
+                        executed = true,
+                        pmlScript
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return ToolResult.Fail($"PML 执行失败: {ex.Message}\n\n完整 PML 脚本已生成（{elements.Count} 个元素），可用 execute_pml 手动执行。");
+                }
+            }
+
+            // 不自动执行：返回完整脚本（不截断）
             var sb = new StringBuilder();
             sb.AppendLine($"✅ 从 AutoCAD 导入准备完成");
             sb.AppendLine($"  图纸: {extractResult.DrawingName}");
@@ -362,10 +529,11 @@ namespace E3DCopilot.Core.Tools.Handlers
             sb.AppendLine($"  有效线段: {segments.Count} 条");
             sb.AppendLine($"  将创建元素: {elements.Count} 个");
             sb.AppendLine($"  墙高: {wallHeight}mm, 墙厚: {wallThickness}mm");
+            sb.AppendLine($"  落位: {(string.IsNullOrEmpty(owner) ? "新建 SITE/ZONE" : owner)}");
             sb.AppendLine();
             sb.AppendLine("生成的 PML 脚本:");
             sb.AppendLine("```pml");
-            sb.AppendLine(pmlScript.Length > 1500 ? pmlScript.Substring(0, 1500) + "\n..." : pmlScript);
+            sb.AppendLine(pmlScript);
             sb.AppendLine("```");
             sb.AppendLine();
             sb.AppendLine("💡 使用 execute_pml 工具执行生成的 PML 脚本即可在 E3D 中创建元素");
@@ -378,13 +546,9 @@ namespace E3DCopilot.Core.Tools.Handlers
                 elementCount = elements.Count,
                 wallHeight,
                 wallThickness,
-                pmlScript,
-                elements = elements.Select(e => new
-                {
-                    type = e.Type.ToString(),
-                    pointCount = e.Points.Count,
-                    properties = e.Properties
-                }).ToList()
+                owner,
+                executed = false,
+                pmlScript
             });
         }
 

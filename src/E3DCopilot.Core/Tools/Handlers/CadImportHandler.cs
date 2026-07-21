@@ -82,11 +82,13 @@ namespace E3DCopilot.Core.Tools.Handlers
 
         private readonly TeighaCadParserService _parser;
         private readonly PmlScriptGenerator _pmlGenerator;
+        private readonly IToolDispatcher _dispatcher;
 
-        public CadImportHandler()
+        public CadImportHandler(IToolDispatcher dispatcher = null)
         {
             _parser = new TeighaCadParserService();
             _pmlGenerator = new PmlScriptGenerator();
+            _dispatcher = dispatcher;
         }
 
         public async Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default)
@@ -175,7 +177,7 @@ namespace E3DCopilot.Core.Tools.Handlers
         }
 
         /// <summary>
-        /// 导入（生成 PML 脚本，可选自动执行）
+        /// 导入（生成 PML 脚本，支持自动执行）
         /// </summary>
         private ToolResult HandleImport(JObject json)
         {
@@ -188,37 +190,64 @@ namespace E3DCopilot.Core.Tools.Handlers
                 return ToolResult.Fail("未找到有效的线段数据");
 
             // 获取参数
-            string owner = json["owner"]?.ToString() ?? "/IMPORT_ZONE";
+            string owner = json["owner"]?.ToString();
             double wallHeight = json["wall_height"]?.Value<double>() ?? 3000;
             double wallThickness = json["wall_thickness"]?.Value<double>() ?? 200;
-            bool autoExecute = json["auto_execute"]?.Value<bool>() ?? false;
+            bool autoExecute = json["auto_execute"]?.Value<bool>() ?? true;
             var specifications = ParseSpecifications(json);
             string database = json["database"]?.ToString();
 
             var elements = ConvertSegmentsToElements(mergedSegments, wallHeight, wallThickness);
-            string pmlScript = _pmlGenerator.GenerateBuildingScript(elements, specifications: specifications, databaseName: database);
+            string pmlScript = _pmlGenerator.GenerateBuildingScript(elements, specifications: specifications, databaseName: database, owner: owner);
 
+            // auto_execute: 直接通过 IToolDispatcher 执行 PML
+            if (autoExecute && _dispatcher != null)
+            {
+                try
+                {
+                    var execArgs = JsonConvert.SerializeObject(new { script = pmlScript });
+                    var execResult = _dispatcher.ExecuteAsync("execute_pml", execArgs).GetAwaiter().GetResult();
+
+                    var sbExec = new StringBuilder();
+                    sbExec.AppendLine($"✅ CAD→E3D 导入已执行完成");
+                    sbExec.AppendLine($"  线段数: {mergedSegments.Count}");
+                    sbExec.AppendLine($"  已创建元素: {elements.Count} 个");
+                    sbExec.AppendLine($"  墙高: {wallHeight}mm, 墙厚: {wallThickness}mm");
+                    sbExec.AppendLine($"  落位: {(string.IsNullOrEmpty(owner) ? "新建 SITE/ZONE" : owner)}");
+                    sbExec.AppendLine();
+                    sbExec.AppendLine($"PML 执行结果: {execResult}");
+
+                    return ToolResult.Ok(sbExec.ToString(), new
+                    {
+                        segmentCount = mergedSegments.Count,
+                        elementCount = elements.Count,
+                        wallHeight,
+                        wallThickness,
+                        owner,
+                        executed = true,
+                        pmlScript
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return ToolResult.Fail($"PML 执行失败: {ex.Message}\n\n完整 PML 脚本已生成（{elements.Count} 个元素），可用 execute_pml 手动执行。");
+                }
+            }
+
+            // 不自动执行：返回完整脚本（不截断）
             var sb = new StringBuilder();
             sb.AppendLine($"✅ 导入准备完成");
             sb.AppendLine($"  - 线段数: {mergedSegments.Count}");
             sb.AppendLine($"  - 元素数: {elements.Count}");
             sb.AppendLine($"  - 墙高: {wallHeight}mm, 墙厚: {wallThickness}mm");
+            sb.AppendLine($"  - 落位: {(string.IsNullOrEmpty(owner) ? "新建 SITE/ZONE" : owner)}");
             sb.AppendLine();
             sb.AppendLine("生成的 PML 脚本:");
             sb.AppendLine("```pml");
-            sb.AppendLine(pmlScript.Length > 1500 ? pmlScript.Substring(0, 1500) + "\n..." : pmlScript);
+            sb.AppendLine(pmlScript);
             sb.AppendLine("```");
-
-            if (autoExecute)
-            {
-                sb.AppendLine();
-                sb.AppendLine("⏳ auto_execute=true，PML 脚本已返回，请使用 execute_pml 工具执行");
-            }
-            else
-            {
-                sb.AppendLine();
-                sb.AppendLine("提示: 使用 execute_pml 工具执行生成的 PML 脚本，或设置 auto_execute=true 自动执行");
-            }
+            sb.AppendLine();
+            sb.AppendLine("💡 使用 execute_pml 工具执行生成的 PML 脚本即可在 E3D 中创建元素");
 
             return ToolResult.Ok(sb.ToString(), new
             {
@@ -226,14 +255,9 @@ namespace E3DCopilot.Core.Tools.Handlers
                 elementCount = elements.Count,
                 wallHeight,
                 wallThickness,
-                autoExecute,
-                pmlScript,
-                elements = elements.Select(e => new
-                {
-                    type = e.Type.ToString(),
-                    pointCount = e.Points.Count,
-                    properties = e.Properties
-                }).ToList()
+                owner,
+                executed = false,
+                pmlScript
             });
         }
 

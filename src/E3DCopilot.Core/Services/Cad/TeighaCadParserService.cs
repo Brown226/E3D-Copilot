@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using E3DCopilot.Core.Models.Building;
 using E3DCopilot.Core.Models.Geometry;
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
 
 namespace E3DCopilot.Core.Services.Cad
 {
@@ -59,12 +61,12 @@ namespace E3DCopilot.Core.Services.Cad
     }
 
     /// <summary>
-    /// CAD 解析服务（集成 Teigha.NET）
-    /// 从 SmartDuct 项目的 CadParser 移植并适配
+    /// CAD 解析服务（集成 Teigha.NET 4.00）
+    /// 支持离线解析 DWG/DXF 文件，无需打开 AutoCAD
     /// </summary>
     public class TeighaCadParserService
     {
-        private static bool _isInitialized;
+        private static Teigha.Runtime.Services _teighaServices;
         private static readonly object _initLock = new object();
         private CadParseConfig _config;
 
@@ -74,62 +76,37 @@ namespace E3DCopilot.Core.Services.Cad
         }
 
         /// <summary>
-        /// 初始化 Teigha.NET（延迟初始化）
+        /// 初始化 Teigha.NET 运行时（进程级单例）
         /// </summary>
-        private void InitializeTeigha()
+        private static void EnsureTeighaInitialized()
         {
             lock (_initLock)
             {
-                try
+                if (_teighaServices != null) return;
+
+                // 将 Teigha DLL 目录加入 PATH（原生 DLL 加载需要）
+                string runtimeDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                string teighaDir = Path.Combine(runtimeDirectory, "Teigha");
+                if (!Directory.Exists(teighaDir))
+                    teighaDir = Path.Combine(runtimeDirectory, "lib", "Teigha");
+
+                if (Directory.Exists(teighaDir))
                 {
-                    if (_isInitialized) return;
-
-                    // 获取运行时目录
-                    string runtimeDirectory = AppDomain.CurrentDomain.BaseDirectory;
-
-                    // 设置环境变量
                     string path = Environment.GetEnvironmentVariable("PATH") ?? "";
-                    if (!path.Contains(runtimeDirectory))
-                    {
-                        Environment.SetEnvironmentVariable("PATH", runtimeDirectory + ";" + path);
-                    }
-
-                    // 检查 Teigha DLL 是否存在
-                    string[] requiredDlls = new[]
-                    {
-                        "TD_Mgd_4.00_10.dll",
-                        "TD_Root_4.00_10.dll",
-                        "TD_Db_4.00_10.dll"
-                    };
-
-                    foreach (var dll in requiredDlls)
-                    {
-                        string dllPath = Path.Combine(runtimeDirectory, dll);
-                        if (!File.Exists(dllPath))
-                        {
-                            // 尝试在 lib/Teigha 目录查找
-                            string libPath = Path.Combine(runtimeDirectory, "lib", "Teigha", dll);
-                            if (!File.Exists(libPath))
-                            {
-                                throw new FileNotFoundException($"找不到 Teigha DLL: {dll}，请确保 DLL 在应用程序目录或 lib/Teigha 目录下", dllPath);
-                            }
-                        }
-                    }
-
-                    _isInitialized = true;
+                    if (!path.Contains(teighaDir))
+                        Environment.SetEnvironmentVariable("PATH", teighaDir + ";" + path);
                 }
-                catch (Exception ex)
-                {
-                    throw new Exception($"初始化 Teigha.NET 失败: {ex.Message}", ex);
-                }
+
+                // 初始化 Teigha 运行时服务（必须保持存活直到进程结束）
+                _teighaServices = new Teigha.Runtime.Services();
             }
         }
 
         /// <summary>
-        /// 解析 DWG/DXF 文件
+        /// 解析 DWG/DXF 文件（离线，无需 AutoCAD）
         /// </summary>
-        /// <param name="filePath">文件路径</param>
-        /// <returns>解析结果</returns>
+        /// <param name="filePath">DWG/DXF 文件完整路径</param>
+        /// <returns>解析结果，包含线段、图层等信息</returns>
         public CadParseResult ParseFile(string filePath)
         {
             var stopwatch = Stopwatch.StartNew();
@@ -137,45 +114,38 @@ namespace E3DCopilot.Core.Services.Cad
 
             try
             {
-                // 检查文件是否存在
                 if (!File.Exists(filePath))
                 {
                     result.Error = $"文件不存在: {filePath}";
                     return result;
                 }
 
-                // 初始化 Teigha
-                InitializeTeigha();
+                EnsureTeighaInitialized();
 
-                // 注意：这里需要实际引用 Teigha.NET DLL 才能工作
-                // 由于当前环境可能没有 Teigha DLL，我们提供一个模拟实现
-                // 实际使用时需要取消注释并引用 Teigha.NET
-
-                /*
-                // 使用 Teigha.NET 打开 DWG 文件
-                using (var database = new Teigha.DatabaseServices.Database(false, false))
+                // 使用 Teigha 打开 DWG/DXF 文件
+                using (var database = new Database(false, false))
                 {
-                    database.ReadDwgFile(filePath, Teigha.DatabaseServices.FileOpenMode.OpenForReadAndAllShare, false, "");
+                    database.ReadDwgFile(filePath, FileShare.Read, true, "");
 
-                    using (var tr = database.TransactionManager.StartTransaction())
+                    // 获取 ModelSpace
+                    using (var blockTable = (BlockTable)database.BlockTableId.Open(OpenMode.ForRead))
                     {
-                        var blockTable = (Teigha.DatabaseServices.BlockTable)tr.GetObject(database.BlockTableId, Teigha.DatabaseServices.OpenMode.ForRead);
-                        var modelSpace = (Teigha.DatabaseServices.BlockTableRecord)tr.GetObject(blockTable[Teigha.DatabaseServices.BlockTableRecord.ModelSpace], Teigha.DatabaseServices.OpenMode.ForRead);
-
-                        foreach (Teigha.DatabaseServices.ObjectId entityId in modelSpace)
+                        var modelSpaceId = blockTable[BlockTableRecord.ModelSpace];
+                        using (var modelSpace = (BlockTableRecord)modelSpaceId.Open(OpenMode.ForRead))
                         {
-                            var entity = (Teigha.DatabaseServices.Entity)tr.GetObject(entityId, Teigha.DatabaseServices.OpenMode.ForRead);
-                            ProcessEntity(entity, result);
+                            foreach (ObjectId entityId in modelSpace)
+                            {
+                                using (var entity = (Entity)entityId.Open(OpenMode.ForRead))
+                                {
+                                    ProcessEntity(entity, result);
+                                }
+                            }
                         }
-
-                        tr.Commit();
                     }
                 }
-                */
 
-                // 模拟解析结果（实际使用时删除此部分）
                 result.Success = true;
-                result.TotalEntities = 0;
+                result.TotalEntities = result.Entities.Count;
 
                 stopwatch.Stop();
                 result.ParseDuration = stopwatch.Elapsed;
@@ -191,12 +161,173 @@ namespace E3DCopilot.Core.Services.Cad
         }
 
         /// <summary>
-        /// 处理单个 CAD 实体
+        /// 处理单个 CAD 实体，提取线段数据
         /// </summary>
-        private void ProcessEntity(dynamic entity, CadParseResult result)
+        private void ProcessEntity(Entity entity, CadParseResult result)
         {
-            // 实际实现需要根据 Teigha.NET API 处理不同类型的实体
-            // Line, Polyline, Arc, Circle, BlockReference 等
+            string layer = entity.Layer ?? "0";
+
+            // 记录实体信息
+            result.Entities.Add(new CadEntityInfo
+            {
+                EntityType = entity.GetRXClass().Name,
+                Layer = layer
+            });
+
+            // 记录图层信息（去重）
+            if (!result.Layers.Any(l => l.Name == layer))
+            {
+                result.Layers.Add(new CadLayerInfo { Name = layer });
+            }
+
+            switch (entity)
+            {
+                case Line line:
+                    AddSegmentIfValid(
+                        new Point3D(line.StartPoint.X, line.StartPoint.Y, line.StartPoint.Z),
+                        new Point3D(line.EndPoint.X, line.EndPoint.Y, line.EndPoint.Z),
+                        layer, result);
+                    break;
+
+                case Polyline pl:
+                    ProcessLightweightPolyline(pl, layer, result);
+                    break;
+
+                case Polyline2d pl2d:
+                    ProcessPolyline2d(pl2d, layer, result);
+                    break;
+
+                case Arc arc:
+                    ProcessArc(arc, layer, result);
+                    break;
+
+                case Circle circle:
+                    ProcessCircle(circle, layer, result);
+                    break;
+
+                case BlockReference blockRef:
+                    ProcessBlockReference(blockRef, layer, result);
+                    break;
+            }
+        }
+
+        /// <summary>处理轻量多段线（LWPOLYLINE）</summary>
+        private void ProcessLightweightPolyline(Polyline pl, string layer, CadParseResult result)
+        {
+            int n = pl.NumberOfVertices;
+            for (int i = 0; i < n - 1; i++)
+            {
+                var p1 = pl.GetPoint3dAt(i);
+                var p2 = pl.GetPoint3dAt(i + 1);
+                AddSegmentIfValid(
+                    new Point3D(p1.X, p1.Y, p1.Z),
+                    new Point3D(p2.X, p2.Y, p2.Z),
+                    layer, result);
+            }
+            // 闭合多段线：连接最后一个点到第一个点
+            if (pl.Closed && n > 2)
+            {
+                var pLast = pl.GetPoint3dAt(n - 1);
+                var pFirst = pl.GetPoint3dAt(0);
+                AddSegmentIfValid(
+                    new Point3D(pLast.X, pLast.Y, pLast.Z),
+                    new Point3D(pFirst.X, pFirst.Y, pFirst.Z),
+                    layer, result);
+            }
+        }
+
+        /// <summary>处理 2D 多段线（POLYLINE）</summary>
+        private void ProcessPolyline2d(Polyline2d pl2d, string layer, CadParseResult result)
+        {
+            var points = new List<Point3D>();
+            foreach (ObjectId vId in pl2d)
+            {
+                using (var vertex = (Vertex2d)vId.Open(OpenMode.ForRead))
+                {
+                    var pos = vertex.Position;
+                    points.Add(new Point3D(pos.X, pos.Y, pos.Z));
+                }
+            }
+
+            for (int i = 0; i < points.Count - 1; i++)
+                AddSegmentIfValid(points[i], points[i + 1], layer, result);
+
+            if (pl2d.Closed && points.Count > 2)
+                AddSegmentIfValid(points[points.Count - 1], points[0], layer, result);
+        }
+
+        /// <summary>处理圆弧（离散化为线段）</summary>
+        private void ProcessArc(Arc arc, string layer, CadParseResult result)
+        {
+            int segments = 16;
+            double startAngle = arc.StartAngle;
+            double endAngle = arc.EndAngle;
+            if (endAngle < startAngle) endAngle += 2 * Math.PI;
+            double angleStep = (endAngle - startAngle) / segments;
+
+            Point3D prev = null;
+            for (int i = 0; i <= segments; i++)
+            {
+                double angle = startAngle + i * angleStep;
+                double x = arc.Center.X + arc.Radius * Math.Cos(angle);
+                double y = arc.Center.Y + arc.Radius * Math.Sin(angle);
+                double z = arc.Center.Z;
+                var pt = new Point3D(x, y, z);
+                if (prev != null)
+                    AddSegmentIfValid(prev, pt, layer, result);
+                prev = pt;
+            }
+        }
+
+        /// <summary>处理圆（离散化为线段）</summary>
+        private void ProcessCircle(Circle circle, string layer, CadParseResult result)
+        {
+            int segments = 24;
+            Point3D prev = null;
+            for (int i = 0; i <= segments; i++)
+            {
+                double angle = 2 * Math.PI * i / segments;
+                double x = circle.Center.X + circle.Radius * Math.Cos(angle);
+                double y = circle.Center.Y + circle.Radius * Math.Sin(angle);
+                double z = circle.Center.Z;
+                var pt = new Point3D(x, y, z);
+                if (prev != null)
+                    AddSegmentIfValid(prev, pt, layer, result);
+                prev = pt;
+            }
+        }
+
+        /// <summary>处理块参照（展开内部实体）</summary>
+        private void ProcessBlockReference(BlockReference blockRef, string layer, CadParseResult result)
+        {
+            try
+            {
+                // 展开块参照获取内部实体
+                var exploded = new Teigha.DatabaseServices.DBObjectCollection();
+                blockRef.Explode(exploded);
+
+                foreach (DBObject obj in exploded)
+                {
+                    if (obj is Entity innerEntity)
+                    {
+                        ProcessEntity(innerEntity, result);
+                    }
+                    obj.Dispose();
+                }
+            }
+            catch
+            {
+                // 块展开失败时跳过
+            }
+        }
+
+        /// <summary>如果线段长度满足最小要求，添加到结果中</summary>
+        private void AddSegmentIfValid(Point3D start, Point3D end, string layer, CadParseResult result)
+        {
+            if (start.DistanceTo(end) >= _config.MinSegmentLength)
+            {
+                result.WallSegments.Add(new LineSegment(start, end, layer));
+            }
         }
 
         /// <summary>

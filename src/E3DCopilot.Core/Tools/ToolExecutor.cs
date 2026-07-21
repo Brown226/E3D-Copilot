@@ -377,8 +377,8 @@ namespace E3DCopilot.Core.Tools
             executor.Register(new StructureDrawingHandler(dispatcher));
 
             // CAD 工具（文件/坐标导入 + AutoCAD 运行时交互）
-            executor.Register(new CadImportHandler());   // cad_import
-            executor.Register(new AutoCadHandler());     // autocad
+            executor.Register(new CadImportHandler(dispatcher));   // cad_import
+            executor.Register(new AutoCadHandler(dispatcher));     // autocad
 
             // 接入可选路由器
             executor.Router = router;

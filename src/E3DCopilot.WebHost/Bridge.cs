@@ -209,6 +209,11 @@ namespace E3DCopilot.WebHost
                         _webView.CoreWebView2.OpenDevToolsWindow();
                         break;
 
+                    // ── 原生对话框 ──
+                    case "dialog:open_file":
+                        HandleOpenFileDialog(payload, requestId);
+                        break;
+
                     default:
                         // 未知消息类型 — 静默忽略
                         break;
@@ -1043,6 +1048,55 @@ namespace E3DCopilot.WebHost
             catch (Exception ex)
             {
                 SendToFrontend(MessageTypes.Error, new { message = $"删除会话失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        // ════════════════════════════════════════
+        //  原生对话框
+        // ════════════════════════════════════════
+
+        /// <summary>
+        /// 处理前端请求打开文件对话框（用于 DWG/DXF 文件选择）
+        /// 必须在 STA 线程上运行（WinForms 要求）
+        /// </summary>
+        private void HandleOpenFileDialog(JsonElement? payload, string requestId)
+        {
+            string title = "选择文件";
+            string filter = "所有文件|*.*";
+
+            if (payload.HasValue)
+            {
+                if (payload.Value.TryGetProperty("title", out var t))
+                    title = t.GetString() ?? title;
+                if (payload.Value.TryGetProperty("filter", out var f))
+                    filter = f.GetString() ?? filter;
+            }
+
+            // WebView2 的 WebMessageReceived 已在 UI 线程上，可直接弹对话框
+            try
+            {
+                using (var dlg = new System.Windows.Forms.OpenFileDialog())
+                {
+                    dlg.Title = title;
+                    dlg.Filter = filter;
+                    dlg.CheckFileExists = true;
+                    dlg.Multiselect = false;
+
+                    var result = dlg.ShowDialog();
+                    if (result == System.Windows.Forms.DialogResult.OK && !string.IsNullOrEmpty(dlg.FileName))
+                    {
+                        SendToFrontend("dialog:open_file", new { path = dlg.FileName }, requestId);
+                    }
+                    else
+                    {
+                        // 用户取消 — 返回空 path
+                        SendToFrontend("dialog:open_file", new { path = (string)null }, requestId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"打开文件对话框失败: {ex.Message}" }, requestId);
             }
         }
 

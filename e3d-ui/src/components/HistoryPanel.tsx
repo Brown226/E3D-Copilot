@@ -1,11 +1,13 @@
 /**
- * HistoryPanel — 对话历史管理（同款设计）
+ * HistoryPanel — 对话历史管理（v2 重设计）
  *
- * 功能：
- * 1. 会话列表 — 按日期分组（今天/昨天/更早）
- * 2. 搜索过滤 — 按标题/内容搜索
- * 3. 会话操作 — 继续对话/删除/重命名
- * 4. 空状态 — 引导用户开始新对话
+ * 改进：
+ * 1. 卡片化会话项 + 左侧彩色竖条（按日期分组着色）
+ * 2. 当前活跃会话显示蓝色圆点 + "当前" 标签
+ * 3. 消息数/时间戳用 pill 徽章样式
+ * 4. 删除操作简化为单击确认
+ * 5. 搜索栏增加快捷键提示
+ * 6. 面板宽度收窄为 max-w-sm
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
@@ -16,7 +18,6 @@ import {
   Clock,
   X,
   Plus,
-  ArrowRight,
 } from 'lucide-react'
 import { useChatStore, type SessionMeta } from '@/store/useChatStore'
 
@@ -45,6 +46,15 @@ function formatTime(ts: number): string {
   return `${hh}:${mm}`
 }
 
+// 按日期分组着色
+const GROUP_COLORS: Record<string, string> = {
+  '今天': 'bg-blue-500',
+  '昨天': 'bg-cyan-500',
+}
+function groupColor(label: string): string {
+  return GROUP_COLORS[label] || 'bg-slate-400 dark:bg-slate-500'
+}
+
 // ═══════════════════════════════════════════
 // 主组件
 // ═══════════════════════════════════════════
@@ -55,7 +65,7 @@ export function HistoryPanel() {
   const toggleHistory = useChatStore((s) => s.toggleHistory)
   const loadSession = useChatStore((s) => s.loadSession)
   const deleteSession = useChatStore((s) => s.deleteSession)
-  const newSession = useChatStore((s) => s.newSession)
+  const sessionId = useChatStore((s) => s.sessionId)
 
   const [query, setQuery] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -68,7 +78,6 @@ export function HistoryPanel() {
         const result = await bridge.listSessions() as { sessions?: SessionMeta[] } | null
         if (result?.sessions) {
           const localSessions = useChatStore.getState().sessions
-          // 合并：以后端为主，补充 localStorage 中有但后端没有的
           const backendIds = new Set(result.sessions.map(s => s.id))
           const localOnly = localSessions.filter(s => !backendIds.has(s.id))
           const merged = [...result.sessions, ...localOnly]
@@ -76,7 +85,7 @@ export function HistoryPanel() {
         }
       }
     } catch {
-      // 后端不可用时降级到 localStorage（store 已默认加载）
+      // 后端不可用时降级到 localStorage
     }
   }, [])
 
@@ -115,9 +124,8 @@ export function HistoryPanel() {
     loadSession(session.id)
   }, [loadSession])
 
-  // 删除确认
+  // 删除
   const handleDelete = useCallback((sessionId: string) => {
-    // 通知后端删除会话
     import('@/services/bridgeService').then(({ default: bridge }) => {
       if (bridge.isAvailable()) {
         bridge.deleteSession(sessionId)
@@ -127,12 +135,11 @@ export function HistoryPanel() {
     setDeleteConfirm(null)
   }, [deleteSession])
 
-  // 新建对话
+  // 新建对话（纯前端，不发 new_session）
   const handleNewSession = useCallback(() => {
-    import('@/services/bridgeService').then(({ default: bridge }) => {
-      newSession(bridge.newSession.bind(bridge))
-    })
-  }, [newSession])
+    useChatStore.getState().createTab()
+    toggleHistory()
+  }, [toggleHistory])
 
   if (!showHistory) return null
 
@@ -144,14 +151,16 @@ export function HistoryPanel() {
         onClick={toggleHistory}
       />
 
-      {/* 面板 */}
-      <div className="absolute inset-y-0 left-0 w-full max-w-md bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-in slide-in-from-left duration-300">
+      {/* 面板 — 收窄为 max-w-sm */}
+      <div className="absolute inset-y-0 left-0 w-full max-w-sm bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-in slide-in-from-left duration-300">
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-slate-500" />
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">对话历史</h2>
-            <span className="text-xs text-slate-400">({sessions.length})</span>
+            <Clock className="w-4 h-4 text-blue-500" />
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">对话历史</h2>
+            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+              {sessions.length}
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -170,8 +179,8 @@ export function HistoryPanel() {
           </div>
         </div>
 
-        {/* 搜索栏 */}
-        <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
+        {/* 搜索栏 + 快捷键提示 */}
+        <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <input
@@ -179,87 +188,112 @@ export function HistoryPanel() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索对话..."
-              className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 transition-colors"
+              className="w-full pl-8 pr-12 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all"
             />
+            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600">
+              Ctrl+K
+            </kbd>
           </div>
         </div>
 
         {/* 会话列表 */}
         <div className="flex-1 overflow-y-auto">
           {groups.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full px-4">
-              <MessageSquare className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3" />
-              <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-4">
+            <div className="flex flex-col items-center justify-center h-full px-6">
+              <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                <MessageSquare className="w-7 h-7 text-slate-300 dark:text-slate-600" />
+              </div>
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
                 {query ? '没有找到匹配的对话' : '还没有对话历史'}
               </p>
-              <button
-                onClick={handleNewSession}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                开始新对话
-              </button>
+              <p className="text-xs text-slate-400 dark:text-slate-500 text-center mb-4">
+                {query ? '试试其他关键词' : '开始一段新对话，历史记录将自动保存'}
+              </p>
+              {!query && (
+                <button
+                  onClick={handleNewSession}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  开始新对话
+                </button>
+              )}
             </div>
           ) : (
-            <div className="py-2">
+            <div className="py-2 px-2 space-y-3">
               {groups.map((group) => (
                 <div key={group.label}>
                   {/* 日期标题 */}
-                  <div className="px-4 py-1.5">
-                    <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                  <div className="px-2 py-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       {group.label}
                     </span>
                   </div>
 
-                  {/* 会话项 */}
-                  {group.items.map((session) => {
-                    const isConfirming = deleteConfirm === session.id
-                    return (
-                      <div
-                        key={session.id}
-                        className="group mx-2 px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                        onClick={() => handleResume(session)}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                              {session.title}
-                            </p>
+                  {/* 会话卡片 */}
+                  <div className="space-y-1">
+                    {group.items.map((session) => {
+                      const isConfirming = deleteConfirm === session.id
+                      const isCurrent = session.id === sessionId
+                      return (
+                        <div
+                          key={session.id}
+                          className={`group relative flex items-stretch rounded-lg overflow-hidden transition-all cursor-pointer ${
+                            isCurrent
+                              ? 'bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-200 dark:ring-blue-800'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                          }`}
+                          onClick={() => handleResume(session)}
+                        >
+                          {/* 左侧彩色竖条 */}
+                          <div className={`w-1 shrink-0 ${groupColor(group.label)} ${isCurrent ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'} transition-opacity`} />
+
+                          {/* 内容区 */}
+                          <div className="flex-1 min-w-0 px-3 py-2.5">
+                            <div className="flex items-center gap-1.5">
+                              {isCurrent && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 animate-pulse" />
+                              )}
+                              <p className={`text-[13px] font-medium truncate ${
+                                isCurrent ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-slate-100'
+                              }`}>
+                                {session.title}
+                              </p>
+                              {isCurrent && (
+                                <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-semibold rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
+                                  当前
+                                </span>
+                              )}
+                            </div>
                             {session.preview && (
-                              <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                              <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5 leading-relaxed">
                                 {session.preview}
                               </p>
                             )}
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs text-slate-400 dark:text-slate-500">
+                            {/* Pill 徽章：时间 + 消息数 */}
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                                 {formatTime(session.lastActivityAt)}
                               </span>
-                              <span className="text-xs text-slate-300 dark:text-slate-600">
-                                {session.messageCount} 条消息
+                              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                                {session.messageCount} 条
                               </span>
                             </div>
                           </div>
 
-                          {/* 操作按钮 */}
-                          <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleResume(session) }}
-                              className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                              title="继续对话"
-                            >
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </button>
+                          {/* 删除按钮 */}
+                          <div className="flex items-center pr-2 shrink-0">
                             {isConfirming ? (
-                              <div className="flex items-center gap-0.5">
+                              <div className="flex items-center gap-1">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleDelete(session.id) }}
-                                  className="px-1.5 py-0.5 text-xs rounded bg-red-500 text-white hover:bg-red-600"
+                                  className="px-2 py-1 text-[10px] font-semibold rounded-md bg-red-500 text-white hover:bg-red-600 transition-colors"
                                 >
                                   删除
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null) }}
-                                  className="px-1.5 py-0.5 text-xs rounded bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300"
+                                  className="px-2 py-1 text-[10px] font-medium rounded-md bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
                                 >
                                   取消
                                 </button>
@@ -267,7 +301,7 @@ export function HistoryPanel() {
                             ) : (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setDeleteConfirm(session.id) }}
-                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                className="p-1.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 rounded-md opacity-0 group-hover:opacity-100 transition-all"
                                 title="删除"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -275,9 +309,9 @@ export function HistoryPanel() {
                             )}
                           </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
@@ -287,7 +321,7 @@ export function HistoryPanel() {
         {/* 底部统计 */}
         {sessions.length > 0 && (
           <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800">
-            <p className="text-xs text-slate-400 dark:text-slate-500 text-center">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
               共 {sessions.length} 个对话
               {query && filteredSessions.length !== sessions.length &&
                 ` · 显示 ${filteredSessions.length} 个`}

@@ -29,7 +29,9 @@ namespace E3DCopilot.Core.Services.Cad
         /// </summary>
         private static string GetSpecification(BuildingElementType type, Dictionary<BuildingElementType, string> overrides)
         {
-            if (overrides != null && overrides.TryGetValue(type, out string spec) && !string.IsNullOrEmpty(spec))
+            // 显式提供的覆盖优先（含空串 = 显式“不套等级”，会跳过 SPRE 行，先建几何）；
+            // 未提供时才回退到项目约定的默认规格。
+            if (overrides != null && overrides.TryGetValue(type, out string spec))
                 return spec;
             return DefaultSpecifications.TryGetValue(type, out spec) ? spec : null;
         }
@@ -38,12 +40,13 @@ namespace E3DCopilot.Core.Services.Cad
         /// 生成建筑元素的 PML 脚本
         /// </summary>
         /// <param name="elements">建筑元素列表</param>
-        /// <param name="siteName">SITE 名称</param>
-        /// <param name="zoneName">ZONE 名称</param>
+        /// <param name="siteName">SITE 名称（owner 为空时使用）</param>
+        /// <param name="zoneName">ZONE 名称（owner 为空时使用）</param>
         /// <param name="specifications">各元素类型→规格名的覆盖映射（可选）</param>
-        /// <param name="databaseName">目标 DESIGN 数据库名（可选）；提供时脚本先 NEW DB 进入该库，避免当前非设计库根导致 NEW SITE 失败</param>
+        /// <param name="databaseName">目标 DESIGN 数据库名（可选）；提供时脚本先 NEW DB 进入该库</param>
+        /// <param name="owner">目标父元素路径（如 /Copy-of-CIVIL）。提供时直接 CE 到该元素下创建子元素，跳过 NEW SITE/ZONE</param>
         /// <returns>PML 脚本字符串</returns>
-        public string GenerateBuildingScript(List<BuildingElement> elements, string siteName = "IMPORT_SITE", string zoneName = "IMPORT_ZONE", Dictionary<BuildingElementType, string> specifications = null, string databaseName = null)
+        public string GenerateBuildingScript(List<BuildingElement> elements, string siteName = "IMPORT_SITE", string zoneName = "IMPORT_ZONE", Dictionary<BuildingElementType, string> specifications = null, string databaseName = null, string owner = null)
         {
             var sb = new StringBuilder();
 
@@ -51,16 +54,23 @@ namespace E3DCopilot.Core.Services.Cad
             sb.AppendLine("$!ECHO 正在导入建筑模型...");
             sb.AppendLine("UNITS /MM");
 
-            // 可选：先切换到指定的 DESIGN 数据库，确保后续 NEW SITE/ZONE/元素在正确的库上下文中执行。
-            // 在 E3D 中结构元素（STWALL/STCOLUMN/STBEAM）必须在 DESIGN 模块的数据库下创建，
-            // 若当前元素不是设计库根，直接 NEW SITE 会失败；提供 databaseName 即可先进入正确的库。
+            // 可选：先切换到指定的 DESIGN 数据库
             if (!string.IsNullOrEmpty(databaseName))
             {
                 sb.AppendLine($"NEW DB /{databaseName}");
             }
 
-            sb.AppendLine($"NEW SITE /{siteName}");
-            sb.AppendLine($"NEW ZONE /{zoneName}");
+            // 落位策略：owner 优先（直接 CE 到目标元素下），否则新建 SITE/ZONE
+            if (!string.IsNullOrEmpty(owner))
+            {
+                // 直接定位到目标父元素，在其下创建子元素
+                sb.AppendLine($"CE {owner}");
+            }
+            else
+            {
+                sb.AppendLine($"NEW SITE /{siteName}");
+                sb.AppendLine($"NEW ZONE /{zoneName}");
+            }
             sb.AppendLine();
 
             int elementCounter = 1;
@@ -125,7 +135,9 @@ namespace E3DCopilot.Core.Services.Cad
                 sb.AppendLine($"  DESP {thickness:F2} {height:F2}");
                 sb.AppendLine($"  POSS E {start.X:F2} N {start.Y:F2} U {start.Z:F2}");
                 sb.AppendLine($"  POSE E {end.X:F2} N {end.Y:F2} U {end.Z:F2}");
-                sb.AppendLine($"  SPRE SPCOMPONENT 3 of SELEC 1 of SPECIFICATION {wallSpec}");
+                // 仅在有明确规格名时才发 SPRE：规格为空会生成悬空的 SPECIFICATION 行，导致整段 import 失败
+                if (!string.IsNullOrEmpty(wallSpec))
+                    sb.AppendLine($"  SPRE SPCOMPONENT 3 of SELEC 1 of SPECIFICATION {wallSpec}");
                 sb.AppendLine();
             }
             // 对于多边形墙体（闭合环）
@@ -143,7 +155,8 @@ namespace E3DCopilot.Core.Services.Cad
                     sb.AppendLine($"  DESP {thickness:F2} {height:F2}");
                     sb.AppendLine($"  POSS E {start.X:F2} N {start.Y:F2} U {start.Z:F2}");
                     sb.AppendLine($"  POSE E {end.X:F2} N {end.Y:F2} U {end.Z:F2}");
-                    sb.AppendLine($"  SPRE SPCOMPONENT 3 of SELEC 1 of SPECIFICATION {wallSpec}");
+                    if (!string.IsNullOrEmpty(wallSpec))
+                        sb.AppendLine($"  SPRE SPCOMPONENT 3 of SELEC 1 of SPECIFICATION {wallSpec}");
                     sb.AppendLine();
                 }
             }
@@ -177,7 +190,8 @@ namespace E3DCopilot.Core.Services.Cad
             sb.AppendLine($"NEW STCOLUMN /{columnName}");
             sb.AppendLine($"  DESP {width:F2} {depth:F2} {height:F2}");
             sb.AppendLine($"  POS E {position.X:F2} N {position.Y:F2} U {position.Z:F2}");
-            sb.AppendLine($"  SPRE SPCOMPONENT 1 of SELEC 1 of SPECIFICATION {colSpec}");
+            if (!string.IsNullOrEmpty(colSpec))
+                sb.AppendLine($"  SPRE SPCOMPONENT 1 of SELEC 1 of SPECIFICATION {colSpec}");
             sb.AppendLine();
         }
 
@@ -208,7 +222,8 @@ namespace E3DCopilot.Core.Services.Cad
             sb.AppendLine($"  DESP {width:F2} {height:F2}");
             sb.AppendLine($"  POSS E {start.X:F2} N {start.Y:F2} U {start.Z:F2}");
             sb.AppendLine($"  POSE E {end.X:F2} N {end.Y:F2} U {end.Z:F2}");
-            sb.AppendLine($"  SPRE SPCOMPONENT 2 of SELEC 1 of SPECIFICATION {beamSpec}");
+            if (!string.IsNullOrEmpty(beamSpec))
+                sb.AppendLine($"  SPRE SPCOMPONENT 2 of SELEC 1 of SPECIFICATION {beamSpec}");
             sb.AppendLine();
         }
 

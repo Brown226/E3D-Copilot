@@ -38,6 +38,20 @@ namespace E3DCopilot.Core.Tools.Handlers
                 // 提取 script 参数（预检已由 AgentLoop.ExecuteOneAsync 完成，此处不再重复）
                 string script = ExtractScript(args);
 
+                // PML 预处理：自动修正 LLM 常犯的语法错误（== → EQ, // → --, print → $P 等）
+                if (!string.IsNullOrEmpty(script))
+                {
+                    string fixedScript = PmlPreProcessor.Process(script);
+                    if (fixedScript != script)
+                    {
+                        // 用修正后的脚本替换原始参数
+                        var json = JObject.Parse(args);
+                        json["script"] = fixedScript;
+                        args = json.ToString(Newtonsoft.Json.Formatting.None);
+                        script = fixedScript;
+                    }
+                }
+
                 var result = await _dispatcher.ExecuteAsync("execute_pml", args);
 
                 // 检测 dispatcher 返回的错误信息
