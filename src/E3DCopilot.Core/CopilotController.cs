@@ -95,6 +95,9 @@ namespace E3DCopilot.Core
         // ── 会话持久化 & 操作快照（对齐 Reasonix save.go + checkpoint.go）──
         public SessionStore Sessions { get; }
         public CheckpointManager Checkpoints { get; }
+
+        // ── 对话执行轨迹记录器（AI 诊断用）──
+        public Logging.ConversationTracer Tracer { get; }
         
         // ── Current model ──
         public string CurrentModelName { get; private set; }
@@ -206,6 +209,12 @@ namespace E3DCopilot.Core
                 "E3DCopilot");
             Sessions = new SessionStore(System.IO.Path.Combine(dataDir, "sessions"));
             Checkpoints = new CheckpointManager(System.IO.Path.Combine(dataDir, "checkpoints"));
+
+            // 初始化对话轨迹记录器（开发调试用，记录完整思考链+工具执行+Token统计）
+            Tracer = new Logging.ConversationTracer(
+                System.IO.Path.Combine(dataDir, "traces"),
+                Config.Logging?.TraceEnabled ?? true,
+                Config.Logging?.TraceRetentionDays ?? 7);
 
             // 写前快照注入（对齐 Reasonix onPreEdit checkpoint）
             Tools.Handlers.WriteFileHandler.OnBeforeWrite = (filePath) =>
@@ -335,7 +344,7 @@ namespace E3DCopilot.Core
                 _cts = new CancellationTokenSource();
 
                 _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this, skillManager: Skills,
-                    stormSig: StormSig, stormCount: StormCount);
+                    stormSig: StormSig, stormCount: StormCount, tracer: Tracer);
 
                 // ── 会话活跃标记（对齐 Reasonix save.go MarkActive）──
                 Sessions.MarkActive(_session?.SessionPath);

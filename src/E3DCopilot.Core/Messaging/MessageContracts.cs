@@ -52,6 +52,11 @@ namespace E3DCopilot.Core.Messaging
         public const string SessionsList = "sessions:list";
         public const string SessionsDelete = "sessions:delete";
 
+        // === Trace 诊断日志 ===
+        public const string TraceLatest = "trace:latest";
+        public const string TraceList = "trace:list";
+        public const string TraceRead = "trace:read";
+
         // === 后端 → 前端 ===
         public const string Pong = "pong";
         public const string LlmMessage = "llm:message";

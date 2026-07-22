@@ -329,7 +329,8 @@ namespace E3DCopilot.Core
                 Role = RoleToString(msg.Role),
                 Content = msg.Content,
                 ToolCalls = msg.ToolCalls,
-                ToolCallId = msg.ToolCallId
+                ToolCallId = msg.ToolCallId,
+                ReasoningContent = msg.ReasoningContent
                 // 故意不存 Images：base64 图片太大，恢复时不需要
             };
         }
@@ -341,7 +342,8 @@ namespace E3DCopilot.Core
                 Role = StringToRole(dto.Role),
                 Content = dto.Content,
                 ToolCalls = dto.ToolCalls,
-                ToolCallId = dto.ToolCallId
+                ToolCallId = dto.ToolCallId,
+                ReasoningContent = dto.ReasoningContent
             };
         }
 
@@ -386,6 +388,9 @@ namespace E3DCopilot.Core
 
         [JsonProperty("toolCallId", NullValueHandling = NullValueHandling.Ignore)]
         public string ToolCallId { get; set; }
+
+        [JsonProperty("reasoning", NullValueHandling = NullValueHandling.Ignore)]
+        public string ReasoningContent { get; set; }
     }
 
     /// <summary>

@@ -165,6 +165,10 @@ namespace E3DCopilot.Core.Config
             public string Level { get; set; } = "info";
             public int FileMaxMb { get; set; } = 10;
             public int FileMaxCount { get; set; } = 5;
+            /// <summary>是否启用对话轨迹记录（开发调试用，记录完整思考链+工具执行+Token统计）</summary>
+            public bool TraceEnabled { get; set; } = true;
+            /// <summary>Trace 文件保留天数（超期自动清理）</summary>
+            public int TraceRetentionDays { get; set; } = 7;
         }
 
         /// <summary>

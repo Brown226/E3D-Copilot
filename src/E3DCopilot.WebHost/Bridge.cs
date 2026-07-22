@@ -222,6 +222,17 @@ namespace E3DCopilot.WebHost
                         HandleSessionsDelete(payload, requestId);
                         break;
 
+                    // ── Trace 诊断日志 ──
+                    case MessageTypes.TraceLatest:
+                        HandleTraceLatest(requestId);
+                        break;
+                    case MessageTypes.TraceList:
+                        HandleTraceList(requestId);
+                        break;
+                    case MessageTypes.TraceRead:
+                        HandleTraceRead(payload, requestId);
+                        break;
+
                     case "devtools:open":
                         _webView.CoreWebView2.OpenDevToolsWindow();
                         break;

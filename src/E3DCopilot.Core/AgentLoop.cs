@@ -37,6 +37,7 @@ namespace E3DCopilot.Core
         private readonly CopilotConfig _config;
         private readonly CopilotController _controller;
         private readonly SkillManager _skillManager;
+        private readonly Logging.ConversationTracer _tracer;
 
         private int MaxSteps => _config?.Ui?.MaxSteps > 0 ? _config.Ui.MaxSteps : 20;
 
@@ -63,7 +64,8 @@ namespace E3DCopilot.Core
             ToolExecutor executor, CommandPermissionController permission,
             CopilotConfig config, CopilotController controller = null,
             ToolPolicy toolPolicy = null, SkillManager skillManager = null,
-            string stormSig = "", int stormCount = 0)
+            string stormSig = "", int stormCount = 0,
+            Logging.ConversationTracer tracer = null)
         {
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
             _sink = sink;
@@ -73,6 +75,7 @@ namespace E3DCopilot.Core
             _config = config ?? CopilotConfig.Load();
             _controller = controller;
             _skillManager = skillManager;
+            _tracer = tracer;
             StormSig = stormSig;
             StormCount = stormCount;
         }
@@ -189,6 +192,12 @@ namespace E3DCopilot.Core
                 images != null ? images.Length : 0, 
                 session.Messages.Count);
 
+            // ── Trace: 开始记录本轮对话轨迹 ──
+            string modelRef = !string.IsNullOrEmpty(_controller?.CurrentModelName)
+                ? _controller.CurrentModelName
+                : _config.DefaultModel;
+            _tracer?.BeginTurn(session.SessionId, input, modelRef);
+
             // ── 开始 checkpoint turn（对齐 Reasonix checkpoint.Store.Begin）──
             _controller?.Checkpoints?.BeginTurn(session.Messages.Count, input);
 
@@ -199,6 +208,8 @@ namespace E3DCopilot.Core
             _evidence?.Reset();
             _repeatSuccessCounts = null;
             _streamRecoveries = 0;
+
+            string traceOutcome = "success"; // Trace 结果跟踪
 
             try
             {
@@ -231,6 +242,8 @@ namespace E3DCopilot.Core
                     }
 
                     // 1. Build request (including available tool definitions)
+                    // ── Trace: 开始新步骤 ──
+                    _tracer?.BeginStep(step);
                     var request = BuildRequest(session, memoryContext);
 
                     // 1.5 每轮 LLM 调用前发射 TurnStarted（前端 startStreaming 幂等，不会重复创建 assistant 消息）
@@ -255,6 +268,7 @@ namespace E3DCopilot.Core
                                 ? "The previous assistant response was interrupted during streaming. Continue the same task from immediately after the partial assistant message above. Do not repeat text that is already visible."
                                 : "The previous assistant response was interrupted during streaming before visible answer text was completed. Continue the same task now and provide the next useful response.";
                         session.AddSystemMessage(recoveryMsg);
+                        _tracer?.RecordSystemEvent($"LLM 流式中断恢复 (第 {_streamRecoveries} 次)");
                         _sink.Emit(CopilotEvent.RetryEvent("LLM 流式中断恢复", _streamRecoveries));
                         step--; // 恢复重试不消耗步数预算
                         continue;
@@ -282,6 +296,7 @@ namespace E3DCopilot.Core
                         }
 
                         CopilotLogger.Info("AgentLoop step {0}: 无工具调用，对话结束", step);
+                        traceOutcome = "success";
                         return;
                     }
 
@@ -296,15 +311,18 @@ namespace E3DCopilot.Core
                 }
                 catch (OperationCanceledException)
                 {
+                    traceOutcome = "cancelled";
                     _sink.Emit(CopilotEvent.Notice("已取消"));
                     return;  // TurnDone 由 Controller 统一发射
                 }
                 catch (Exception ex)
                 {
+                    traceOutcome = "error";
                     try { CopilotLogger.Error(ex, "AgentLoop step {0} failed", step); } catch { }
 
                     string msg = "遇到错误";
                     try { msg = $"错误: {ex.GetType().Name}: {ex.Message}"; } catch { }
+                    _tracer?.RecordError(msg);
 
                     _sink?.Emit(CopilotEvent.Error(msg));
                     return;  // TurnDone 由 Controller 统一发射
@@ -312,9 +330,13 @@ namespace E3DCopilot.Core
             }
 
             _sink.Emit(CopilotEvent.Notice($"已达到最大步数限制 {MaxSteps}"));
+            traceOutcome = "max_steps";
             }
             finally
             {
+                // ── Trace: 结束本轮对话轨迹记录 ──
+                _tracer?.EndTurn(traceOutcome);
+
                 // ── 完成 checkpoint turn（对齐 Reasonix checkpoint.Store 完成逻辑）──
                 _controller?.Checkpoints?.CompleteTurn();
             }
@@ -589,10 +611,12 @@ namespace E3DCopilot.Core
 
             // ── 5. 实际执行（ToolStart 已在第 4 步发射）──
             CopilotLogger.Info("工具执行开始: {0}, args={1}", call.Name, call.Arguments?.Substring(0, Math.Min(200, call.Arguments?.Length ?? 0)));
+            _tracer?.RecordToolStart(call.Id, call.Name, call.Arguments);
             try
             {
                 var toolResult = await _executor.ExecuteAsync(call.Name, call.Arguments, ct);
                 CopilotLogger.Info("工具执行完成: {0}, success={1}, duration={2}ms, resultLen={3}", call.Name, toolResult.Success, toolResult.DurationMs, toolResult.Text?.Length ?? 0);
+                _tracer?.RecordToolEnd(call.Id, toolResult.Text, toolResult.Success, toolResult.DurationMs, toolResult.Error);
 
                 // C1② 用户画像自动更新：每次工具调用后累积偏好
                 _controller?.Memory?.UpdateProfileFromToolUse(call.Name, call.Arguments, toolResult.Success);
@@ -634,6 +658,7 @@ namespace E3DCopilot.Core
             {
                 string err = $"{ex.GetType().Name}: {ex.Message}";
                 CopilotLogger.Error(ex, "工具执行异常: {0}", call.Name);
+                _tracer?.RecordToolEnd(call.Id, null, false, 0, err);
                 _sink?.Emit(CopilotEvent.ToolFail(call.Id, err));
                 return ($"Error: {err}", err);
             }
@@ -694,6 +719,7 @@ namespace E3DCopilot.Core
 
             results[0] = results[0] + $"\n\n[循环守卫] {subject} 已连续 {StormCount} 次因相同错误失败。重新发送此调用（即使修改措辞）也不会有帮助。请更换策略：如果参数被截断，请在单次调用中写入更少内容；否则修正参数、使用其他工具，或在最终回复中解释阻塞原因。";
 
+            _tracer?.RecordSystemEvent($"循环守卫: {shortMsg} 已连续 {StormCount} 次因相同方式失败");
             _sink.Emit(CopilotEvent.Notice(
                 $"循环守卫: {shortMsg} 已连续 {StormCount} 次因相同方式失败 — 提示模型更换策略"));
         }
@@ -718,12 +744,14 @@ namespace E3DCopilot.Core
                     {
                         case ChunkType.Reasoning:
                             reasoningText += chunk.Content;
+                            _tracer?.RecordReasoning(chunk.Content);
                             _sink.Emit(CopilotEvent.Reasoning(chunk.Content));
                             break;
                         case ChunkType.Text:
                             // D1 密钥脱敏：对 LLM 输出逐 chunk 遮蔽密钥/连接串等敏感信息
                             var safeText = SecretRedactor.Redact(chunk.Content);
                             text += safeText;
+                            _tracer?.RecordText(safeText);
                             _sink.Emit(CopilotEvent.TextEvent(safeText));
                             break;
                         case ChunkType.ToolCall:
@@ -731,6 +759,9 @@ namespace E3DCopilot.Core
                             MergeToolCall(toolCalls, chunk.ToolCall);
                             break;
                         case ChunkType.Usage:
+                            _tracer?.RecordTokens(
+                                chunk.UsageData?.PromptTokens ?? 0,
+                                chunk.UsageData?.CompletionTokens ?? 0);
                             _sink.Emit(new CopilotEvent
                             {
                                 Kind = EventKind.Usage,
@@ -942,6 +973,7 @@ namespace E3DCopilot.Core
                 $"<compaction-summary>\n{summary}\n</compaction-summary>"));
             msgs.AddRange(tail);
 
+            _tracer?.RecordSystemEvent($"上下文已压缩: {oldMsgs.Count} 条消息 → 摘要, {tail.Count} 条原样保留");
             _sink.Emit(CopilotEvent.Notice(
                 $"上下文已压缩: {oldMsgs.Count} 条消息 → 摘要, {tail.Count} 条原样保留"));
         }
