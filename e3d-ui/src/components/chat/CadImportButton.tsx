@@ -15,6 +15,7 @@ import { useState, useCallback } from 'react'
 import { FileUp, Link, Code, X, CheckCircle } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import bridge from '@/services/bridgeService'
+import { MessageTypes } from '@/services/messageContracts'
 
 // ── 导入方式 ──
 type ImportMode = 'autocad' | 'file' | 'coordinates'
@@ -68,7 +69,7 @@ export function CadImportButton() {
   // ── 打开原生文件对话框选择 DWG/DXF（通过 C# Bridge） ──
   const openDwgFileDialog = useCallback(async () => {
     try {
-      const result = await bridge.sendAndWait('dialog:open_file', {
+      const result = await bridge.sendAndWait(MessageTypes.DialogOpenFile, {
         title: '选择 DWG/DXF 文件',
         filter: 'CAD 文件|*.dwg;*.dxf|DWG 文件|*.dwg|DXF 文件|*.dxf|所有文件|*.*'
       }) as { path?: string } | null;

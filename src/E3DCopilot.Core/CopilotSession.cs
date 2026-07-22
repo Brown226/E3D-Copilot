@@ -17,26 +17,37 @@ namespace E3DCopilot.Core
         /// <summary>会话持久化路径（JSONL 文件路径，首次保存时由 SessionStore 赋值）</summary>
         public string SessionPath { get; set; }
 
+        /// <summary>线程安全的消息计数（UI 线程读取用）</summary>
+        public int MessageCount { get { lock (_msgLock) { return Messages.Count; } } }
+
+        private readonly object _msgLock = new object();
+
         // ── 对话分支 / Checkpoint（E6 对话分支回退）──
         private readonly List<SessionSnapshot> _snapshots = new List<SessionSnapshot>();
 
         /// <summary>保存当前会话快照（用于回退到此处）</summary>
         public void Checkpoint()
         {
-            _snapshots.Add(new SessionSnapshot
+            lock (_msgLock)
             {
-                MessageCount = Messages.Count,
-                Timestamp = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            });
+                _snapshots.Add(new SessionSnapshot
+                {
+                    MessageCount = Messages.Count,
+                    Timestamp = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                });
+            }
         }
 
         /// <summary>回退到指定消息数位置</summary>
         public bool Rollback(int messageCount)
         {
-            if (messageCount < 0 || messageCount >= Messages.Count)
-                return false;
-            Messages.RemoveRange(messageCount, Messages.Count - messageCount);
-            return true;
+            lock (_msgLock)
+            {
+                if (messageCount < 0 || messageCount >= Messages.Count)
+                    return false;
+                Messages.RemoveRange(messageCount, Messages.Count - messageCount);
+                return true;
+            }
         }
 
         /// <summary>回退到最近一个 checkpoint</summary>
@@ -68,7 +79,7 @@ namespace E3DCopilot.Core
             {
                 msg.Images = images;
             }
-            Messages.Add(msg);
+            lock (_msgLock) { Messages.Add(msg); }
         }
 
         /// <summary>
@@ -81,7 +92,7 @@ namespace E3DCopilot.Core
                 msg.ToolCalls = calls;
             if (!string.IsNullOrEmpty(reasoning))
                 msg.ReasoningContent = reasoning;
-            Messages.Add(msg);
+            lock (_msgLock) { Messages.Add(msg); }
         }
 
         /// <summary>
@@ -89,12 +100,15 @@ namespace E3DCopilot.Core
         /// </summary>
         public void AddToolResult(string toolCallId, string result)
         {
-            Messages.Add(new ChatMessage
+            lock (_msgLock)
             {
-                Role = MessageRole.Tool,
-                Content = result,
-                ToolCallId = toolCallId
-            });
+                Messages.Add(new ChatMessage
+                {
+                    Role = MessageRole.Tool,
+                    Content = result,
+                    ToolCallId = toolCallId
+                });
+            }
         }
 
         /// <summary>
@@ -102,7 +116,7 @@ namespace E3DCopilot.Core
         /// </summary>
         public void AddSystemMessage(string content)
         {
-            Messages.Add(new ChatMessage(MessageRole.System, content));
+            lock (_msgLock) { Messages.Add(new ChatMessage(MessageRole.System, content)); }
         }
 
         /// <summary>
@@ -111,10 +125,13 @@ namespace E3DCopilot.Core
         /// </summary>
         public List<ChatMessage> GetRecentMessages(int count = 20)
         {
-            if (Messages.Count <= count)
-                return new List<ChatMessage>(Messages);
+            lock (_msgLock)
+            {
+                if (Messages.Count <= count)
+                    return new List<ChatMessage>(Messages);
 
-            return new List<ChatMessage>(Messages.GetRange(Messages.Count - count, count));
+                return new List<ChatMessage>(Messages.GetRange(Messages.Count - count, count));
+            }
         }
 
         /// <summary>
@@ -122,12 +139,15 @@ namespace E3DCopilot.Core
         /// </summary>
         public string LastAssistantText()
         {
-            for (int i = Messages.Count - 1; i >= 0; i--)
+            lock (_msgLock)
             {
-                if (Messages[i].Role == MessageRole.Assistant && !string.IsNullOrEmpty(Messages[i].Content))
-                    return Messages[i].Content;
+                for (int i = Messages.Count - 1; i >= 0; i--)
+                {
+                    if (Messages[i].Role == MessageRole.Assistant && !string.IsNullOrEmpty(Messages[i].Content))
+                        return Messages[i].Content;
+                }
+                return null;
             }
-            return null;
         }
     }
 }

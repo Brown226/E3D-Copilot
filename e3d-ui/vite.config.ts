@@ -18,6 +18,16 @@ export default defineConfig({
     outDir: 'D:/AVEVA/Everything3D2.10/wwwroot',
     emptyOutDir: true,
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-zustand': ['zustand'],
+          'vendor-icons': ['lucide-react'],
+          'vendor-markdown': ['react-markdown', 'rehype-katex', 'rehype-highlight', 'remark-math', 'katex'],
+        },
+      },
+    },
   },
   test: {
     globals: true,

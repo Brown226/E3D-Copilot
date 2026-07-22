@@ -33,6 +33,7 @@ describe('useChatStore', () => {
       currentAssistantMsgId: null,
       currentThinkingMsgId: null,
       pendingApproval: null,
+      pendingQuestion: null,
     }
     useChatStore.setState({
       tabs: [initialTab],
@@ -107,14 +108,22 @@ describe('useChatStore', () => {
   })
 
   describe('startStreaming', () => {
-    it('should create an empty assistant message and set streaming', () => {
+    it('should set streaming state without creating assistant message', () => {
       useChatStore.getState().startStreaming()
       const tab = useChatStore.getState().tabs[0]
       expect(tab.isStreaming).toBe(true)
+      expect(tab.currentAssistantMsgId).toBeNull()
+      expect(tab.messages).toHaveLength(0)
+    })
+
+    it('should create assistant message on first delta', () => {
+      useChatStore.getState().startStreaming()
+      useChatStore.getState().appendAssistantDelta('Hello')
+      const tab = useChatStore.getState().tabs[0]
       expect(tab.currentAssistantMsgId).toBeTruthy()
       expect(tab.messages).toHaveLength(1)
       expect(tab.messages[0].role).toBe('assistant')
-      expect(tab.messages[0].content).toBe('')
+      expect(tab.messages[0].content).toBe('Hello')
     })
   })
 

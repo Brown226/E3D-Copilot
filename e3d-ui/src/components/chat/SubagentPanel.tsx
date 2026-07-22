@@ -70,6 +70,7 @@ export function SubagentPanel({ agentName, messages, allMessages, subcalls }: Su
                 msg={msg}
                 subcalls={subcalls.get(toolId)}
                 allMessages={allMessages}
+                isStreaming={isRunning}
               />
             )
           })}

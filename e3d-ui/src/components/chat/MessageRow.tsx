@@ -4,6 +4,7 @@
  * 特殊处理：将 thinking 消息传递给 AssistantBubble 作为内联 reasoning
  */
 
+import { memo } from 'react'
 import type { Message } from '@/types'
 import { UserBubble } from './UserBubble'
 import { AssistantBubble, ReasoningBlock } from './AssistantBubble'
@@ -15,14 +16,11 @@ interface MessageRowProps {
   msg: Message
   subcalls?: Message[]
   allMessages?: Message[]
+  /** 当前是否正在流式接收（由父组件传入，避免每条消息独立订阅 store） */
+  isStreaming: boolean
 }
 
-export function MessageRow({ msg, subcalls, allMessages }: MessageRowProps) {
-  const rollbackToMessage = useChatStore((s) => s.rollbackToMessage)
-  const isStreaming = useChatStore((s) =>
-    s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false
-  )
-
+export const MessageRow = memo(function MessageRow({ msg, subcalls, allMessages, isStreaming }: MessageRowProps) {
   switch (msg.role) {
     case 'user':
       return (
@@ -31,7 +29,7 @@ export function MessageRow({ msg, subcalls, allMessages }: MessageRowProps) {
           {!isStreaming && (
             <button
               className="msg-rollback-btn"
-              onClick={() => rollbackToMessage(msg.id)}
+              onClick={() => useChatStore.getState().rollbackToMessage(msg.id)}
               title="从这继续"
             >
               ↩
@@ -71,4 +69,4 @@ export function MessageRow({ msg, subcalls, allMessages }: MessageRowProps) {
     default:
       return null
   }
-}
+})

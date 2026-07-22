@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace E3DCopilot.Core.Tools
@@ -15,13 +16,14 @@ namespace E3DCopilot.Core.Tools
     public static class PmlValidator
     {
         // 高危命令黑名单（直接阻止）
-        private static readonly string[] BlockedCommands =
+        // 使用预编译正则，词边界确保不误报（如 OVERWRITE 不会匹配到变量名 XOVERWRITE）
+        private static readonly (string Display, Regex Pattern)[] BlockedCommands =
         {
-            "PURGE",          // 批量删除元素
-            "DELETE DB",      // 删除数据库
-            "ADMIN",          // 管理员操作
-            "NEW DB",         // 新建数据库（会清空当前）
-            "OVERWRITE DB",   // 覆盖数据库
+            ("PURGE",          new Regex(@"\bPURGE\b",         RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+            ("DELETE DB",      new Regex(@"\bDELETE\s+DB\b",   RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+            ("ADMIN",          new Regex(@"\bADMIN\b",         RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+            ("NEW DB",         new Regex(@"\bNEW\s+DB\b",      RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+            ("OVERWRITE DB",   new Regex(@"\bOVERWRITE\s+DB\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
         };
 
         /// <summary>
@@ -32,15 +34,16 @@ namespace E3DCopilot.Core.Tools
             if (string.IsNullOrWhiteSpace(script))
                 return PmlValidationResult.Ok();
 
-            var upper = script.ToUpperInvariant();
+            // PML 预处理：去除注释行和多余空格后再检查
+            var cleaned = PreprocessPml(script);
 
-            // ── 1. 高危命令黑名单检查 ──
-            foreach (var cmd in BlockedCommands)
+            // ── 1. 高危命令黑名单检查（正则词边界，防止字符串拼接/注释绕过）──
+            foreach (var (display, pattern) in BlockedCommands)
             {
-                if (upper.Contains(cmd))
+                if (pattern.IsMatch(cleaned))
                 {
                     return PmlValidationResult.Block(
-                        $"检测到高危命令 '{cmd}'，已被预检器阻止。请人工确认后执行。");
+                        $"检测到高危命令 '{display}'，已被预检器阻止。请人工确认后执行。");
                 }
             }
 
@@ -62,6 +65,38 @@ namespace E3DCopilot.Core.Tools
         }
 
         /// <summary>
+        /// PML 预处理：去除注释行（-- 或 ! 开头）和多余空格，
+        /// 防止通过注释夹杂或字符串拼接绕过黑名单检查。
+        /// </summary>
+        private static string PreprocessPml(string script)
+        {
+            var lines = script.Split(new[] { '\n', '\r' }, StringSplitOptions.None);
+            var cleanedLines = new List<string>();
+
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.Trim();
+
+                // 跳过纯注释行（PML 注释以 -- 或 ! 开头）
+                if (line.StartsWith("--") || line.StartsWith("!"))
+                    continue;
+
+                // 去除行内注释（-- 之后的部分），但保留字符串内的内容
+                var commentIdx = line.IndexOf("--", StringComparison.Ordinal);
+                if (commentIdx >= 0)
+                    line = line.Substring(0, commentIdx);
+
+                // 折叠多个空格为单个空格
+                line = Regex.Replace(line, @"\s+", " ").Trim();
+
+                if (!string.IsNullOrEmpty(line))
+                    cleanedLines.Add(line);
+            }
+
+            return string.Join(" ", cleanedLines);
+        }
+
+        /// <summary>
         /// 检测无限循环：DO 后面没有 WHILE/UNTIL/N TIMES/VALUES 的情况
         /// PML 安全模式：
         ///   DO WHILE (cond)     — 条件循环
@@ -77,6 +112,10 @@ namespace E3DCopilot.Core.Tools
             foreach (var line in lines)
             {
                 var trimmed = line.Trim().ToUpperInvariant();
+                // 排除注释行
+                if (trimmed.StartsWith("--") || trimmed.StartsWith("!"))
+                    continue;
+
                 // 排除所有已知的有界 DO 模式
                 if (trimmed == "DO" || (trimmed.StartsWith("DO ")
                     && !trimmed.Contains("WHILE")

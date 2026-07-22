@@ -36,6 +36,13 @@ export function useKeyboardShortcuts() {
         return
       }
 
+      // Cmd/Ctrl+F → 对话内搜索
+      if (e.key === 'f' && ctrlOrMeta && !e.shiftKey) {
+        e.preventDefault()
+        useChatStore.getState().toggleSearch()
+        return
+      }
+
       // Cmd/Ctrl+, → 设置
       if (e.key === ',' && ctrlOrMeta) {
         e.preventDefault()

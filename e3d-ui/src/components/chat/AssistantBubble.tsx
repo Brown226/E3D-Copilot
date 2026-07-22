@@ -3,7 +3,7 @@
  * 纯文本 + 内联 reasoning 折叠 + 复制/重试
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, memo } from 'react'
 import { ChevronRight, Copy, Check, RotateCcw } from 'lucide-react'
 import MarkdownBlock from '@/components/common/MarkdownBlock'
 import { useChatStore } from '@/store/useChatStore'
@@ -16,7 +16,7 @@ interface AssistantBubbleProps {
 }
 
 /** 内联 reasoning 折叠块 — Reasonix 风格 */
-export function ReasoningBlock({ msg }: { msg: Message }) {
+export const ReasoningBlock = memo(function ReasoningBlock({ msg }: { msg: Message }) {
   const [open, setOpen] = useState(!msg.finalized) // 流式时默认展开，完成后折叠
   const bodyRef = useRef<HTMLDivElement>(null)
 
@@ -54,9 +54,9 @@ export function ReasoningBlock({ msg }: { msg: Message }) {
       )}
     </div>
   )
-}
+})
 
-export function AssistantBubble({ msg, isFinal = true }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ msg, isFinal = true }: AssistantBubbleProps) {
   const [copied, setCopied] = useState(false)
   const rerollLastMessage = useChatStore((s) => s.rerollLastMessage)
 
@@ -113,4 +113,4 @@ export function AssistantBubble({ msg, isFinal = true }: AssistantBubbleProps) {
       )}
     </div>
   )
-}
+})

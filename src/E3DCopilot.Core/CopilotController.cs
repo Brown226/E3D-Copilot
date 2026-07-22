@@ -127,12 +127,12 @@ namespace E3DCopilot.Core
         public bool HasPendingSteer => !SteerQueue.IsEmpty;
 
         // ── Approval management ──
-        private readonly Dictionary<string, PendingApproval> _pendingApprovals
-            = new Dictionary<string, PendingApproval>();
+        private readonly ConcurrentDictionary<string, PendingApproval> _pendingApprovals
+            = new ConcurrentDictionary<string, PendingApproval>();
 
         // ── Ask management（对齐 Reasonix approvalManager asks）──
-        private readonly Dictionary<string, PendingAsk> _pendingAsks
-            = new Dictionary<string, PendingAsk>();
+        private readonly ConcurrentDictionary<string, PendingAsk> _pendingAsks
+            = new ConcurrentDictionary<string, PendingAsk>();
         private int _askNextId = 0;
 
         // promptMu 串行化 Ask 和 Approval 提示，确保同一时刻只有一个用户决策在等待
@@ -440,10 +440,9 @@ namespace E3DCopilot.Core
             // 审批超时：2分钟后自动拒绝
             var timeout = Task.Delay(TimeSpan.FromMinutes(2)).ContinueWith(_ =>
             {
-                if (_pendingApprovals.TryGetValue(approval.Id, out var timedOut))
+                if (_pendingApprovals.TryRemove(approval.Id, out var timedOut))
                 {
                     timedOut.Complete(false, false, timedOut: true);
-                    _pendingApprovals.Remove(approval.Id);
                     _sink.Emit(CopilotEvent.Notice($"审批超时: {approval.ToolName} 未在 2 分钟内获得确认"));
                 }
             });
@@ -464,10 +463,9 @@ namespace E3DCopilot.Core
         {
             if (string.IsNullOrEmpty(approvalId)) return;
 
-            if (_pendingApprovals.TryGetValue(approvalId, out var req))
+            if (_pendingApprovals.TryRemove(approvalId, out var req))
             {
                 req.Complete(allow, persist);  // Unblock TaskCompletionSource
-                _pendingApprovals.Remove(approvalId);
 
                 _sink.Emit(new CopilotEvent
                 {
@@ -511,7 +509,7 @@ namespace E3DCopilot.Core
             using (ct.Register(() =>
             {
                 tcs.TrySetCanceled();
-                lock (_promptMu) { _pendingAsks.Remove(id); }
+                _pendingAsks.TryRemove(id, out _);
             }, false))
             {
                 try
@@ -531,14 +529,10 @@ namespace E3DCopilot.Core
         /// </summary>
         public void AnswerQuestion(string id, List<AskAnswer> answers)
         {
-            PendingAsk pending;
-            lock (_promptMu)
+            if (_pendingAsks.TryRemove(id, out var pending))
             {
-                if (!_pendingAsks.TryGetValue(id, out pending))
-                    return;
-                _pendingAsks.Remove(id);
+                pending.Reply.TrySetResult(answers ?? new List<AskAnswer>());
             }
-            pending.Reply.TrySetResult(answers ?? new List<AskAnswer>());
         }
 
         /// <summary>
@@ -547,28 +541,25 @@ namespace E3DCopilot.Core
         public void NewSession()
         {
             // 保存当前会话（对齐 Reasonix save.go — 切换前持久化）
-            if (_session != null && _session.Messages.Count > 0)
+            if (_session != null && _session.MessageCount > 0)
             {
                 Sessions.Save(_session);
                 Sessions.MarkClean(_session.SessionPath);
             }
 
             // 完成所有待处理的审批（避免旧 AgentLoop 永久挂起）
-            foreach (var kvp in _pendingApprovals)
+            foreach (var kvp in _pendingApprovals.ToArray())
             {
                 try { kvp.Value.Complete(false, false); } catch { }
             }
             _pendingApprovals.Clear();
 
             // 取消所有待处理的 ask
-            lock (_promptMu)
+            foreach (var kvp in _pendingAsks.ToArray())
             {
-                foreach (var kvp in _pendingAsks)
-                {
-                    try { kvp.Value.Reply.TrySetCanceled(); } catch { }
-                }
-                _pendingAsks.Clear();
+                try { kvp.Value.Reply.TrySetCanceled(); } catch { }
             }
+            _pendingAsks.Clear();
 
             _session = new CopilotSession();
             _sink.Emit(CopilotEvent.Notice("已创建新会话"));
@@ -580,7 +571,7 @@ namespace E3DCopilot.Core
         public string GetSessionSummary()
         {
             if (_session == null) return "No session";
-            return $"Messages: {_session.Messages.Count} | Mode: {(_session.IsPlanMode ? "Plan" : "Act")}";
+            return $"Messages: {_session.MessageCount} | Mode: {(_session.IsPlanMode ? "Plan" : "Act")}";
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -599,7 +590,7 @@ namespace E3DCopilot.Core
             if (loaded == null) return false;
 
             // 保存当前会话（如果有内容）
-            if (_session != null && _session.Messages.Count > 0)
+            if (_session != null && _session.MessageCount > 0)
             {
                 Sessions.Save(_session);
                 Sessions.MarkClean(_session.SessionPath);
@@ -648,21 +639,18 @@ namespace E3DCopilot.Core
             
             _cts = null;
             // 拒绝所有待处理的审批
-            foreach (var kvp in _pendingApprovals)
+            foreach (var kvp in _pendingApprovals.ToArray())
             {
                 try { kvp.Value.Complete(false, false); } catch { }
             }
             _pendingApprovals.Clear();
 
             // 取消所有待处理的 ask
-            lock (_promptMu)
+            foreach (var kvp in _pendingAsks.ToArray())
             {
-                foreach (var kvp in _pendingAsks)
-                {
-                    try { kvp.Value.Reply.TrySetCanceled(); } catch { }
-                }
-                _pendingAsks.Clear();
+                try { kvp.Value.Reply.TrySetCanceled(); } catch { }
             }
+            _pendingAsks.Clear();
         }
 
         /// <summary>

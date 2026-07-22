@@ -1,123 +1,32 @@
 /**
- * InputBar — Composer 输入组件
+ * InputBar — Composer 输入组件（编排层）
  *
  * 布局结构：
- * 1. 附件/粘贴块区（context cards）
- * 2. 流式状态栏（运行中显示：旋转词 + 时长 + token + 停止按钮）
+ * 1. 流式状态栏（StreamingStatusBar）
+ * 2. 附件/粘贴块区（AttachmentArea）
  * 3. 主卡片：textarea + 发送按钮
- * 4. 底部工具栏：附件 | 自动执行开关 | 模型选择器 | 连接状态
+ * 4. 底部工具栏：附件 | 规划模式 | CAD导入 | 自动执行 | 模型选择器
  * 5. Slash 命令菜单（浮层）
  */
 
-import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type PointerEvent as ReactPointerEvent, type CSSProperties } from 'react'
+import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type CSSProperties } from 'react'
 import { Paperclip, ArrowUp, Square, Shield, ShieldCheck, List } from 'lucide-react'
-import { useChatStore } from '@/store/useChatStore'
+import { useChatStore, useActiveTab } from '@/store/useChatStore'
 import { ModelSwitcher } from '@/components/chat/ModelSwitcher'
 import { SlashMenu } from '@/components/chat/SlashMenu'
 import { CadImportButton } from '@/components/chat/CadImportButton'
+import { useComposerResize, composerMaxHeight } from './composer/useComposerResize'
+import { useInputHistory } from './composer/useInputHistory'
+import { useAttachments, shouldFoldPaste, fileToBase64 } from './composer/useAttachments'
+import { StreamingStatusBar, fmtTokens } from './composer/StreamingStatusBar'
+import { AttachmentArea } from './composer/AttachmentArea'
 
 // ── 常量 ──
-const LONG_PASTE_MIN_CHARS = 2000
-const LONG_PASTE_MIN_LINES = 20
-const COMPOSER_MIN_HEIGHT = 56
-const COMPOSER_MAX_HEIGHT = 280
-const COMPOSER_MAX_VIEWPORT_RATIO = 0.35
-const MAX_HISTORY = 100
 const IME_CONFIRM_GRACE_MS = 100
-const COMPOSER_HEIGHT_KEY = 'e3d-composer-height'
-
-// ── 旋转词（流式时显示） ──
-const SPINNER_WORDS = ['嘎吱运算', '飞速思考', '搜索中', '分析中', '推理中', '生成中']
-
-// ── 工具函数 ──
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-function lineCount(s: string): number {
-  if (s === '') return 0
-  return s.split(/\r\n|\r|\n/).length
-}
-
-function shouldFoldPaste(s: string): boolean {
-  return s.length >= LONG_PASTE_MIN_CHARS || lineCount(s) >= LONG_PASTE_MIN_LINES
-}
-
-function composerMaxHeight(): number {
-  if (typeof window === 'undefined') return COMPOSER_MAX_HEIGHT
-  return Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, Math.floor(window.innerHeight * COMPOSER_MAX_VIEWPORT_RATIO)))
-}
-
-function clampComposerHeight(h: number): number {
-  return Math.min(Math.max(Math.round(h), COMPOSER_MIN_HEIGHT), composerMaxHeight())
-}
-
-function loadComposerHeight(): number | null {
-  try {
-    const v = localStorage.getItem(COMPOSER_HEIGHT_KEY)
-    if (!v) return null
-    return clampComposerHeight(parseInt(v, 10))
-  } catch { return null }
-}
-
-function saveComposerHeight(h: number): void {
-  try { localStorage.setItem(COMPOSER_HEIGHT_KEY, String(h)) } catch { /* ignore */ }
-}
-
-function clearComposerHeight(): void {
-  try { localStorage.removeItem(COMPOSER_HEIGHT_KEY) } catch { /* ignore */ }
-}
-
-/** 格式化 token 数量 */
-function fmtTokens(n: number): string {
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
-  return String(n)
-}
-
-/** 格式化运行时长 */
-function fmtElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
-}
-
-/** 每秒触发的 tick hook（用于实时更新运行时长） */
-function useTick(on: boolean): number {
-  const [, setN] = useState(0)
-  useEffect(() => {
-    if (!on) return
-    const id = window.setInterval(() => setN((n) => n + 1), 1000)
-    return () => window.clearInterval(id)
-  }, [on])
-  return Date.now()
-}
-
-// ── 附件类型 ──
-interface Attachment {
-  id: string
-  name: string
-  type: string
-  size: number
-  previewUrl?: string
-  raw?: File
-}
-
-// ── 粘贴块类型 ──
-interface PastedBlock {
-  label: string
-  text: string
-}
-
-// ── 自动执行模式：开 = auto（只读操作自动执行），关 = ask（每次询问确认） ──
 
 export function InputBar() {
   const inputValue = useChatStore((s) => s.inputValue)
-  const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
+  const { isStreaming } = useActiveTab()
   const bridgeConnected = useChatStore((s) => s.bridgeConnected)
   const toolApprovalMode = useChatStore((s) => s.toolApprovalMode)
   const setToolApprovalMode = useChatStore((s) => s.setToolApprovalMode)
@@ -127,13 +36,10 @@ export function InputBar() {
   const turnTokens = useChatStore((s) => s.turnTokens)
   const setInputValue = useChatStore((s) => s.setInputValue)
   const sendMessage = useChatStore((s) => s.sendMessage)
-
-  // 每秒刷新（流式时）
-  const now = useTick(isStreaming)
+  const sessionTokens = useChatStore((s) => s.sessionTokens)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [pastedBlocks, setPastedBlocks] = useState<PastedBlock[]>([])
+  const composerCardRef = useRef<HTMLDivElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [showSlashMenu, setShowSlashMenu] = useState(false)
   const [slashQuery, setSlashQuery] = useState('')
@@ -142,24 +48,14 @@ export function InputBar() {
   const composingRef = useRef(false)
   const lastCompositionEndAt = useRef(0)
 
-  // Composer 高度拖拽
-  const composerCardRef = useRef<HTMLDivElement>(null)
-  const [composerHeight, setComposerHeight] = useState<number | null>(loadComposerHeight)
-  const [composerResizing, setComposerResizing] = useState(false)
-
-  // 输入历史
-  const historyIndexRef = useRef(-1)
-  const savedTextRef = useRef('')
-  const [historyEntries, setHistoryEntries] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('e3d-input-history')
-      return saved ? JSON.parse(saved) : []
-    } catch { return [] }
-  })
-
-  useEffect(() => {
-    localStorage.setItem('e3d-input-history', JSON.stringify(historyEntries.slice(0, MAX_HISTORY)))
-  }, [historyEntries])
+  // ── Hooks ──
+  const { composerHeight, composerResizing, onComposerResizeStart, resetComposerHeight } = useComposerResize(composerCardRef)
+  const { historyEntries, pushHistory, navigateHistory, resetHistoryNavigation, historyIndexRef } = useInputHistory(setInputValue)
+  const {
+    attachments, pastedBlocks, fileInputRef,
+    addAttachment, removeAttachment, removePastedBlock, addPastedBlock,
+    handleFileSelect, handleFileChange, clearAttachments,
+  } = useAttachments(inputValue, setInputValue)
 
   // 自动伸缩 textarea（仅当未手动调整高度时）
   useEffect(() => {
@@ -172,56 +68,14 @@ export function InputBar() {
     el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden'
   }, [inputValue, composerHeight])
 
-  // Composer 拖拽调整高度
-  const onComposerResizeStart = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
-    if (e.button !== 0) return
-    const card = composerCardRef.current
-    if (!card) return
-    e.preventDefault()
-    const startY = e.clientY
-    const startHeight = composerHeight ?? card.getBoundingClientRect().height
-    let nextHeight = clampComposerHeight(startHeight)
-    let moved = false
-    setComposerResizing(true)
-    document.body.classList.add('composer-resizing')
-    const onMove = (ev: PointerEvent) => {
-      moved = true
-      nextHeight = clampComposerHeight(startHeight + startY - ev.clientY)
-      setComposerHeight(nextHeight)
-    }
-    const onUp = () => {
-      setComposerResizing(false)
-      document.body.classList.remove('composer-resizing')
-      if (moved) saveComposerHeight(nextHeight)
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
-      document.removeEventListener('pointercancel', onUp)
-    }
-    document.addEventListener('pointermove', onMove)
-    document.addEventListener('pointerup', onUp)
-    document.addEventListener('pointercancel', onUp)
-  }, [composerHeight])
-
-  const resetComposerHeight = useCallback(() => {
-    setComposerHeight(null)
-    clearComposerHeight()
-  }, [])
-
   // ── 发送消息 ──
   const handleSend = useCallback(() => {
     const text = inputValue.trim()
     if (!text && attachments.length === 0) return
     if (isStreaming || !bridgeConnected) return
 
-    if (text) {
-      setHistoryEntries((prev) => {
-        const filtered = prev.filter((h) => h !== text)
-        return [text, ...filtered].slice(0, MAX_HISTORY)
-      })
-    }
-
-    historyIndexRef.current = -1
-    savedTextRef.current = ''
+    if (text) pushHistory(text)
+    resetHistoryNavigation()
 
     let fullText = text
     if (pastedBlocks.length > 0) {
@@ -248,9 +102,8 @@ export function InputBar() {
     })
 
     setInputValue('')
-    setAttachments([])
-    setPastedBlocks([])
-  }, [inputValue, isStreaming, bridgeConnected, attachments, pastedBlocks, sendMessage, setInputValue])
+    clearAttachments()
+  }, [inputValue, isStreaming, bridgeConnected, attachments, pastedBlocks, sendMessage, setInputValue, pushHistory, resetHistoryNavigation, clearAttachments])
 
   // ── 取消生成 ──
   const handleCancel = useCallback(() => {
@@ -280,7 +133,7 @@ export function InputBar() {
     if (ta && e.key === 'ArrowUp' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
         e.preventDefault()
-        navigateHistory(-1)
+        navigateHistory(-1, textareaRef)
         return
       }
     }
@@ -288,7 +141,7 @@ export function InputBar() {
     if (ta && e.key === 'ArrowDown' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       if (ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length) {
         e.preventDefault()
-        navigateHistory(1)
+        navigateHistory(1, textareaRef)
         return
       }
     }
@@ -297,28 +150,16 @@ export function InputBar() {
     if (e.key === 'Escape') {
       e.preventDefault()
       setInputValue('')
-      setPastedBlocks([])
-      setAttachments([])
+      clearAttachments()
       setShowSlashMenu(false)
-      historyIndexRef.current = -1
+      resetHistoryNavigation()
       return
     }
 
     // 其他按键重置历史导航
     if (historyIndexRef.current !== -1 && e.key.length === 1) {
-      historyIndexRef.current = -1
+      resetHistoryNavigation()
     }
-  }
-
-  const navigateHistory = (direction: -1 | 1) => {
-    const ta = textareaRef.current
-    if (!ta || historyEntries.length === 0) return
-    const newIndex = historyIndexRef.current + direction
-    if (newIndex < -1 || newIndex >= historyEntries.length) return
-    if (historyIndexRef.current === -1 && direction === -1) savedTextRef.current = ta.value
-    historyIndexRef.current = newIndex
-    setInputValue(newIndex === -1 ? savedTextRef.current : historyEntries[newIndex])
-    requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = ta.value.length })
   }
 
   const handleCompositionStart = () => { composingRef.current = true }
@@ -332,9 +173,7 @@ export function InputBar() {
     const text = e.clipboardData.getData('text')
     if (text && shouldFoldPaste(text)) {
       e.preventDefault()
-      const blockNum = pastedBlocks.length + 1
-      const label = `Pasted block ${blockNum}`
-      setPastedBlocks((prev) => [...prev, { label, text }])
+      const label = addPastedBlock(text)
       const ta = textareaRef.current
       if (ta) {
         const start = ta.selectionStart
@@ -365,53 +204,7 @@ export function InputBar() {
     }
   }
 
-  // ── 附件管理 ──
-  const addAttachment = (file: File) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const attachment: Attachment = { id, name: file.name, type: file.type, size: file.size, raw: file }
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = () => {
-        setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, previewUrl: reader.result as string } : a)))
-      }
-      reader.readAsDataURL(file)
-    }
-    setAttachments((prev) => [...prev, attachment])
-  }
-
-  const removeAttachment = (id: string) => setAttachments((prev) => prev.filter((a) => a.id !== id))
-  const removePastedBlock = (label: string) => {
-    setPastedBlocks((prev) => prev.filter((b) => b.label !== label))
-    const regex = new RegExp(`\\[${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'g')
-    setInputValue(inputValue.replace(regex, ''))
-  }
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const handleFileSelect = () => fileInputRef.current?.click()
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files) return
-    Array.from(files).forEach(addAttachment)
-    e.target.value = ''
-  }
-
   const canSend = (inputValue.trim() || attachments.length > 0) && !isStreaming && bridgeConnected
-
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  // ── 计算流式状态文本 ──
-  const runActivity = isStreaming && turnStartAt
-    ? (() => {
-        const elapsedMs = Math.max(0, now - turnStartAt)
-        const word = SPINNER_WORDS[Math.floor(elapsedMs / 3000) % SPINNER_WORDS.length]
-        const tok = turnTokens > 0 ? ` · ↓ ${fmtTokens(turnTokens)} tokens` : ''
-        return `${word}… ${fmtElapsed(elapsedMs)}${tok}`
-      })()
-    : null
 
   // ── 自动执行开关状态 ──
   const isAutoMode = toolApprovalMode !== 'ask'
@@ -423,47 +216,21 @@ export function InputBar() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* ═══════ 流式状态栏（卡片上方） ═══════ */}
-      {runActivity && (
-        <div className="composer-toolbar composer-toolbar--status-only">
-          <div className="composer-runstatus" role="status" aria-live="polite">
-            <span className="composer-runstatus__dot" />
-            <span className="composer-runstatus__text">{runActivity}</span>
-            <button className="composer-runstatus__stop" type="button" onClick={handleCancel}>
-              <Square size={10} fill="currentColor" />
-              <span>停止</span>
-            </button>
-          </div>
-        </div>
-      )}
+      {/* ═══════ 流式状态栏 ═══════ */}
+      <StreamingStatusBar
+        isStreaming={isStreaming}
+        turnStartAt={turnStartAt}
+        turnTokens={turnTokens}
+        onCancel={handleCancel}
+      />
 
-      {/* ═══════ 附件 / 粘贴块（卡片上方） ═══════ */}
-      {(attachments.length > 0 || pastedBlocks.length > 0) && (
-        <div className="composer-context">
-          {attachments.map((att) => (
-            <div key={att.id} className="composer-context__item">
-              <span className="composer-context__icon">
-                {att.previewUrl ? (
-                  <img src={att.previewUrl} alt="" draggable={false} />
-                ) : (
-                  <Paperclip className="w-4 h-4" />
-                )}
-              </span>
-              <span className="composer-context__info">
-                <span className="composer-context__name">{att.name}</span>
-                <span className="composer-context__meta">{formatSize(att.size)}</span>
-              </span>
-              <button className="composer-context__remove" onClick={() => removeAttachment(att.id)}>×</button>
-            </div>
-          ))}
-          {pastedBlocks.map((block) => (
-            <div key={block.label} className="composer__pasted-block">
-              <span>📋 {block.label} ({block.text.length} 字符)</span>
-              <button className="composer-context__remove" style={{ position: 'static', opacity: 1 }} onClick={() => removePastedBlock(block.label)}>×</button>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* ═══════ 附件 / 粘贴块 ═══════ */}
+      <AttachmentArea
+        attachments={attachments}
+        pastedBlocks={pastedBlocks}
+        onRemoveAttachment={removeAttachment}
+        onRemovePastedBlock={removePastedBlock}
+      />
 
       <div className="composer-wrap">
         {/* ═══════ 主输入卡片 ═══════ */}
@@ -590,9 +357,9 @@ export function InputBar() {
 
             {/* 右侧：连接状态 + 模型选择器 */}
             <div className="composer-status">
-              {useChatStore((s) => s.sessionTokens) > 0 && (
+              {sessionTokens > 0 && (
                 <span className="hidden sm:inline" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  Σ {fmtTokens(useChatStore((s) => s.sessionTokens))}
+                  Σ {fmtTokens(sessionTokens)}
                 </span>
               )}
               <ModelSwitcher />
@@ -615,6 +382,18 @@ export function InputBar() {
                 })
               } else if (cmd.name === 'plan') {
                 useChatStore.getState().togglePlanMode()
+              } else if (cmd.name === 'cad') {
+                // 结构化执行：直接打开文件对话框，获取路径后自动发送
+                import('@/services/bridgeService').then(({ default: bridge }) => {
+                  bridge.sendAndWait('dialog:open_file', {
+                    title: '选择 CAD 文件（DWG/DXF）',
+                    filter: 'CAD 文件|*.dwg;*.dxf|所有文件|*.*'
+                  }).then((result: any) => {
+                    if (result?.path) {
+                      sendMessage(bridge.sendUserMessage.bind(bridge), undefined, `/cad 导入文件: ${result.path}`)
+                    }
+                  })
+                })
               } else {
                 setInputValue(cmd.template)
                 textareaRef.current?.focus()

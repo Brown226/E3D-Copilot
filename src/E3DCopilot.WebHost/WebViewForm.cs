@@ -171,7 +171,7 @@ namespace E3DCopilot.WebHost
                                 provider = config.DefaultProvider,
                                 model = model,
                                 baseUrl = prov?.BaseUrl ?? "",
-                                apiKey = prov?.ApiKey ?? "",
+                                apiKey = string.IsNullOrEmpty(prov?.ApiKey) ? "" : "sk-****",
                                 mode = _controller.IsPlanMode ? "plan" : "act",
                                 currentProvider = prov?.Name ?? "",
                                 currentModel = model ?? "",

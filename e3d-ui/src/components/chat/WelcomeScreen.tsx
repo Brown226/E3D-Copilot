@@ -4,7 +4,7 @@
  */
 
 import { Bot, Clock } from 'lucide-react'
-import { useChatStore } from '@/store/useChatStore'
+import { useChatStore, useActiveTab } from '@/store/useChatStore'
 
 const QUICK_ACTIONS = [
   { icon: '📋', text: '查询所有设备' },
@@ -16,8 +16,7 @@ const QUICK_ACTIONS = [
 ]
 
 export function WelcomeScreen() {
-  const messages = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.messages ?? [])
-  const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
+  const { messages, isStreaming } = useActiveTab()
   const setInputValue = useChatStore((s) => s.setInputValue)
   const sessions = useChatStore((s) => s.sessions)
   const loadSession = useChatStore((s) => s.loadSession)

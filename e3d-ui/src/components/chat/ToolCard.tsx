@@ -9,7 +9,7 @@
  * 6. DiffView 集成
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import {
   Loader2,
   ChevronRight,
@@ -119,7 +119,7 @@ function formatDuration(ms?: number): string {
   return `${Math.round(ms)} ms`
 }
 
-export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
+export const ToolCard = memo(function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null)
   const [showAll, setShowAll] = useState(false)
 
@@ -311,10 +311,10 @@ export function ToolCard({ msg, subcalls = [] }: ToolCardProps) {
       )}
     </div>
   )
-}
+})
 
 // ═══════════════════════════════════════════
-// 子调用行（内联展示） — Reasonix 紧凑风格
+// 子调用行（内联展示）— Reasonix 紧凑风格
 // ═══════════════════════════════════════════
 
 function SubToolRow({ msg }: { msg: Message }) {

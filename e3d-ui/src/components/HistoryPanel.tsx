@@ -18,8 +18,11 @@ import {
   Clock,
   X,
   Plus,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import { useChatStore, type SessionMeta } from '@/store/useChatStore'
+import bridge from '@/services/bridgeService'
 
 // ── 日期分组 ──
 function dayLabel(ts: number): string {
@@ -69,23 +72,30 @@ export function HistoryPanel() {
 
   const [query, setQuery] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // 从后端加载会话列表（合并去重，不覆盖 localStorage）
+  // 从后端加载会话列表（合并去重，后端为权威数据源）
   const loadSessionsFromBackend = useCallback(async () => {
+    if (!bridge.isAvailable()) return
+    setLoading(true)
+    setError(null)
     try {
-      const { default: bridge } = await import('@/services/bridgeService')
-      if (bridge.isAvailable()) {
-        const result = await bridge.listSessions() as { sessions?: SessionMeta[] } | null
-        if (result?.sessions) {
-          const localSessions = useChatStore.getState().sessions
-          const backendIds = new Set(result.sessions.map(s => s.id))
-          const localOnly = localSessions.filter(s => !backendIds.has(s.id))
-          const merged = [...result.sessions, ...localOnly]
-          useChatStore.getState().setSessions(merged)
-        }
+      const result = await bridge.listSessions() as { sessions?: SessionMeta[] } | null
+      if (result?.sessions) {
+        const localSessions = useChatStore.getState().sessions
+        const backendIds = new Set(result.sessions.map(s => s.id))
+        // 后端会话优先，保留仅存在于本地的会话（取并集，后端数据覆盖本地）
+        const localOnly = localSessions.filter(s => !backendIds.has(s.id))
+        const merged = [...result.sessions, ...localOnly]
+        useChatStore.getState().setSessions(merged)
       }
-    } catch {
-      // 后端不可用时降级到 localStorage
+    } catch (err) {
+      // 后端不可用时降级到 localStorage，不阻断 UI
+      console.warn('[HistoryPanel] 后端会话列表获取失败，使用本地缓存', err)
+      setError('无法同步后端数据，显示本地缓存')
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -125,14 +135,18 @@ export function HistoryPanel() {
   }, [loadSession])
 
   // 删除
-  const handleDelete = useCallback((sessionId: string) => {
-    import('@/services/bridgeService').then(({ default: bridge }) => {
-      if (bridge.isAvailable()) {
-        bridge.deleteSession(sessionId)
-      }
-    })
+  const handleDelete = useCallback(async (sessionId: string) => {
+    // 先同步删除本地（立即响应 UI）
     deleteSession(sessionId)
     setDeleteConfirm(null)
+    // 异步通知后端删除
+    if (bridge.isAvailable()) {
+      try {
+        await bridge.deleteSession(sessionId)
+      } catch (err) {
+        console.warn('[HistoryPanel] 后端删除会话失败', err)
+      }
+    }
   }, [deleteSession])
 
   // 新建对话（纯前端，不发 new_session）
@@ -196,9 +210,22 @@ export function HistoryPanel() {
           </div>
         </div>
 
+        {/* 同步状态提示 */}
+        {error && (
+          <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span className="text-xs text-amber-600 dark:text-amber-400">{error}</span>
+          </div>
+        )}
+
         {/* 会话列表 */}
         <div className="flex-1 overflow-y-auto">
-          {groups.length === 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-48 px-6">
+              <Loader2 className="w-6 h-6 text-blue-500 animate-spin mb-3" />
+              <p className="text-sm text-slate-500 dark:text-slate-400">正在同步会话列表...</p>
+            </div>
+          ) : groups.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full px-6">
               <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
                 <MessageSquare className="w-7 h-7 text-slate-300 dark:text-slate-600" />

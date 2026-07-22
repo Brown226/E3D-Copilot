@@ -36,6 +36,29 @@ export const MessageTypes = {
   SkillsRemoveSource: 'skills:remove_source',
   SkillsRefresh: 'skills:refresh',
 
+  // === Memory 管理 ===
+  MemoryList: 'memory:list',
+  MemorySave: 'memory:save',
+  MemoryDelete: 'memory:delete',
+
+  // === Settings 管理 ===
+  SettingsSave: 'settings:save',
+
+  // === Sessions 管理 ===
+  SessionsList: 'sessions:list',
+  SessionsDelete: 'sessions:delete',
+
+  // === 中途干预 ===
+  UserSteer: 'user:steer',
+
+  // === 原生对话框 ===
+  DialogOpenFile: 'dialog:open_file',
+  DevtoolsOpen: 'devtools:open',
+
+  // === 前端内部事件 ===
+  BridgeDisconnected: 'bridge:disconnected',
+  BridgeReconnected: 'bridge:reconnected',
+
   // === 后端 → 前端 ===
   Pong: 'pong',
   LlmStreamDelta: 'llm:stream:delta',
@@ -57,6 +80,7 @@ export const MessageTypes = {
 
   // === 新增事件类型（补全前后端事件覆盖） ===
   LlmTurnStarted: 'llm:turn_started',     // 对应前端 api_req_started
+  LlmMessage: 'llm:message',              // LLM 完整消息
   LlmUsage: 'llm:usage',                  // Token 用量
   LlmRetry: 'llm:retry',                  // 重试事件
   ToolProgress: 'tool:progress',           // 工具执行进度
@@ -313,6 +337,80 @@ export interface ProviderDeletePayload {
 export interface ProviderSetKeyPayload {
   name: string;
   apiKey: string;
+}
+
+// ============================================
+// User Steer 中途干预
+// ============================================
+
+export interface UserSteerPayload {
+  text: string;
+}
+
+// ============================================
+// Memory 管理
+// ============================================
+
+export interface MemorySavePayload {
+  id?: string;
+  title: string;
+  content: string;
+  kind: string;
+  tags?: string[];
+}
+
+export interface MemoryDeletePayload {
+  id: string;
+}
+
+export interface MemorySaveResultPayload {
+  memory: MemoryEntry;
+}
+
+export interface MemoryDeleteResultPayload {
+  id: string;
+  deleted: boolean;
+}
+
+// ============================================
+// Settings 管理
+// ============================================
+
+export interface SettingsSavePayload {
+  key: string;
+  value: string;
+}
+
+export interface SettingsSaveResultPayload {
+  key: string;
+  value: string;
+  saved: boolean;
+}
+
+// ============================================
+// Sessions 管理
+// ============================================
+
+export interface SessionsDeletePayload {
+  id: string;
+}
+
+export interface SessionsDeleteResultPayload {
+  id: string;
+  deleted: boolean;
+}
+
+// ============================================
+// Dialog 原生对话框
+// ============================================
+
+export interface DialogOpenFilePayload {
+  title?: string;
+  filter?: string;
+}
+
+export interface DialogOpenFileResultPayload {
+  path: string | null;
 }
 
 // ============================================

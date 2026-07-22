@@ -3,7 +3,7 @@
  * 右对齐 + 边框气泡 + 时间/复制/编辑 meta
  */
 
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { Copy, Check, Pencil } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import type { Message } from '@/types'
@@ -25,7 +25,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function UserBubble({ msg }: UserBubbleProps) {
+export const UserBubble = memo(function UserBubble({ msg }: UserBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draftText, setDraftText] = useState(msg.content)
@@ -123,4 +123,4 @@ export function UserBubble({ msg }: UserBubbleProps) {
       )}
     </div>
   )
-}
+})

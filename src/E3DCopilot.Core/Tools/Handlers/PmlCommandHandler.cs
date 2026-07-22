@@ -54,20 +54,30 @@ namespace E3DCopilot.Core.Tools.Handlers
 
                 var result = await _dispatcher.ExecuteAsync("execute_pml", args);
 
-                // 检测 dispatcher 返回的错误信息
-                if (!string.IsNullOrEmpty(result) && result.StartsWith("{"))
+                // 检测执行失败：
+                // 1. 纯文本 "Error: ..." 前缀（RealE3DEnvironment.ExecutePml 统一格式）
+                // 2. JSON { success: false, error: "..." } 格式（兼容旧路径）
+                if (!string.IsNullOrEmpty(result))
                 {
-                    try
+                    if (result.StartsWith("Error:") || result.StartsWith("Error："))
                     {
-                        var j = JObject.Parse(result);
-                        var successToken = j["success"];
-                        if (successToken != null && successToken.Value<bool>() == false)
-                        {
-                            var msg = j["error"]?.ToString() ?? j["message"]?.ToString() ?? "Unknown error";
-                            return ToolResult.Fail($"PML execution failed: {msg}");
-                        }
+                        return ToolResult.Fail(result);
                     }
-                    catch { /* 不是 JSON，按纯文本处理 */ }
+
+                    if (result.StartsWith("{"))
+                    {
+                        try
+                        {
+                            var j = JObject.Parse(result);
+                            var successToken = j["success"];
+                            if (successToken != null && successToken.Value<bool>() == false)
+                            {
+                                var msg = j["error"]?.ToString() ?? j["message"]?.ToString() ?? "Unknown error";
+                                return ToolResult.Fail($"PML execution failed: {msg}");
+                            }
+                        }
+                        catch { /* 不是 JSON，按纯文本处理 */ }
+                    }
                 }
 
                 var meta = new JObject

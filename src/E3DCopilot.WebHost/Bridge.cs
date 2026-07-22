@@ -22,8 +22,10 @@ namespace E3DCopilot.WebHost
     /// 3. 新增 TurnDone 分发，驱动前端 UI 状态机重置
     /// 4. 新增 UserSetPlanMode 处理，修复 Plan/Act 模式切换
     /// 5. HandleModelSwitch 成功后发 ModelsListResult 而非 ModelSwitch
+    ///
+    /// 拆分说明：Provider/Skills/Memory/Settings/Sessions 处理方法位于对应 partial 文件
     /// </summary>
-    public class Bridge
+    public partial class Bridge
     {
         private readonly WebView2 _webView;
         private readonly CopilotController _controller;
@@ -39,6 +41,9 @@ namespace E3DCopilot.WebHost
         private readonly ConcurrentDictionary<string, long> _toolStartTimes
             = new ConcurrentDictionary<string, long>();
 
+        // 过期条目清理 Timer
+        private readonly System.Threading.Timer _cleanupTimer;
+
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -49,6 +54,18 @@ namespace E3DCopilot.WebHost
         {
             _webView = webView ?? throw new ArgumentNullException(nameof(webView));
             _controller = controller ?? throw new ArgumentNullException(nameof(controller));
+            _cleanupTimer = new System.Threading.Timer(CleanupStaleEntries, null, 60000, 60000);
+        }
+
+        /// <summary>清理超过 60 秒的过期条目，防止内存泄漏</summary>
+        private void CleanupStaleEntries(object _)
+        {
+            var cutoff = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 60000;
+            foreach (var kv in _toolStartTimes)
+            {
+                if (kv.Value < cutoff)
+                    _toolStartTimes.TryRemove(kv.Key, out long _);
+            }
         }
 
         private static void Log(string message)
@@ -227,7 +244,6 @@ namespace E3DCopilot.WebHost
 
         /// <summary>
         /// 处理用户文本消息
-        /// 修复：移除两行诊断 Notice（避免污染 _clineMessages，破坏 messages.length===0 判断）
         /// </summary>
         private void HandleUserMessage(JsonElement? payload)
         {
@@ -411,7 +427,7 @@ namespace E3DCopilot.WebHost
             void post()
             {
                 try { _webView.CoreWebView2.PostWebMessageAsString(msg); }
-                catch { /* 忽略发送失败 */ }
+                catch (Exception ex) { Log($"[Bridge] PostWebMessage failed: {ex.Message}"); }
             }
 
             if (_webView.InvokeRequired)
@@ -505,7 +521,6 @@ namespace E3DCopilot.WebHost
 
                 case EventKind.AskRequest:
                     {
-                        // 通过 evt.Ask 属性传递结构化数据
                         if (evt.Ask != null)
                         {
                             var askData = evt.Ask;
@@ -559,498 +574,6 @@ namespace E3DCopilot.WebHost
             }
         }
 
-        // ════════════════════════════════════════════════
-        //  Provider / Model 管理
-        //  修复：所有响应方法在 SendToFrontend 时传入 TakeRequestId(type) 回带 _requestId
-        // ════════════════════════════════════════════════
-
-        private void HandleModelsList()
-        {
-            string rid = TakeRequestId(MessageTypes.ModelsList);
-            try
-            {
-                var result = ProvidersService.ListModels(_controller.Config);
-                SendToFrontend(MessageTypes.ModelsListResult, result, rid);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"列出模型失败: {ex.Message}" }, rid);
-            }
-        }
-
-        private void HandleModelSwitch(JsonElement? payload)
-        {
-            string rid = TakeRequestId(MessageTypes.ModelSwitch);
-            try
-            {
-                string ref_ = null;
-                if (payload.HasValue && payload.Value.TryGetProperty("ref", out var prop))
-                    ref_ = prop.GetString();
-
-                bool ok = ProvidersService.SwitchModel(_controller.Config, ref_ ?? "");
-                if (ok)
-                {
-                    // 重建 provider 指向新模型
-                    _controller.SwitchProvider(BuildProviderFromConfig(_controller.Config), ref_);
-                }
-
-                // 修复：回带 _requestId 让 sendAndWait resolve；
-                // 同时发 ModelsListResult 让前端 onModelsListResult 监听器更新 UI
-                // 注意：C# 匿名对象字段名不能用 ref 关键字，改用 @ref 让 JSON 序列化为 "ref"
-                var switchResult = new { success = ok, @ref = ref_ ?? "" };
-                SendToFrontend(MessageTypes.ModelSwitch, switchResult, rid);
-
-                // 推送最新模型列表（不带 _requestId，给监听器用）
-                var listResult = ProvidersService.ListModels(_controller.Config);
-                SendToFrontend(MessageTypes.ModelsListResult, listResult);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"切换模型失败: {ex.Message}" }, rid);
-            }
-        }
-
-        private void HandleProvidersList()
-        {
-            string rid = TakeRequestId(MessageTypes.ProvidersList);
-            try
-            {
-                var result = ProvidersService.ListProviders(_controller.Config);
-                SendToFrontend(MessageTypes.ProvidersListResult, result, rid);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"列出 Provider 失败: {ex.Message}" }, rid);
-            }
-        }
-
-        private void HandleProviderSave(JsonElement? payload)
-        {
-            string rid = TakeRequestId(MessageTypes.ProviderSave);
-            try
-            {
-                if (!payload.HasValue)
-                {
-                    SendToFrontend(MessageTypes.Error, new { message = "缺少 payload" }, rid);
-                    return;
-                }
-                var savePayload = JsonSerializer.Deserialize<ProviderSavePayload>(payload.Value.GetRawText(), JsonOpts);
-                bool ok = ProvidersService.SaveProvider(_controller.Config, savePayload);
-                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config), rid);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"保存 Provider 失败: {ex.Message}" }, rid);
-            }
-        }
-
-        private void HandleProviderDelete(JsonElement? payload)
-        {
-            string rid = TakeRequestId(MessageTypes.ProviderDelete);
-            try
-            {
-                string name = null;
-                if (payload.HasValue && payload.Value.TryGetProperty("name", out var prop))
-                    name = prop.GetString();
-                bool ok = ProvidersService.DeleteProvider(_controller.Config, name ?? "");
-                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config), rid);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"删除 Provider 失败: {ex.Message}" }, rid);
-            }
-        }
-
-        private async void HandleProviderFetchModels(JsonElement? payload)
-        {
-            string rid = TakeRequestId(MessageTypes.ProviderFetchModels);
-            try
-            {
-                string name = null;
-                if (payload.HasValue && payload.Value.TryGetProperty("name", out var prop))
-                    name = prop.GetString();
-                var result = await ProvidersService.FetchProviderModelsAsync(_controller.Config, name ?? "");
-                SendToFrontend(MessageTypes.ProviderFetchResult, result, rid);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"拉取模型失败: {ex.Message}" }, rid);
-            }
-        }
-
-        private void HandleProviderSetKey(JsonElement? payload)
-        {
-            string rid = TakeRequestId(MessageTypes.ProviderSetKey);
-            try
-            {
-                if (!payload.HasValue) return;
-                string name = null, key = null;
-                if (payload.Value.TryGetProperty("name", out var n)) name = n.GetString();
-                if (payload.Value.TryGetProperty("apiKey", out var k)) key = k.GetString();
-                ProvidersService.SetProviderKey(_controller.Config, name ?? "", key ?? "");
-                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config), rid);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"设置 Key 失败: {ex.Message}" }, rid);
-            }
-        }
-
-        // ════════════════════════════════════════
-        //  Skills 管理
-        // ════════════════════════════════════════
-
-        private void HandleSkillsList(string requestId)
-        {
-            try
-            {
-                var skills = _controller.Skills.ListSkills();
-                var sources = _controller.Skills.ListSources();
-
-                // 合并内置工具作为技能条目（从 ToolExecutor 注册的工具自动生成）
-                var existingNames = new System.Collections.Generic.HashSet<string>(
-                    skills.Select(s => s.Name), System.StringComparer.OrdinalIgnoreCase);
-
-                foreach (var handler in _controller.Executor.GetAllHandlers())
-                {
-                    if (existingNames.Contains(handler.Name)) continue;
-
-                    // 跳过内部工具（不暴露给用户的）
-                    if (handler.Name == "todo_write" || handler.Name == "complete_step" || handler.Name == "memory") continue;
-
-                    skills.Add(new Core.Skills.SkillInfo
-                    {
-                        Name = handler.Name,
-                        Description = handler.Description,
-                        Scope = "builtin",
-                        RunAs = "inline",
-                        Enabled = true,
-                        Tags = new[] { "内置", "工具" }
-                    });
-                }
-
-                SendToFrontend(MessageTypes.SkillsList, new { skills, sources }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"获取技能列表失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        private void HandleSkillsToggle(JsonElement? payload, string requestId)
-        {
-            try
-            {
-                string name = null;
-                if (payload.HasValue && payload.Value.TryGetProperty("name", out var n))
-                    name = n.GetString();
-
-                if (string.IsNullOrEmpty(name))
-                {
-                    SendToFrontend(MessageTypes.Error, new { message = "缺少技能名称" }, requestId);
-                    return;
-                }
-
-                var enabled = _controller.Skills.ToggleSkill(name);
-                SendToFrontend(MessageTypes.SkillsToggle, new { name, enabled }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"切换技能失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        private void HandleSkillsAddSource(JsonElement? payload, string requestId)
-        {
-            try
-            {
-                string path = null;
-                if (payload.HasValue && payload.Value.TryGetProperty("path", out var p))
-                    path = p.GetString();
-
-                if (string.IsNullOrEmpty(path))
-                {
-                    SendToFrontend(MessageTypes.Error, new { message = "缺少路径" }, requestId);
-                    return;
-                }
-
-                var added = _controller.Skills.AddSource(path);
-                var sources = _controller.Skills.ListSources();
-                SendToFrontend(MessageTypes.SkillsAddSource, new { added, sources }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"添加来源失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        private void HandleSkillsRemoveSource(JsonElement? payload, string requestId)
-        {
-            try
-            {
-                string path = null;
-                if (payload.HasValue && payload.Value.TryGetProperty("path", out var p))
-                    path = p.GetString();
-
-                var removed = _controller.Skills.RemoveSource(path ?? "");
-                var sources = _controller.Skills.ListSources();
-                SendToFrontend(MessageTypes.SkillsRemoveSource, new { removed, sources }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"移除来源失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        private void HandleSkillsRefresh(string requestId)
-        {
-            try
-            {
-                _controller.Skills.Refresh();
-                var skills = _controller.Skills.ListSkills();
-                var sources = _controller.Skills.ListSources();
-                SendToFrontend(MessageTypes.SkillsList, new { skills, sources }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"刷新技能失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        // ════════════════════════════════════════
-        //  Memory 管理
-        // ════════════════════════════════════════
-
-        private void HandleMemoryList(string requestId)
-        {
-            try
-            {
-                var memories = _controller.Memory.List();
-                SendToFrontend(MessageTypes.MemoryList, new { memories }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"获取记忆列表失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        private void HandleMemorySave(JsonElement? payload, string requestId)
-        {
-            try
-            {
-                if (!payload.HasValue)
-                {
-                    SendToFrontend(MessageTypes.Error, new { message = "缺少记忆数据" }, requestId);
-                    return;
-                }
-
-                var entry = new E3DCopilot.Core.Memory.MemoryEntry();
-                if (payload.Value.TryGetProperty("title", out var t)) entry.Title = t.GetString();
-                if (payload.Value.TryGetProperty("content", out var c)) entry.Content = c.GetString();
-                if (payload.Value.TryGetProperty("kind", out var k)) entry.Kind = k.GetString();
-                if (payload.Value.TryGetProperty("id", out var id)) entry.Id = id.GetString();
-
-                if (payload.Value.TryGetProperty("tags", out var tagsArr) && tagsArr.ValueKind == JsonValueKind.Array)
-                {
-                    var tags = new List<string>();
-                    foreach (var tag in tagsArr.EnumerateArray())
-                        tags.Add(tag.GetString());
-                    entry.Tags = tags.ToArray();
-                }
-
-                var saved = _controller.Memory.Save(entry);
-                SendToFrontend(MessageTypes.MemorySave, new { memory = saved }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"保存记忆失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        private void HandleMemoryDelete(JsonElement? payload, string requestId)
-        {
-            try
-            {
-                string id = null;
-                if (payload.HasValue && payload.Value.TryGetProperty("id", out var idProp))
-                    id = idProp.GetString();
-
-                if (string.IsNullOrEmpty(id))
-                {
-                    SendToFrontend(MessageTypes.Error, new { message = "缺少记忆 ID" }, requestId);
-                    return;
-                }
-
-                var deleted = _controller.Memory.Delete(id);
-                SendToFrontend(MessageTypes.MemoryDelete, new { id, deleted }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"删除记忆失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        // ════════════════════════════════════════
-        //  Settings 管理
-        // ════════════════════════════════════════
-
-        private void HandleSettingsSave(JsonElement? payload, string requestId)
-        {
-            try
-            {
-                if (!payload.HasValue)
-                {
-                    SendToFrontend(MessageTypes.Error, new { message = "缺少设置数据" }, requestId);
-                    return;
-                }
-
-                string key = null, value = null;
-                if (payload.Value.TryGetProperty("key", out var k)) key = k.GetString();
-                if (payload.Value.TryGetProperty("value", out var v)) value = v.GetString();
-
-                if (string.IsNullOrEmpty(key))
-                {
-                    SendToFrontend(MessageTypes.Error, new { message = "缺少设置键" }, requestId);
-                    return;
-                }
-
-                // 持久化到 Config
-                var config = _controller.Config;
-                switch (key)
-                {
-                    // === UI 设置 ===
-                    case "language":
-                        config.Ui.Language = value ?? "zh-CN";
-                        break;
-                    case "theme":
-                        config.Ui.Theme = value ?? "light";
-                        break;
-                    case "fontSize":
-                        if (int.TryParse(value, out var fontSize))
-                            config.Ui.FontSize = fontSize;
-                        break;
-                    case "fontFamily":
-                    case "font":
-                        config.Ui.FontFamily = value ?? "default";
-                        break;
-                    case "defaultMode":
-                        config.Ui.DefaultMode = value ?? "act";
-                        break;
-                    case "notifications":
-                        if (bool.TryParse(value, out var notifications))
-                            config.Ui.Notifications = notifications;
-                        break;
-                    case "soundEnabled":
-                        if (bool.TryParse(value, out var soundEnabled))
-                            config.Ui.SoundEnabled = soundEnabled;
-                        break;
-                    // === 安全设置 ===
-                    case "autoApproveTools":
-                        if (bool.TryParse(value, out var autoTools))
-                            config.Safety.AutoApproveTools = autoTools;
-                        break;
-                    case "autoApproveEdits":
-                        if (bool.TryParse(value, out var autoEdits))
-                            config.Safety.AutoApproveEdits = autoEdits;
-                        break;
-                    // === 模型参数 ===
-                    case "temperature":
-                        if (double.TryParse(value, out var temp))
-                        {
-                            var (prov, _) = config.ResolveModel(config.DefaultModel);
-                            if (prov != null) prov.Temperature = temp;
-                        }
-                        break;
-                    case "maxTokens":
-                        if (int.TryParse(value, out var maxTokens))
-                        {
-                            var (prov, _) = config.ResolveModel(config.DefaultModel);
-                            if (prov != null) prov.MaxTokens = maxTokens;
-                        }
-                        break;
-                    case "maxSteps":
-                        if (int.TryParse(value, out var maxSteps))
-                            config.Ui.MaxSteps = maxSteps;
-                        break;
-                    case "version":
-                        config.Ui.Version = value ?? "2.0.0";
-                        break;
-                    case "aboutUrl":
-                        config.Ui.AboutUrl = value ?? "";
-                        break;
-                    default:
-                        // 未知键 — 静默忽略
-                        break;
-                }
-
-                config.Save();
-                SendToFrontend(MessageTypes.SettingsSave, new { key, value, saved = true }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"保存设置失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        // ════════════════════════════════════════
-        //  Sessions 管理
-        // ════════════════════════════════════════
-
-        private void HandleSessionsList(string requestId)
-        {
-            try
-            {
-                var tabInfos = _controller.GetTabSessionInfos();
-                var sessions = tabInfos.Select(t => new
-                {
-                    id = t.SessionId,
-                    tabId = t.TabId,
-                    title = $"会话 {t.TabId.Substring(0, Math.Min(8, t.TabId.Length))}",
-                    messageCount = t.MessageCount,
-                    isPlanMode = t.IsPlanMode,
-                    isActive = t.TabId == _controller.ActiveTabId,
-                }).ToList();
-
-                // 如果没有 tab session，至少返回当前 session
-                if (sessions.Count == 0 && _controller.Session != null)
-                {
-                    sessions.Add(new
-                    {
-                        id = _controller.Session.SessionId,
-                        tabId = _controller.ActiveTabId ?? "default",
-                        title = "当前会话",
-                        messageCount = _controller.Session.Messages?.Count ?? 0,
-                        isPlanMode = _controller.Session.IsPlanMode,
-                        isActive = true,
-                    });
-                }
-
-                SendToFrontend(MessageTypes.SessionsList, new { sessions }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"获取会话列表失败: {ex.Message}" }, requestId);
-            }
-        }
-
-        private void HandleSessionsDelete(JsonElement? payload, string requestId)
-        {
-            try
-            {
-                string id = null;
-                if (payload.HasValue && payload.Value.TryGetProperty("id", out var idProp))
-                    id = idProp.GetString();
-
-                // 当前实现只支持清空当前会话
-                _controller.NewSession();
-                SendToFrontend(MessageTypes.SessionsDelete, new { id, deleted = true }, requestId);
-            }
-            catch (Exception ex)
-            {
-                SendToFrontend(MessageTypes.Error, new { message = $"删除会话失败: {ex.Message}" }, requestId);
-            }
-        }
-
         // ════════════════════════════════════════
         //  原生对话框
         // ════════════════════════════════════════
@@ -1098,18 +621,6 @@ namespace E3DCopilot.WebHost
             {
                 SendToFrontend(MessageTypes.Error, new { message = $"打开文件对话框失败: {ex.Message}" }, requestId);
             }
-        }
-
-        /// <summary>
-        /// 根据 Config 重新构建 Provider 实例（用于切换模型后让 Controller 指向新 Provider）
-        /// </summary>
-        private ICopilotProvider BuildProviderFromConfig(CopilotConfig config)
-        {
-            var (prov, modelName) = config.ResolveModel(config.DefaultModel);
-            if (prov == null) return _controller.Provider;
-            if (prov.Kind == "anthropic")
-                throw new NotSupportedException("Anthropic Provider not yet implemented");
-            return new VllmProvider(prov.BaseUrl, modelName, prov.ApiKey);
         }
     }
 }

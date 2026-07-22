@@ -14,7 +14,7 @@
 
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { useChatStore } from '@/store/useChatStore'
+import { useChatStore, useActiveTab } from '@/store/useChatStore'
 import type { Message } from '@/types'
 import { MessageRow } from './MessageRow'
 import { ToolGroup, groupConsecutiveTools, type ToolGroupKind } from './ToolGroup'
@@ -22,6 +22,7 @@ import { ApprovalCard } from './ApprovalCard'
 import { AskUserCard } from './AskUserCard'
 import { TodoPanel } from './TodoPanel'
 import { SubagentPanel } from './SubagentPanel'
+import { SearchOverlay } from './SearchOverlay'
 
 // ── 分层常量 ──
 const HOT_TURNS = 8
@@ -154,10 +155,7 @@ function buildDisplayItems(
 }
 
 export function MessageList() {
-  const messages = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.messages ?? [])
-  const pendingApproval = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.pendingApproval ?? null)
-  const pendingQuestion = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.pendingQuestion ?? null)
-  const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false)
+  const { messages, isStreaming, pendingApproval, pendingQuestion } = useActiveTab()
   const parentRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -269,19 +267,16 @@ export function MessageList() {
     return last ? (last.content?.length ?? 0) : 0
   }, [messages])
 
-  // 新消息到达或 content 增长时自动滚动
+  // 新消息到达、content 增长、或审批/提问卡片出现时自动滚动
   useEffect(() => {
-    if (autoScrollRef.current && messages.length > 0) {
-      parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: 'auto' })
-    }
-  }, [messages.length, lastMsgContentLen])
-
-  // 审批/提问卡片出现时自动滚动到底部（该状态不触发 messages.length 变化）
-  useEffect(() => {
-    if (autoScrollRef.current && (pendingApproval != null || pendingQuestion != null)) {
-      parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: 'smooth' })
-    }
-  }, [pendingApproval, pendingQuestion])
+    if (!autoScrollRef.current || messages.length === 0) return
+    // 审批/提问卡片出现时使用 smooth 滚动，其他情况使用 auto
+    const hasCard = pendingApproval != null || pendingQuestion != null
+    parentRef.current?.scrollTo({
+      top: parentRef.current.scrollHeight,
+      behavior: hasCard ? 'smooth' : 'auto',
+    })
+  }, [messages.length, lastMsgContentLen, pendingApproval, pendingQuestion])
 
   useEffect(() => {
     if (messages.length === 0) {
@@ -325,11 +320,12 @@ export function MessageList() {
     }
     const msg = item.msg
     const toolId = msg.toolId || msg.id
-    return <MessageRow key={key} msg={msg} subcalls={subcallMap.get(toolId)} allMessages={allMsgs} />
+    return <MessageRow key={key} msg={msg} subcalls={subcallMap.get(toolId)} allMessages={allMsgs} isStreaming={isStreaming} />
   }
 
   return (
     <div className="transcript-shell" style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, height: '100%' }}>
+      <SearchOverlay />
       <div ref={parentRef} onScroll={handleScroll} className="transcript">
         <div>
           {/* ═══════ Cold zone：加载更多 ═══════ */}
@@ -471,7 +467,7 @@ function FoldedStep({
             }
             const msg = item.msg
             const toolId = msg.toolId || msg.id
-            return <MessageRow key={`fm-${i}`} msg={msg} subcalls={subcalls.get(toolId)} allMessages={allMessages} />
+            return <MessageRow key={`fm-${i}`} msg={msg} subcalls={subcalls.get(toolId)} allMessages={allMessages} isStreaming={false} />
           })}
         </div>
       </div>
