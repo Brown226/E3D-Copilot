@@ -8,6 +8,7 @@ using E3DCopilot.Core.Config;
 using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Memory;
 using E3DCopilot.Core.Providers;
+using E3DCopilot.Core.Recovery;
 using E3DCopilot.Core.Tools.Mcp;
 using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Security;
@@ -95,6 +96,14 @@ namespace E3DCopilot.Core
         // ── 会话持久化 & 操作快照（对齐 Reasonix save.go + checkpoint.go）──
         public SessionStore Sessions { get; }
         public CheckpointManager Checkpoints { get; }
+
+        // ── 恢复与稳定性模块（对齐 Reasonix recovery + crash + watchdog）──
+        public CrashDetector CrashDetector { get; }
+        public SafeMode SafeMode { get; }
+        public HangWatchdog Watchdog { get; }
+        public GoalController Goal { get; }
+        public ProgressGuard ProgressGuard { get; }
+        public MemoryDiscovery MemoryDocs { get; private set; }
 
         // ── 对话执行轨迹记录器（AI 诊断用）──
         public Logging.ConversationTracer Tracer { get; }
@@ -213,6 +222,32 @@ namespace E3DCopilot.Core
             Sessions = new SessionStore(System.IO.Path.Combine(dataDir, "sessions"));
             Checkpoints = new CheckpointManager(System.IO.Path.Combine(dataDir, "checkpoints"));
 
+            // ── 恢复与稳定性模块初始化（对齐 Reasonix startup flow）──
+            CrashDetector = new CrashDetector(dataDir);
+            bool crashed = CrashDetector.DetectAndArm();
+            SafeMode = new SafeMode(CrashDetector);
+            if (crashed)
+            {
+                SafeMode.Evaluate();
+                if (SafeMode.IsActive)
+                    CopilotLogger.Info("安全模式已激活: {0}", SafeMode.Reason);
+                // 通知前端上次崩溃
+                _sink?.Emit(CopilotEvent.Notice(
+                    $"⚠️ 检测到上次异常退出（连续第 {CrashDetector.ConsecutiveCrashes} 次）。" +
+                    (SafeMode.IsActive ? " 已进入安全模式。" : " 会话已恢复。")));
+            }
+
+            Watchdog = new HangWatchdog(_sink);
+            Watchdog.Start();
+
+            Goal = new GoalController(_sink);
+            ProgressGuard = new ProgressGuard(_sink);
+
+            // ── 层级记忆发现（对齐 Reasonix memory.Load）──
+            MemoryDocs = MemoryDiscovery.Load(
+                cwd: AppDomain.CurrentDomain.BaseDirectory,
+                userDir: dataDir);
+
             // 初始化对话轨迹记录器（开发调试用，记录完整思考链+工具执行+Token统计）
             Tracer = new Logging.ConversationTracer(
                 System.IO.Path.Combine(dataDir, "traces"),
@@ -229,6 +264,10 @@ namespace E3DCopilot.Core
             // 注册 memory 工具（需要 MemoryManager，在 CreateDefault 之后）
             if (Executor.GetHandler("memory") == null)
                 Executor.Register(new Tools.Handlers.MemoryHandler(Memory, _sink));
+
+            // 注册 history 工具（需要 SessionStore）
+            if (Executor.GetHandler("history") == null)
+                Executor.Register(new Tools.Handlers.HistoryHandler(Sessions, _sink));
 
             _session = new CopilotSession();
 
@@ -364,6 +403,9 @@ namespace E3DCopilot.Core
                 _isRunning = true;
                 _cts = new CancellationTokenSource();
 
+                // ── 看门狗关联当前操作（超时时自动取消）──
+                Watchdog.WatchOperation(_cts);
+
                 _agent = new AgentLoop(Provider, _sink, Executor, Permission, Config, this, skillManager: Skills,
                     stormSig: StormSig, stormCount: StormCount, tracer: Tracer);
 
@@ -379,12 +421,33 @@ namespace E3DCopilot.Core
                 Sessions.Save(_session);
                 Sessions.MarkClean(_session?.SessionPath);
 
+                // ── 看门狗操作完成 ──
+                Watchdog.OperationComplete();
+
+                // ── Goal 模式：检查是否继续 ──
+                if (Goal.IsActive)
+                {
+                    string lastText = _session.LastAssistantText();
+                    string continuation = Goal.OnTurnComplete(lastText, false);
+                    if (continuation != null)
+                    {
+                        // 自动续轮：将 continuation 作为下一轮输入
+                        _sink?.Emit(CopilotEvent.Notice($"🎯 Goal 续轮 ({Goal.TurnCount})"));
+                        // 递归调用（受 SemaphoreSlim 保护，不会并发）
+                        _sendLock.Release();
+                        _isRunning = false;
+                        await SendAsync(continuation);
+                        return;
+                    }
+                }
+
                 // 正常完成时也要触发 TurnDone
                 try { _sink?.Emit(CopilotEvent.TurnDone()); } catch { }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[Controller] SendAsync exception: {ex}");
+                Watchdog.OperationComplete();
                 try { _sink?.Emit(CopilotEvent.TurnDone()); } catch { }
             }
             finally
@@ -668,6 +731,13 @@ namespace E3DCopilot.Core
             }
             
             _cts = null;
+
+            // ── 停止看门狗 ──
+            Watchdog?.Dispose();
+
+            // ── 正常退出：解除崩溃标记 ──
+            CrashDetector?.Disarm();
+
             // 拒绝所有待处理的审批
             foreach (var kvp in _pendingApprovals.ToArray())
             {

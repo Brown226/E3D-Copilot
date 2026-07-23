@@ -17,7 +17,7 @@ namespace E3DCopilot.Core.Events
         ToolDispatch,       // 工具调用开始
         ToolResult,         // 工具执行结果
         ToolError,          // 工具执行错误
-        ToolProgress,       // 工具执行进度（长时操作）
+        ToolProgress,       // 工具执行进度（长时操作 / MCP notifications/progress）
         Usage,              // Token 用量
         Notice,             // 通知/警告
         ApprovalRequest,    // 审批请求
@@ -26,6 +26,12 @@ namespace E3DCopilot.Core.Events
         PlanModeChanged,    // Plan Mode 切换
         Error,              // 错误
         Retry,              // 重试
+        // ── Phase 4.4 新增（对齐 Reasonix event.Kind 完整列表） ──
+        CompactionStarted,  // 上下文压缩开始
+        CompactionDone,     // 上下文压缩完成
+        GoalStarted,        // Goal 模式启动
+        GoalDone,           // Goal 模式结束
+        McpProgress,        // MCP 进度通知（notifications/progress）
     }
 
     /// <summary>
