@@ -38,6 +38,7 @@ namespace E3DCopilot.Core
         private readonly CopilotController _controller;
         private readonly SkillManager _skillManager;
         private readonly Logging.ConversationTracer _tracer;
+        private readonly ContextCompactor _compactor;
 
         private int MaxSteps => _config?.Ui?.MaxSteps > 0 ? _config.Ui.MaxSteps : 20;
 
@@ -78,6 +79,7 @@ namespace E3DCopilot.Core
             _tracer = tracer;
             StormSig = stormSig;
             StormCount = stormCount;
+            _compactor = new ContextCompactor(_provider, _sink, _config);
         }
 
         private ToolPolicy CreateDefaultToolPolicy()
@@ -762,6 +764,7 @@ namespace E3DCopilot.Core
                             _tracer?.RecordTokens(
                                 chunk.UsageData?.PromptTokens ?? 0,
                                 chunk.UsageData?.CompletionTokens ?? 0);
+                            _compactor?.UpdateUsage(chunk.UsageData);
                             _sink.Emit(new CopilotEvent
                             {
                                 Kind = EventKind.Usage,
@@ -935,83 +938,14 @@ namespace E3DCopilot.Core
         }
 
         // ═══════════════════════════════════════════════════════════
-        //  MaybeCompact — 上下文压缩（对齐 Reasonix maybeCompact）
-        //  从 _config.Ui.CompactRatio + CompactTriggerMessages 读取参数
+        //  MaybeCompact — 上下文压缩（委托给 ContextCompactor 三级机制）
+        //  对齐 Reasonix maybeCompact: SoftNotice → Snip → Prune → Summary
         // ═══════════════════════════════════════════════════════════
 
         private async Task MaybeCompactAsync(CopilotSession session, CancellationToken ct)
         {
-            double ratio = _config?.Ui?.CompactRatio ?? 0.8;
-            int trigger = _config?.Ui?.CompactTriggerMessages ?? 15;
-            if (ratio <= 0) return; // 禁用
-
-            var msgs = session.Messages;
-            int assistantCount = msgs.Count(m => m.Role == MessageRole.Assistant);
-            if (assistantCount <= trigger) return;
-
-            // 找到保留分割点：保留尾部（按 CompactRatio 取反比，最少 6 条）
-            int keepTail = Math.Max(6, (int)(msgs.Count * (1.0 - ratio)));
-            int keepFrom = Math.Max(0, msgs.Count - keepTail);
-            // 确保分割点后的首条消息不是孤立的 tool 消息
-            while (keepFrom < msgs.Count && msgs[keepFrom].Role == MessageRole.Tool)
-                keepFrom++;
-            if (keepFrom >= msgs.Count) return; // 保护：无有效消息可保留
-
-            // 构建摘要：优先用 LLM 摘要，失败则回退到机械摘要
-            var oldMsgs = msgs.Take(keepFrom).ToList();
-            string summary;
-            try
-            {
-                summary = await BuildCompactSummaryAsync(oldMsgs, ct);
-            }
-            catch
-            {
-                summary = BuildCompactSummary(oldMsgs);
-            }
-
-            // 替换：摘要 system 消息 + 尾部原样保留
-            var tail = msgs.Skip(keepFrom).ToList();
-            msgs.Clear();
-            msgs.Add(new ChatMessage(MessageRole.System,
-                $"<compaction-summary>\n{summary}\n</compaction-summary>"));
-            msgs.AddRange(tail);
-
-            _tracer?.RecordSystemEvent($"上下文已压缩: {oldMsgs.Count} 条消息 → 摘要, {tail.Count} 条原样保留");
-            _sink.Emit(CopilotEvent.Notice(
-                $"上下文已压缩: {oldMsgs.Count} 条消息 → 摘要, {tail.Count} 条原样保留"));
-        }
-
-        private string BuildCompactSummary(List<ChatMessage> messages)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("## Earlier conversation summary");
-
-            string currentGoal = "";
-            foreach (var msg in messages)
-            {
-                if (msg.Role == MessageRole.User && !string.IsNullOrEmpty(msg.Content))
-                {
-                    // 提取用户目标
-                    string trimmed = msg.Content.Length > 200
-                        ? msg.Content.Substring(0, 200) + "..."
-                        : msg.Content;
-                    if (currentGoal != trimmed)
-                    {
-                        sb.AppendLine($"- User asked: {trimmed}");
-                        currentGoal = trimmed;
-                    }
-                }
-                else if (msg.Role == MessageRole.Assistant && !string.IsNullOrEmpty(msg.Content))
-                {
-                    // 提取助手首句作为响应摘要
-                    string firstLine = msg.Content.Split(new[] { '\n' }, 2)[0];
-                    if (firstLine.Length > 150)
-                        firstLine = firstLine.Substring(0, 150) + "...";
-                    sb.AppendLine($"  → {firstLine}");
-                }
-            }
-
-            return sb.ToString();
+            if (_compactor == null) return;
+            await _compactor.MaybeCompactAsync(session, ct);
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -1184,96 +1118,5 @@ namespace E3DCopilot.Core
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  BuildCompactSummaryAsync — LLM 摘要压缩（对齐 Reasonix summarize）
-        //  将旧消息转录为文本，调用 LLM 生成结构化摘要
-        // ═══════════════════════════════════════════════════════════
-
-        private async Task<string> BuildCompactSummaryAsync(List<ChatMessage> messages, CancellationToken ct)
-        {
-            // 构建转录文本
-            var transcript = new StringBuilder();
-            foreach (var m in messages)
-            {
-                switch (m.Role)
-                {
-                    case MessageRole.User:
-                        transcript.AppendLine($"[user]\n{m.Content}");
-                        break;
-                    case MessageRole.Assistant:
-                        if (!string.IsNullOrEmpty(m.Content))
-                            transcript.AppendLine($"[assistant]\n{m.Content}");
-                        if (m.ToolCalls != null)
-                        {
-                            foreach (var tc in m.ToolCalls)
-                                transcript.AppendLine($"[assistant calls {tc.Name}] {SummarizeToolArgs(tc.Arguments)}");
-                        }
-                        break;
-                    case MessageRole.Tool:
-                        string content = m.Content ?? "";
-                        if (content.Length > 200)
-                            content = content.Substring(0, 200) + "...";
-                        transcript.AppendLine($"[tool result]\n{content}");
-                        break;
-                }
-            }
-
-            string sysPrompt =
-                "You are compacting the earlier part of a coding agent's conversation to save context. " +
-                "Write under these exact headings, omitting a heading only if it has no content:\n\n" +
-                "## Goal\nThe user's request and intent.\n\n" +
-                "## Decisions & rationale\nKey choices made so far and why.\n\n" +
-                "## Files & code\nFiles read or modified, with specific facts that matter.\n\n" +
-                "## Commands & outcomes\nCommands run and their relevant results.\n\n" +
-                "## Pending & next step\nWhat is still in progress and the single most concrete next action.\n\n" +
-                "Rules: be terse — bullet points and fragments. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages.";
-
-            var modelRef = !string.IsNullOrEmpty(_controller?.CurrentModelName)
-                ? _controller.CurrentModelName
-                : _config.DefaultModel;
-            var (providerConfig, modelName) = _config.ResolveModel(modelRef);
-
-            var summaryRequest = new CopilotRequest
-            {
-                Model = modelName,
-                Messages = new List<ChatMessage>
-                {
-                    new ChatMessage(MessageRole.System, sysPrompt),
-                    new ChatMessage(MessageRole.User, transcript.ToString())
-                },
-                Temperature = 0.1,
-                MaxTokens = 2048
-            };
-
-            var sb = new StringBuilder();
-            await _provider.StreamAsync(summaryRequest, chunk =>
-            {
-                if (chunk.Type == ChunkType.Text && !string.IsNullOrEmpty(chunk.Content))
-                    sb.Append(chunk.Content);
-            }, ct);
-
-            string result = sb.ToString().Trim();
-            if (string.IsNullOrEmpty(result))
-                throw new InvalidOperationException("LLM 返回空摘要");
-            return result;
-        }
-
-        /// <summary>
-        /// 工具参数摘要：提取 key 列表而非完整 JSON，防止摘要中泄漏过长参数
-        /// </summary>
-        private static string SummarizeToolArgs(string args)
-        {
-            if (string.IsNullOrEmpty(args)) return "(no arguments)";
-            try
-            {
-                var parsed = JObject.Parse(args);
-                var keys = parsed.Properties().Select(p => p.Name).ToList();
-                return $"{{{string.Join(", ", keys)}}} ({keys.Count} keys)";
-            }
-            catch
-            {
-                return $"({args.Length} bytes)";
-            }
-        }
     }
 }

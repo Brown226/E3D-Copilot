@@ -143,6 +143,55 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
+        /// 回退到第 N 个 checkpoint（对齐 Reasonix /rewind N）。
+        /// index=1 表示最近一个，index=2 表示倒数第二个，以此类推。
+        /// 回退后删除该 checkpoint 之后的所有 checkpoint。
+        /// </summary>
+        public int RewindTo(int index)
+        {
+            if (index < 1) return 0;
+
+            var list = ListCheckpoints(); // 已按时间降序
+            if (index > list.Count) return 0;
+
+            var target = list[index - 1];
+            int restored = RollbackCheckpoint(target.Id);
+
+            // 删除 target 之后的所有 checkpoint（比 target 更新的）
+            for (int i = 0; i < index - 1; i++)
+            {
+                Delete(list[i].Id);
+            }
+
+            CopilotLogger.Info("CheckpointManager.RewindTo({0}): 回退到 {1}, 恢复 {2} 个文件, 删除 {3} 个更新的 checkpoint",
+                index, target.Id, restored, index - 1);
+            return restored;
+        }
+
+        /// <summary>
+        /// 工具执行前自动 checkpoint（对齐 Reasonix 每步工具执行前快照）。
+        /// 在 AgentLoop.ExecuteOneAsync 中调用，确保每次写操作前都有回退点。
+        /// </summary>
+        public void AutoCheckpointBeforeTool(string toolName, string args)
+        {
+            lock (_lock)
+            {
+                if (_current == null)
+                {
+                    // 如果没有活跃 turn checkpoint，创建一个临时的
+                    _current = new Checkpoint
+                    {
+                        Id = $"ckpt_auto_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N").Substring(0, 4)}",
+                        Turn = -1, // 标记为自动 checkpoint
+                        Prompt = $"[auto] before {toolName}",
+                        StartedAt = DateTime.UtcNow,
+                        Operations = new List<CheckpointOperation>()
+                    };
+                }
+            }
+        }
+
+        /// <summary>
         /// 记录一次写操作（在工具执行后调用，对齐 Reasonix Snapshot）
         /// </summary>
         public void RecordOperation(string toolName, string args,

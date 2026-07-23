@@ -119,6 +119,12 @@ namespace E3DCopilot.Core.Config
             public double CompactRatio { get; set; } = 0.8;
             /// <summary>Context Compaction 触发阈值：assistant 消息数超过此值才检查压缩（硬阈值，避免短对话触发）</summary>
             public int CompactTriggerMessages { get; set; } = 15;
+            /// <summary>Soft Notice 比例（达到此比例时仅通知，不修改上下文）</summary>
+            public double SoftCompactRatio { get; set; } = 0.5;
+            /// <summary>Tool Result Snip 比例（达到此比例时截断过期工具结果）</summary>
+            public double ToolResultSnipRatio { get; set; } = 0.6;
+            /// <summary>Force Compact 比例（达到此比例时强制压缩，跳过经济性检查）</summary>
+            public double CompactForceRatio { get; set; } = 0.9;
             /// <summary>版本号（如 2.1.0）</summary>
             public string Version { get; set; } = "2.0.0";
             /// <summary>在线说明书链接</summary>

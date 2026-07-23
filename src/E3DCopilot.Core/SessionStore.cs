@@ -85,6 +85,37 @@ namespace E3DCopilot.Core
             }
         }
 
+        /// <summary>
+        /// 增量追加单条消息到 JSONL 文件（对齐 Reasonix autosave 增量模式）。
+        /// 比全量 Save 更轻量，适合每步工具执行后调用。
+        /// </summary>
+        public void AppendMessage(CopilotSession session, ChatMessage msg)
+        {
+            if (session == null || msg == null) return;
+
+            string path = session.SessionPath;
+            if (string.IsNullOrEmpty(path))
+            {
+                path = NewSessionPath();
+                session.SessionPath = path;
+            }
+
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                var dto = ToDto(msg);
+                string line = JsonConvert.SerializeObject(dto, Formatting.None);
+                File.AppendAllText(path, line + Environment.NewLine, System.Text.Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                CopilotLogger.Error(ex, "SessionStore.AppendMessage failed: {0}", path);
+            }
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  Load — 从 JSONL 恢复会话（对齐 Reasonix LoadSession）
         // ═══════════════════════════════════════════════════════════

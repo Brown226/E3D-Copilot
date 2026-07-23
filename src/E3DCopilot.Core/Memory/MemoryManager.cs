@@ -1,18 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Microsoft.Data.Sqlite;
 using Newtonsoft.Json;
 
 namespace E3DCopilot.Core.Memory
 {
     /// <summary>
-    /// 记忆管理器 — SQLite 持久化存储
+    /// 记忆管理器 — SQLite 持久化存储 + 归档 + BM25 检索 + MEMORY.md 索引
+    /// 对齐 Reasonix internal/memory/ 的 auto-memory Store 设计
     /// </summary>
     public class MemoryManager : IDisposable
     {
         private readonly string _dbPath;
+        private readonly string _baseDir;
+        private readonly string _archiveDir;
         private SqliteConnection _connection;
+        private BM25Index _searchIndex;
 
         public MemoryManager(string dbPath = null)
         {
@@ -20,12 +25,18 @@ namespace E3DCopilot.Core.Memory
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "E3DCopilot", "memories.db");
 
-            var dir = Path.GetDirectoryName(_dbPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
+            _baseDir = Path.GetDirectoryName(_dbPath) ?? ".";
+            _archiveDir = Path.Combine(_baseDir, "archive");
+
+            if (!string.IsNullOrEmpty(_baseDir) && !Directory.Exists(_baseDir))
+                Directory.CreateDirectory(_baseDir);
 
             InitializeDatabase();
+            RebuildSearchIndex();
         }
+
+        /// <summary>BM25 搜索索引（延迟重建）</summary>
+        public BM25Index SearchIndex => _searchIndex;
 
         private void InitializeDatabase()
         {
@@ -109,20 +120,106 @@ namespace E3DCopilot.Core.Memory
                 cmd.ExecuteNonQuery();
             }
 
+            // 更新搜索索引
+            _searchIndex?.Remove(entry.Id);
+            _searchIndex?.Add(entry.Id, $"{entry.Title} {entry.Content} {string.Join(" ", entry.Tags ?? new string[0])}", entry.Kind);
+            RegenerateIndex();
+
             return entry;
         }
 
         /// <summary>
-        /// 删除记忆
+        /// 删除记忆（归档而非真删，对齐 Reasonix forget → archive）
         /// </summary>
         public bool Delete(string id)
         {
+            // 先归档再删除
+            ArchiveEntry(id);
+
             using (var cmd = _connection.CreateCommand())
             {
                 cmd.CommandText = "DELETE FROM memories WHERE id = @id";
                 cmd.Parameters.AddWithValue("@id", id);
-                return cmd.ExecuteNonQuery() > 0;
+                bool deleted = cmd.ExecuteNonQuery() > 0;
+                if (deleted)
+                {
+                    _searchIndex?.Remove(id);
+                    RegenerateIndex();
+                }
+                return deleted;
             }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  Remember / Forget — 对齐 Reasonix auto-memory remember/forget
+        //  写入需人工审批（由 MemoryHandler 的 ApprovalMode.Ask 保证）
+        // ═══════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 记住一条新知识（对齐 Reasonix remember tool）。
+        /// 自动去重：如果标题高度相似则更新而非新建。
+        /// </summary>
+        public MemoryEntry Remember(string title, string content, string kind = "project_context", string[] tags = null)
+        {
+            if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(content))
+                return null;
+
+            // 去重：查找标题相似的已有记忆
+            var existing = FindByTitle(title);
+            if (existing != null)
+            {
+                existing.Content = content;
+                if (tags != null) existing.Tags = tags;
+                return Save(existing);
+            }
+
+            var entry = new MemoryEntry
+            {
+                Title = title,
+                Content = content,
+                Kind = kind,
+                Tags = tags ?? new string[0]
+            };
+            return Save(entry);
+        }
+
+        /// <summary>
+        /// 遗忘一条知识（对齐 Reasonix forget tool）。
+        /// 归档到 archive/ 目录，从活跃索引中移除。
+        /// </summary>
+        public bool Forget(string id)
+        {
+            return Delete(id); // Delete 内部已实现归档
+        }
+
+        /// <summary>
+        /// BM25 全文搜索记忆
+        /// </summary>
+        public List<SearchHit> Search(string query, int topK = 10)
+        {
+            if (_searchIndex == null || _searchIndex.Count == 0)
+                return new List<SearchHit>();
+            return _searchIndex.Search(query, topK);
+        }
+
+        /// <summary>
+        /// 获取归档目录路径
+        /// </summary>
+        public string ArchiveDir => _archiveDir;
+
+        /// <summary>
+        /// 列出归档的记忆文件
+        /// </summary>
+        public List<string> ListArchived()
+        {
+            var result = new List<string>();
+            try
+            {
+                if (Directory.Exists(_archiveDir))
+                    result.AddRange(Directory.GetFiles(_archiveDir, "*.json"));
+            }
+            catch { }
+            return result;
         }
 
         /// <summary>
@@ -270,6 +367,105 @@ namespace E3DCopilot.Core.Memory
             catch { }
 
             return sb.ToString().TrimEnd();
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  内部辅助
+        // ═══════════════════════════════════════════════════════════
+
+        /// <summary>按标题模糊查找已有记忆（去重用）</summary>
+        private MemoryEntry FindByTitle(string title)
+        {
+            if (string.IsNullOrWhiteSpace(title)) return null;
+            string titleLower = title.ToLowerInvariant().Trim();
+
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.CommandText = "SELECT * FROM memories";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var entry = ReadEntry(reader);
+                        if ((entry.Title ?? "").ToLowerInvariant().Trim() == titleLower)
+                            return entry;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>归档记忆到 archive/ 目录（JSON 文件）</summary>
+        private void ArchiveEntry(string id)
+        {
+            try
+            {
+                MemoryEntry entry = null;
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT * FROM memories WHERE id = @id";
+                    cmd.Parameters.AddWithValue("@id", id);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                            entry = ReadEntry(reader);
+                    }
+                }
+
+                if (entry == null) return;
+
+                if (!Directory.Exists(_archiveDir))
+                    Directory.CreateDirectory(_archiveDir);
+
+                string archivePath = Path.Combine(_archiveDir,
+                    $"{DateTime.Now:yyyyMMdd-HHmmss}-{id}.json");
+                File.WriteAllText(archivePath,
+                    JsonConvert.SerializeObject(entry, Formatting.Indented), Encoding.UTF8);
+            }
+            catch { /* 归档失败不影响删除操作 */ }
+        }
+
+        /// <summary>重建 BM25 搜索索引</summary>
+        private void RebuildSearchIndex()
+        {
+            _searchIndex = new BM25Index();
+            try
+            {
+                var all = List();
+                foreach (var m in all)
+                {
+                    string text = $"{m.Title} {m.Content} {string.Join(" ", m.Tags ?? new string[0])}";
+                    _searchIndex.Add(m.Id, text, m.Kind);
+                }
+            }
+            catch { /* 索引构建失败不影响基本功能 */ }
+        }
+
+        /// <summary>
+        /// 重新生成 MEMORY.md 索引文件（对齐 Reasonix auto-memory index）
+        /// </summary>
+        private void RegenerateIndex()
+        {
+            try
+            {
+                var all = List();
+                var sb = new StringBuilder();
+                sb.AppendLine("# Memory Index");
+                sb.AppendLine($"> Auto-generated by E3DCopilot. {all.Count} active memories.");
+                sb.AppendLine();
+
+                foreach (var m in all)
+                {
+                    string tags = m.Tags != null && m.Tags.Length > 0
+                        ? $" [{string.Join(", ", m.Tags)}]"
+                        : "";
+                    sb.AppendLine($"- **{m.Title}** ({m.Kind}){tags} — `{m.Id}`");
+                }
+
+                string indexPath = Path.Combine(_baseDir, "MEMORY.md");
+                File.WriteAllText(indexPath, sb.ToString(), Encoding.UTF8);
+            }
+            catch { /* 索引生成失败不影响主流程 */ }
         }
 
         public void Dispose()

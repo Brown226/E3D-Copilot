@@ -50,34 +50,39 @@ namespace E3DCopilot.Core.Tools.Handlers
   ""properties"": {
     ""action"": {
       ""type"": ""string"",
-      ""enum"": [""search"", ""save"", ""delete"", ""list""],
-      ""description"": ""Operation: search(按关键词搜索), save(保存/更新), delete(删除), list(列出全部)""
+      ""enum"": [""search"", ""remember"", ""forget"", ""list"", ""read""],
+      ""description"": ""Operation: search(BM25全文检索), remember(记住新知识), forget(遗忘/归档), list(列出全部), read(读取单条完整内容)""
     },
     ""query"": {
       ""type"": ""string"",
-      ""description"": ""[search] Search keywords — matches title, content, and tags. 搜索关键词""
+      ""description"": ""[search] Search keywords — BM25 ranked retrieval over title, content, and tags. 搜索关键词""
+    },
+    ""scope"": {
+      ""type"": ""string"",
+      ""enum"": [""project"", ""global""],
+      ""description"": ""[search] Search scope: project(current project only) or global(all memories). 搜索范围""
     },
     ""id"": {
       ""type"": ""string"",
-      ""description"": ""[delete] Memory ID to delete. [save] Existing ID to update (omit for new). 记忆ID""
+      ""description"": ""[forget/read] Memory ID. [remember] Existing ID to update (omit for new). 记忆ID""
     },
     ""title"": {
       ""type"": ""string"",
-      ""description"": ""[save] Descriptive title for the memory. 记忆标题""
+      ""description"": ""[remember] Descriptive title for the memory. 记忆标题""
     },
     ""content"": {
       ""type"": ""string"",
-      ""description"": ""[save] The actual content/knowledge to remember. 记忆内容""
+      ""description"": ""[remember] The actual content/knowledge to remember. 记忆内容""
     },
     ""kind"": {
       ""type"": ""string"",
       ""enum"": [""project_context"", ""user_preference"", ""technical_decision"", ""coding_pattern"", ""troubleshooting""],
-      ""description"": ""[save] Memory category. [list] Filter by kind. 记忆分类""
+      ""description"": ""[remember] Memory category. [list] Filter by kind. 记忆分类""
     },
     ""tags"": {
       ""type"": ""array"",
       ""items"": { ""type"": ""string"" },
-      ""description"": ""[save] Tags for categorization and search. 标签数组""
+      ""description"": ""[remember] Tags for categorization and search. 标签数组""
     }
   },
   ""required"": [""action""]
@@ -98,14 +103,18 @@ namespace E3DCopilot.Core.Tools.Handlers
                 {
                     case "search":
                         return Search(json);
-                    case "save":
-                        return Save(json);
-                    case "delete":
-                        return Delete(json);
+                    case "remember":
+                    case "save": // 兼容旧接口
+                        return Remember(json);
+                    case "forget":
+                    case "delete": // 兼容旧接口
+                        return Forget(json);
                     case "list":
                         return List(json);
+                    case "read":
+                        return Read(json);
                     default:
-                        return ToolResult.Fail($"Unknown action: {action}. Supported: search, save, delete, list");
+                        return ToolResult.Fail($"Unknown action: {action}. Supported: search, remember, forget, list, read");
                 }
             }
             catch (Newtonsoft.Json.JsonException ex)
@@ -119,7 +128,7 @@ namespace E3DCopilot.Core.Tools.Handlers
         }
 
         /// <summary>
-        /// 搜索记忆 — 关键词匹配标题、内容、标签
+        /// BM25 全文搜索记忆（对齐 Reasonix memory tool search）
         /// </summary>
         private ToolResult Search(JObject json)
         {
@@ -127,16 +136,49 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (string.IsNullOrWhiteSpace(query))
                 return ToolResult.Fail("query is required for search");
 
-            var allMemories = _memoryManager.List();
-            if (allMemories.Count == 0)
-                return ToolResult.Ok("No memories stored yet. Use action='save' to create one.", null);
+            // 优先使用 BM25 索引
+            var bm25Results = _memoryManager.Search(query, 10);
 
-            // 模糊匹配：标题、内容、标签
+            if (bm25Results.Count > 0)
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine($"Found {bm25Results.Count} memories matching '{query}' (BM25 ranked):");
+                sb.AppendLine();
+
+                var allMemories = _memoryManager.List();
+                var memMap = allMemories.ToDictionary(m => m.Id, m => m);
+
+                foreach (var hit in bm25Results)
+                {
+                    MemoryEntry m;
+                    if (!memMap.TryGetValue(hit.DocId, out m)) continue;
+
+                    sb.AppendLine($"── {m.Title} [{m.Id}] (score: {hit.NormalizedScore:F2}) ──");
+                    sb.AppendLine($"  Kind: {m.Kind}");
+                    if (m.Tags != null && m.Tags.Length > 0)
+                        sb.AppendLine($"  Tags: {string.Join(", ", m.Tags)}");
+
+                    string excerpt = m.Content;
+                    if (excerpt.Length > 300)
+                        excerpt = excerpt.Substring(0, 297) + "...";
+                    sb.AppendLine($"  Content: {excerpt}");
+                    sb.AppendLine();
+                }
+
+                _sink?.Emit(CopilotEvent.Notice($"Memory search: '{query}' → {bm25Results.Count} results (BM25)"));
+                return ToolResult.Ok(sb.ToString().TrimEnd(), new { query, count = bm25Results.Count });
+            }
+
+            // BM25 无结果时回退到关键词匹配
+            var allMem = _memoryManager.List();
+            if (allMem.Count == 0)
+                return ToolResult.Ok("No memories stored yet. Use action='remember' to create one.", null);
+
             string queryLower = query.ToLowerInvariant();
             var keywords = queryLower.Split(new[] { ' ', ',', '，', ';' }, StringSplitOptions.RemoveEmptyEntries);
 
             var matched = new List<(MemoryEntry Entry, int Score)>();
-            foreach (var m in allMemories)
+            foreach (var m in allMem)
             {
                 int score = 0;
                 string titleLower = (m.Title ?? "").ToLowerInvariant();
@@ -144,17 +186,16 @@ namespace E3DCopilot.Core.Tools.Handlers
 
                 foreach (var kw in keywords)
                 {
-                    if (titleLower.Contains(kw)) score += 3;        // 标题匹配权重高
-                    if (contentLower.Contains(kw)) score += 2;       // 内容匹配
+                    if (titleLower.Contains(kw)) score += 3;
+                    if (contentLower.Contains(kw)) score += 2;
                     if (m.Tags != null && m.Tags.Any(t => t.ToLowerInvariant().Contains(kw)))
-                        score += 1;                                   // 标签匹配
+                        score += 1;
                 }
 
                 if (score > 0)
                     matched.Add((m, score));
             }
 
-            // 按分数排序，取前 10
             var results = matched
                 .OrderByDescending(x => x.Score)
                 .Take(10)
@@ -164,54 +205,39 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (results.Count == 0)
             {
                 return ToolResult.Ok(
-                    $"No memories matching '{query}'. Try different keywords or save new memories.",
+                    $"No memories matching '{query}'. Try different keywords or use action='remember' to save new knowledge.",
                     new { query, count = 0 });
             }
 
-            var sb = new StringBuilder();
-            sb.AppendLine($"Found {results.Count} memories matching '{query}':");
-            sb.AppendLine();
-
+            var fallbackSb = new StringBuilder();
+            fallbackSb.AppendLine($"Found {results.Count} memories matching '{query}':");
+            fallbackSb.AppendLine();
             foreach (var m in results)
             {
-                sb.AppendLine($"── {m.Title} [{m.Id}] ──");
-                sb.AppendLine($"  Kind: {m.Kind}");
-                if (m.Tags != null && m.Tags.Length > 0)
-                    sb.AppendLine($"  Tags: {string.Join(", ", m.Tags)}");
-
+                fallbackSb.AppendLine($"── {m.Title} [{m.Id}] ──");
                 string excerpt = m.Content;
                 if (excerpt.Length > 300)
                     excerpt = excerpt.Substring(0, 297) + "...";
-                sb.AppendLine($"  Content: {excerpt}");
-                sb.AppendLine();
+                fallbackSb.AppendLine($"  Content: {excerpt}");
+                fallbackSb.AppendLine();
             }
 
-            _sink?.Emit(CopilotEvent.Notice($"Memory search: '{query}' → {results.Count} results"));
-
-            return ToolResult.Ok(sb.ToString().TrimEnd(), new
-            {
-                query,
-                count = results.Count,
-                results = results.Select(m => new
-                {
-                    m.Id, m.Title, m.Kind, m.Tags,
-                    content = m.Content.Length > 300 ? m.Content.Substring(0, 297) + "..." : m.Content
-                }).ToList()
-            });
+            return ToolResult.Ok(fallbackSb.ToString().TrimEnd(), new { query, count = results.Count });
         }
 
         /// <summary>
-        /// 保存记忆 — 新增或更新（有 id 则更新，无 id 则新建）
+        /// 记住新知识（对齐 Reasonix remember tool）
+        /// 注意：此操作需要用户审批（ApprovalMode.Ask）
         /// </summary>
-        private ToolResult Save(JObject json)
+        private ToolResult Remember(JObject json)
         {
             string title = json.Value<string>("title");
             string content = json.Value<string>("content");
 
             if (string.IsNullOrWhiteSpace(title))
-                return ToolResult.Fail("title is required for save");
+                return ToolResult.Fail("title is required for remember");
             if (string.IsNullOrWhiteSpace(content))
-                return ToolResult.Fail("content is required for save");
+                return ToolResult.Fail("content is required for remember");
 
             string id = json.Value<string>("id");
             string kind = json.Value<string>("kind") ?? "project_context";
@@ -220,25 +246,37 @@ namespace E3DCopilot.Core.Tools.Handlers
                 ? tagsToken.Select(t => t.ToString()).ToArray()
                 : new string[0];
 
-            var entry = new MemoryEntry
+            MemoryEntry saved;
+            if (!string.IsNullOrEmpty(id))
             {
-                Id = id, // null 时 MemoryManager 会自动生成
-                Title = title,
-                Content = content,
-                Kind = kind,
-                Tags = tags
-            };
+                // 更新已有记忆
+                var entry = new MemoryEntry
+                {
+                    Id = id,
+                    Title = title,
+                    Content = content,
+                    Kind = kind,
+                    Tags = tags
+                };
+                saved = _memoryManager.Save(entry);
+            }
+            else
+            {
+                // 新建（自动去重）
+                saved = _memoryManager.Remember(title, content, kind, tags);
+            }
 
-            var saved = _memoryManager.Save(entry);
+            if (saved == null)
+                return ToolResult.Fail("Failed to save memory");
 
-            string action = string.IsNullOrEmpty(id) ? "Created" : "Updated";
-            string msg = $"{action} memory: {saved.Title} [{saved.Id}]";
+            string action = string.IsNullOrEmpty(id) ? "Remembered" : "Updated";
+            string msg = $"{action}: {saved.Title} [{saved.Id}]";
 
             _sink?.Emit(CopilotEvent.Notice(msg));
 
             return ToolResult.Ok(msg, new
             {
-                operation = "save",
+                operation = "remember",
                 saved.Id,
                 saved.Title,
                 saved.Kind,
@@ -247,22 +285,51 @@ namespace E3DCopilot.Core.Tools.Handlers
         }
 
         /// <summary>
-        /// 删除记忆
+        /// 遗忘知识（对齐 Reasonix forget tool）— 归档而非真删
+        /// 注意：此操作需要用户审批（ApprovalMode.Ask）
         /// </summary>
-        private ToolResult Delete(JObject json)
+        private ToolResult Forget(JObject json)
         {
             string id = json.Value<string>("id");
             if (string.IsNullOrWhiteSpace(id))
-                return ToolResult.Fail("id is required for delete");
+                return ToolResult.Fail("id is required for forget");
 
-            bool deleted = _memoryManager.Delete(id);
-            if (!deleted)
+            bool forgotten = _memoryManager.Forget(id);
+            if (!forgotten)
                 return ToolResult.Fail($"Memory '{id}' not found");
 
-            string msg = $"Deleted memory: {id}";
+            string msg = $"Forgotten (archived): {id}";
             _sink?.Emit(CopilotEvent.Notice(msg));
 
-            return ToolResult.Ok(msg, new { operation = "delete", id });
+            return ToolResult.Ok(msg, new { operation = "forget", id, archived = true });
+        }
+
+        /// <summary>
+        /// 读取单条记忆的完整内容
+        /// </summary>
+        private ToolResult Read(JObject json)
+        {
+            string id = json.Value<string>("id");
+            if (string.IsNullOrWhiteSpace(id))
+                return ToolResult.Fail("id is required for read");
+
+            var all = _memoryManager.List();
+            var entry = all.FirstOrDefault(m => m.Id == id);
+            if (entry == null)
+                return ToolResult.Fail($"Memory '{id}' not found");
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"# {entry.Title}");
+            sb.AppendLine($"ID: {entry.Id}");
+            sb.AppendLine($"Kind: {entry.Kind}");
+            if (entry.Tags != null && entry.Tags.Length > 0)
+                sb.AppendLine($"Tags: {string.Join(", ", entry.Tags)}");
+            sb.AppendLine($"Created: {entry.CreatedAt}");
+            sb.AppendLine($"Updated: {entry.UpdatedAt}");
+            sb.AppendLine();
+            sb.AppendLine(entry.Content);
+
+            return ToolResult.Ok(sb.ToString().TrimEnd(), new { entry.Id, entry.Title, entry.Kind });
         }
 
         /// <summary>
