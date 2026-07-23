@@ -233,6 +233,17 @@ namespace E3DCopilot.WebHost
                         HandleTraceRead(payload, requestId);
                         break;
 
+                    // ── MCP 管理 ──
+                    case MessageTypes.McpStatus:
+                        HandleMcpStatus(requestId);
+                        break;
+                    case MessageTypes.McpRestart:
+                        HandleMcpRestart(payload, requestId);
+                        break;
+                    case MessageTypes.McpDiagnose:
+                        HandleMcpDiagnose(payload, requestId);
+                        break;
+
                     case "devtools:open":
                         _webView.CoreWebView2.OpenDevToolsWindow();
                         break;

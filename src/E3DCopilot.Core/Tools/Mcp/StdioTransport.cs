@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -11,8 +12,8 @@ namespace E3DCopilot.Core.Tools.Mcp
 {
     /// <summary>
     /// stdio 传输层：启动 MCP server 子进程，通过 stdin/stdout 交换 JSON-RPC。
-    /// 后台读线程将响应按 id 匹配到对应的 TaskCompletionSource；
-    /// 写请求带超时保护，避免 server 无响应时永久挂起。
+    /// 对齐 Reasonix internal/plugin stdio transport。
+    /// 支持工作目录、环境变量、超时配置。
     /// </summary>
     public class StdioTransport : IMcpTransport
     {
@@ -25,23 +26,41 @@ namespace E3DCopilot.Core.Tools.Mcp
         private readonly int _timeoutMs;
         private readonly Task _readLoop;
 
-        public StdioTransport(string command, string[] args, int timeoutMs = 30000)
+        /// <summary>进程是否已退出</summary>
+        public bool HasExited { get { try { return _proc.HasExited; } catch { return true; } } }
+
+        /// <summary>进程退出码</summary>
+        public int ExitCode { get { try { return _proc.ExitCode; } catch { return -1; } } }
+
+        public StdioTransport(string command, string[] args, int timeoutMs = 30000,
+            string workingDirectory = null, Dictionary<string, string> env = null)
         {
             if (string.IsNullOrWhiteSpace(command)) throw new ArgumentNullException(nameof(command));
             _timeoutMs = timeoutMs;
 
-            _proc = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = command,
-                    Arguments = string.Join(" ", args ?? new string[0]),
-                    RedirectStandardInput = true,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
+                FileName = command,
+                Arguments = string.Join(" ", args ?? new string[0]),
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
+
+            // 工作目录（对齐 Reasonix Spec.Dir）
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+                startInfo.WorkingDirectory = workingDirectory;
+
+            // 环境变量注入（对齐 Reasonix Spec.Env）
+            if (env != null)
+            {
+                foreach (var kv in env)
+                    startInfo.EnvironmentVariables[kv.Key] = kv.Value;
+            }
+
+            _proc = new Process { StartInfo = startInfo };
             _proc.Start();
             _stdin = _proc.StandardInput;
             _stdout = _proc.StandardOutput;

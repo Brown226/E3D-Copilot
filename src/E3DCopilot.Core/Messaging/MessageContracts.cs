@@ -57,6 +57,11 @@ namespace E3DCopilot.Core.Messaging
         public const string TraceList = "trace:list";
         public const string TraceRead = "trace:read";
 
+        // === MCP 管理 ===
+        public const string McpStatus = "mcp:status";
+        public const string McpRestart = "mcp:restart";
+        public const string McpDiagnose = "mcp:diagnose";
+
         // === 后端 → 前端 ===
         public const string Pong = "pong";
         public const string LlmMessage = "llm:message";

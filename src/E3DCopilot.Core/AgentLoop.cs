@@ -885,7 +885,10 @@ namespace E3DCopilot.Core
             };
             foreach (var handler in _executor.GetAllHandlers())
             {
-                if (exposedToolNames.Contains(handler.Name))
+                // 内置工具白名单 + MCP 远程工具（mcp__ 前缀）+ mcp_knowledge
+                if (exposedToolNames.Contains(handler.Name)
+                    || handler.Name.StartsWith("mcp__", StringComparison.Ordinal)
+                    || handler.Name == "mcp_knowledge")
                 {
                     toolSchemas.Add(new ToolSchema
                     {

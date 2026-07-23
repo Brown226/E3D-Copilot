@@ -145,19 +145,41 @@ namespace E3DCopilot.Core.Config
         }
 
         /// <summary>只读 MCP server 配置（B2）</summary>
+        /// <summary>
+        /// MCP server 配置（对齐 Reasonix plugin.Spec）
+        /// 支持 stdio / http / sse 三种传输方式
+        /// </summary>
         public class McpServerConfig
         {
             public string Name { get; set; }
-            /// <summary>传输方式：stdio | http</summary>
-            public string Transport { get; set; } = "stdio";
+            /// <summary>传输方式：stdio | http | streamable-http | sse</summary>
+            public string Type { get; set; } = "stdio";
+            /// <summary>兼容旧配置: Transport 别名</summary>
+            public string Transport { get { return Type; } set { Type = value; } }
             /// <summary>stdio 启动命令（如 npx）</summary>
             public string Command { get; set; }
             /// <summary>stdio 启动参数</summary>
             public List<string> Args { get; set; } = new List<string>();
-            /// <summary>http 端点</summary>
-            public string Endpoint { get; set; }
-            /// <summary>响应超时（毫秒）</summary>
-            public int TimeoutMs { get; set; } = 30000;
+            /// <summary>环境变量（stdio 进程注入）</summary>
+            public Dictionary<string, string> Env { get; set; }
+            /// <summary>http/sse 端点 URL</summary>
+            public string Url { get; set; }
+            /// <summary>兼容旧配置: Endpoint 别名</summary>
+            public string Endpoint { get { return Url; } set { Url = value; } }
+            /// <summary>http 自定义 Headers</summary>
+            public Dictionary<string, string> Headers { get; set; }
+            /// <summary>stdio 工作目录（对齐 Reasonix Spec.Dir）</summary>
+            public string Dir { get; set; }
+            /// <summary>per-server 调用超时（毫秒，0=用默认 300s）</summary>
+            public int CallTimeoutMs { get; set; }
+            /// <summary>兼容旧配置: TimeoutMs 别名</summary>
+            public int TimeoutMs { get { return CallTimeoutMs; } set { CallTimeoutMs = value; } }
+            /// <summary>per-tool 超时覆盖（key=工具原始名, value=毫秒）</summary>
+            public Dictionary<string, int> ToolTimeouts { get; set; }
+            /// <summary>强制标记为只读的工具名列表（对齐 Reasonix ReadOnlyToolNames）</summary>
+            public List<string> ReadOnlyToolNames { get; set; }
+            /// <summary>去除工具名前缀（对齐 Reasonix StripRawPrefix）</summary>
+            public string StripRawPrefix { get; set; }
         }
 
         public class LoggingConfig

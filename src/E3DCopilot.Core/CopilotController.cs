@@ -98,6 +98,9 @@ namespace E3DCopilot.Core
 
         // ── 对话执行轨迹记录器（AI 诊断用）──
         public Logging.ConversationTracer Tracer { get; }
+
+        // ── MCP Host（对齐 Reasonix plugin.Host，管理多个 MCP server 连接 + 工具发现）──
+        public Tools.Mcp.McpHost McpHost { get; private set; }
         
         // ── Current model ──
         public string CurrentModelName { get; private set; }
@@ -298,24 +301,42 @@ namespace E3DCopilot.Core
             coordinator.LoadFromConfig();
             controller.Coordinator = coordinator;
 
-            // ── B2 只读 MCP 客户端注入 ──
-            var mcpRegistry = new McpRegistry();
-            foreach (var mcp in config.McpServers ?? new List<CopilotConfig.McpServerConfig>())
+            // ── MCP Host 初始化（对齐 Reasonix plugin.Host.StartAll）──
+            controller.McpHost = new Tools.Mcp.McpHost();
+            // 安全层: mcp-security.json 持久化授权
+            var mcpDataDir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "E3DCopilot");
+            var mcpSecurityPath = System.IO.Path.Combine(mcpDataDir, "mcp-security.json");
+            controller.McpHost.Security = new Tools.Mcp.McpLaunchSecurity(mcpSecurityPath, mcpDataDir);
+            var mcpConfigs = config.McpServers ?? new List<CopilotConfig.McpServerConfig>();
+            if (mcpConfigs.Count > 0)
             {
-                try
+                // 异步启动所有 MCP server（不阻塞构造函数，后台完成）
+                var mcpHost = controller.McpHost;
+                Task.Run(async () =>
                 {
-                    IMcpTransport transport = mcp.Transport == "http"
-                        ? (IMcpTransport)new HttpTransport(mcp.Endpoint)
-                        : new StdioTransport(mcp.Command, (mcp.Args ?? new List<string>()).ToArray(), mcp.TimeoutMs);
-                    mcpRegistry.Register(new McpClient(mcp.Name, transport));
-                }
-                catch (Exception ex)
-                {
-                    CopilotLogger.Warn("MCP server '{0}' 启动失败，已跳过: {1}", mcp.Name, ex.Message);
-                }
+                    try
+                    {
+                        await mcpHost.StartAllAsync(mcpConfigs).ConfigureAwait(false);
+                        // 启动完成后注册 MCP 远程工具到 executor
+                        foreach (var tool in mcpHost.GetAllTools())
+                            executor.Register(tool);
+                        // 保留 mcp_knowledge 只读工具（resources/prompts 兼容）
+                        var mcpRegistry = new McpRegistry();
+                        foreach (var name in mcpHost.GetServerNames())
+                        {
+                            var client = mcpHost.GetClient(name);
+                            if (client != null) mcpRegistry.Register(client);
+                        }
+                        if (mcpRegistry.All.Count > 0 && executor.GetHandler("mcp_knowledge") == null)
+                            executor.Register(new McpToolHandler(mcpRegistry));
+                    }
+                    catch (Exception ex)
+                    {
+                        CopilotLogger.Warn("MCP Host 启动异常: {0}", ex.Message);
+                    }
+                });
             }
-            if (mcpRegistry.All.Count > 0)
-                executor.Register(new McpToolHandler(mcpRegistry));
 
             return controller;
         }
