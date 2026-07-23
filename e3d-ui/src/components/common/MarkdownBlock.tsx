@@ -25,6 +25,7 @@ import { WithCopyButton } from '@/components/common/CopyButton'
 import { normalizeMath } from '@/components/chat/mathNormalize'
 import { normalizeMarkdown } from '@/utils/normalizeMarkdown'
 import { languages } from '@/utils/highlight'
+import MermaidDiagram from './MermaidDiagram'
 
 /* ─── 代码块解析（正则分割，替代 marked.lexer） ─── */
 
@@ -151,6 +152,18 @@ const remarkDefaultLang = () => {
 /* ─── 自定义 code 组件：区分内联 vs 块代码 ─── */
 
 const CodeBlock = ({ children, className, ...rest }: React.HTMLAttributes<HTMLElement>) => {
+  // Mermaid 代码块：分流到 MermaidDiagram（在 hljs 处理之前）
+  const mmdLangMatch = className?.match(/\blanguage-(\w+)/)
+  if (mmdLangMatch?.[1] === 'mermaid') {
+    const codeStr = typeof children === 'string'
+      ? children
+      : Array.isArray(children)
+        ? children.filter((c: any) => typeof c === 'string').join('')
+        : ''
+    if (codeStr.trim()) {
+      return <MermaidDiagram code={codeStr.trim()} />
+    }
+  }
   // 块代码（rehype-highlight 添加 hljs class）
   const isBlock = className?.includes('hljs')
   if (isBlock) {
