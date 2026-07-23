@@ -58,6 +58,10 @@ namespace E3DCopilot.Core
         // ── 证据账本（对齐 Reasonix evidence.Ledger） ──
         private readonly EvidenceLedger _evidence = new EvidenceLedger();
 
+        // ── 进度守卫(对齐 Reasonix v1.17.19 TodoProgressMonitor / SPEC 5) ──
+        // ProgressGuard 已实现于 Agents/ProgressGuard.cs,此处集成
+        private readonly Agents.ProgressGuard _progressGuard;
+
         /// <summary>子代理嵌套深度（由 SubagentRunner 注入，防无限递归）</summary>
         public int SubagentDepth { get; set; } = 0;
 
@@ -80,6 +84,7 @@ namespace E3DCopilot.Core
             StormSig = stormSig;
             StormCount = stormCount;
             _compactor = new ContextCompactor(_provider, _sink, _config);
+            _progressGuard = new Agents.ProgressGuard(_sink);
         }
 
         private ToolPolicy CreateDefaultToolPolicy()
@@ -210,6 +215,7 @@ namespace E3DCopilot.Core
             _evidence?.Reset();
             _repeatSuccessCounts = null;
             _streamRecoveries = 0;
+            _progressGuard?.FullReset();
 
             string traceOutcome = "success"; // Trace 结果跟踪
 
@@ -631,6 +637,32 @@ namespace E3DCopilot.Core
 
                 // Record evidence（对齐 Reasonix evidence.Record）
                 _evidence?.Record(call.Name, call.Arguments, toolResult.Success, !IsWriteTool(call.Name));
+
+                // ── 进度守卫集成（对齐 Reasonix SPEC 5 adaptive progress lease）──
+                if (toolResult.Success)
+                {
+                    // todo_write 成功时:解析是否有 in_progress 项,激活/停用监控
+                    if (call.Name == "todo_write")
+                    {
+                        bool hasInProgress = ParseTodosHasInProgress(call.Arguments);
+                        _progressGuard?.SetActiveTodo(hasInProgress);
+                    }
+
+                    // 所有工具执行后:评估进度,返回非 null 时注入 nudge/pause
+                    string progressMsg = _progressGuard?.RecordToolCompletion(
+                        call.Name,
+                        toolResult.Text?.Length > 200 ? toolResult.Text.Substring(0, 200) : toolResult.Text);
+                    if (!string.IsNullOrEmpty(progressMsg))
+                    {
+                        session.AddSystemMessage(progressMsg);
+                        _sink?.Emit(CopilotEvent.Notice(progressMsg.Contains("PAUSED")
+                            ? "进度守卫: 连续 16 轮无新进度,已暂停"
+                            : "进度守卫: 连续 8 轮无新进度,已注入重评估提示"));
+                        _tracer?.RecordSystemEvent(progressMsg.Contains("PAUSED")
+                            ? "进度 pause: 16 轮无新进度"
+                            : "进度 nudge: 8 轮无新进度");
+                    }
+                }
 
                 if (toolResult.Success)
                 {
@@ -1116,6 +1148,27 @@ namespace E3DCopilot.Core
                 default:
                     return false;
             }
+        }
+
+        /// <summary>
+        /// 解析 todo_write 参数,判断是否有 in_progress 项。
+        /// 用于激活 ProgressGuard 监控。
+        /// </summary>
+        private static bool ParseTodosHasInProgress(string args)
+        {
+            try
+            {
+                var json = Newtonsoft.Json.Linq.JObject.Parse(args ?? "{}");
+                var todos = json["todos"] as Newtonsoft.Json.Linq.JArray;
+                if (todos == null) return false;
+                foreach (var t in todos)
+                {
+                    string status = t["status"]?.Value<string>();
+                    if (status == "in_progress") return true;
+                }
+                return false;
+            }
+            catch { return false; }
         }
 
     }
