@@ -34,5 +34,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/__tests__/**/*.{test,spec}.{ts,tsx}'],
+    server: {
+      deps: {
+        inline: ['react', 'react-dom'],
+      },
+    },
   },
 })
