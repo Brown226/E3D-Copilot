@@ -103,6 +103,8 @@ namespace E3DCopilot.Core
                 policy.Set("run_skill", ApprovalMode.Auto);
                 policy.Set("cad_import", ApprovalMode.Auto);
                 policy.Set("autocad", ApprovalMode.Auto);
+                policy.Set("autocad_control", ApprovalMode.Auto);
+                policy.Set("e3d_to_cad_export", ApprovalMode.Auto);
                 policy.Set("todo_write", ApprovalMode.Auto);
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
@@ -134,6 +136,8 @@ namespace E3DCopilot.Core
                 policy.Set("batch", ApprovalMode.Auto);
                 policy.Set("cad_import", ApprovalMode.Ask);
                 policy.Set("autocad", ApprovalMode.Ask);
+                policy.Set("autocad_control", ApprovalMode.Ask);
+                policy.Set("e3d_to_cad_export", ApprovalMode.Auto);
                 policy.Set("todo_write", ApprovalMode.Auto);
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
@@ -172,6 +176,8 @@ namespace E3DCopilot.Core
                 policy.Set("batch", ApprovalMode.Auto);
                 policy.Set("cad_import", ApprovalMode.Auto);
                 policy.Set("autocad", ApprovalMode.Auto);
+                policy.Set("autocad_control", ApprovalMode.Ask);
+                policy.Set("e3d_to_cad_export", ApprovalMode.Auto);
                 policy.Set("todo_write", ApprovalMode.Auto);
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
@@ -915,6 +921,7 @@ namespace E3DCopilot.Core
                 "ask", "todo_write", "complete_step", "read_file", "write_file",
                 "run_skill", "grep", "glob", "memory",
                 "cad_import", "autocad",
+                "autocad_control", "e3d_to_cad_export",  // CAD-E3D 双向控制
                 "structure_drawing",  // 土建结构出图工具
                 "generate_iso_drawing", "query_material", "get_pipe_info"  // ISO 出图三件套
             };

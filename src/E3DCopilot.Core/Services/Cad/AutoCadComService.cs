@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using E3DCopilot.Core.Models.Geometry;
@@ -111,6 +112,34 @@ namespace E3DCopilot.Core.Services.Cad
         {
             Entities = new List<AutoCadEntityInfo>();
             Segments = new List<LineSegment>();
+        }
+    }
+
+    /// <summary>
+    /// AutoCAD 操作结果（用于写操作：SendCommand / CreateEntity / SetLayer 等）
+    /// </summary>
+    public class AutoCadOperationResult
+    {
+        public bool Success { get; set; }
+        public string Error { get; set; }
+        /// <summary>创建的实体 Handle（CreateEntity/AddText/AddDimension 用）</summary>
+        public string Handle { get; set; }
+        /// <summary>附加数据（如图层列表、实体属性等）</summary>
+        public Dictionary<string, object> Data { get; set; }
+
+        public AutoCadOperationResult()
+        {
+            Data = new Dictionary<string, object>();
+        }
+
+        public static AutoCadOperationResult Ok(string handle = null)
+        {
+            return new AutoCadOperationResult { Success = true, Handle = handle };
+        }
+
+        public static AutoCadOperationResult Fail(string error)
+        {
+            return new AutoCadOperationResult { Success = false, Error = error };
         }
     }
 
@@ -517,5 +546,499 @@ namespace E3DCopilot.Core.Services.Cad
                 return false;
             }
         }
+
+        #region 写操作（P0 + P1）
+
+        /// <summary>
+        /// COM 调用重试包装（应对 AutoCAD 忙时的 RPC_E_SERVERCALL_RETRYLATER）
+        /// </summary>
+        private T WithRetry<T>(Func<T> action, string operationName)
+        {
+            const int maxRetries = 5;
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    return action();
+                }
+                catch (COMException ex) when (ex.HResult == unchecked((int)0x8001010A) && attempt < maxRetries)
+                {
+                    int waitMs = 500 * (attempt + 1);
+                    System.Diagnostics.Debug.WriteLine($"AutoCAD 忙 ({operationName})，{waitMs}ms 后重试 ({attempt + 1}/{maxRetries})");
+                    Thread.Sleep(waitMs);
+                }
+            }
+            throw new COMException($"AutoCAD 持续忙碌，{operationName} 失败（重试 {maxRetries} 次后放弃）", unchecked((int)0x8001010A));
+        }
+
+        /// <summary>
+        /// 确保已连接，否则返回失败结果
+        /// </summary>
+        private AutoCadOperationResult EnsureConnected(string operationName)
+        {
+            if (_status != AutoCadConnectionStatus.Connected || _activeDoc == null)
+            {
+                return AutoCadOperationResult.Fail($"未连接到 AutoCAD，无法执行 {operationName}（请先调用 Connect()）");
+            }
+            return null; // 已连接
+        }
+
+        #region P0: SendCommand / CreateEntity / AddText
+
+        /// <summary>
+        /// 发送 AutoCAD 命令行字符串
+        /// 注意：命令字符串必须以空格或换行结尾，否则 AutoCAD 会等待更多输入
+        /// 示例："_LINE 100,100 200,200 "（末尾空格表示回车）
+        /// </summary>
+        /// <param name="command">命令字符串（自动补全末尾空格）</param>
+        /// <returns>操作结果</returns>
+        public AutoCadOperationResult SendCommand(string command)
+        {
+            var connCheck = EnsureConnected("SendCommand");
+            if (connCheck != null) return connCheck;
+
+            if (string.IsNullOrWhiteSpace(command))
+                return AutoCadOperationResult.Fail("命令字符串为空");
+
+            try
+            {
+                // 命令字符串末尾必须有空格或换行（COM SendCommand 约定）
+                if (!command.EndsWith(" ") && !command.EndsWith("\n") && !command.EndsWith("\r"))
+                    command += " ";
+
+                return WithRetry(() =>
+                {
+                    _activeDoc.SendCommand(command);
+                    return AutoCadOperationResult.Ok();
+                }, "SendCommand");
+            }
+            catch (Exception ex)
+            {
+                return AutoCadOperationResult.Fail($"发送命令失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 创建实体（Line / Circle / Polyline / Arc / BlockReference）
+        /// </summary>
+        /// <param name="entityType">实体类型（大小写不敏感）：Line / Circle / Polyline / Arc / Text</param>
+        /// <param name="points">坐标点数组</param>
+        /// <param name="layer">图层名（null 则用当前图层）</param>
+        /// <param name="properties">附加属性（如 Circle 的 Radius、Arc 的 Radius/StartAngle/EndAngle）</param>
+        /// <returns>操作结果，Handle 为创建的实体 Handle</returns>
+        public AutoCadOperationResult CreateEntity(string entityType, List<Point3D> points,
+                                                    string layer = null,
+                                                    Dictionary<string, object> properties = null)
+        {
+            var connCheck = EnsureConnected("CreateEntity");
+            if (connCheck != null) return connCheck;
+
+            if (string.IsNullOrWhiteSpace(entityType))
+                return AutoCadOperationResult.Fail("实体类型为空");
+            if (points == null || points.Count == 0)
+                return AutoCadOperationResult.Fail("坐标点列表为空");
+
+            try
+            {
+                return WithRetry(() =>
+                {
+                    var modelSpace = _activeDoc.ModelSpace;
+                    dynamic entity = null;
+                    string typeUpper = entityType.ToUpperInvariant();
+
+                    switch (typeUpper)
+                    {
+                        case "LINE":
+                            if (points.Count < 2)
+                                return AutoCadOperationResult.Fail("Line 需要 2 个点");
+                            entity = modelSpace.AddLine(points[0].ToArray(), points[1].ToArray());
+                            break;
+
+                        case "CIRCLE":
+                            if (points.Count < 1)
+                                return AutoCadOperationResult.Fail("Circle 需要 1 个点（圆心）");
+                            double radius = 50.0; // 默认半径
+                            if (properties != null && properties.ContainsKey("Radius"))
+                                radius = Convert.ToDouble(properties["Radius"]);
+                            entity = modelSpace.AddCircle(points[0].ToArray(), radius);
+                            break;
+
+                        case "POLYLINE":
+                            if (points.Count < 2)
+                                return AutoCadOperationResult.Fail("Polyline 至少需要 2 个点");
+                            // 使用 AddLightWeightPolyline（2D，扁平坐标 [x1,y1,x2,y2,...]）
+                            var flatCoords = new List<double>();
+                            foreach (var pt in points)
+                            {
+                                flatCoords.Add(pt.X);
+                                flatCoords.Add(pt.Y);
+                            }
+                            entity = modelSpace.AddLightWeightPolyline(flatCoords.ToArray());
+                            break;
+
+                        case "ARC":
+                            if (points.Count < 1)
+                                return AutoCadOperationResult.Fail("Arc 需要 1 个点（圆心）");
+                            double arcRadius = 50.0;
+                            double startAngle = 0.0;
+                            double endAngle = Math.PI;
+                            if (properties != null)
+                            {
+                                if (properties.ContainsKey("Radius"))
+                                    arcRadius = Convert.ToDouble(properties["Radius"]);
+                                if (properties.ContainsKey("StartAngle"))
+                                    startAngle = Convert.ToDouble(properties["StartAngle"]);
+                                if (properties.ContainsKey("EndAngle"))
+                                    endAngle = Convert.ToDouble(properties["EndAngle"]);
+                            }
+                            entity = modelSpace.AddArc(points[0].ToArray(), arcRadius, startAngle, endAngle);
+                            break;
+
+                        case "TEXT":
+                            if (points.Count < 1)
+                                return AutoCadOperationResult.Fail("Text 需要 1 个点（插入点）");
+                            string textContent = properties != null && properties.ContainsKey("Text")
+                                ? properties["Text"].ToString() : "";
+                            double textHeight = properties != null && properties.ContainsKey("Height")
+                                ? Convert.ToDouble(properties["Height"]) : 3.0;
+                            entity = modelSpace.AddText(textContent, points[0].ToArray(), textHeight);
+                            break;
+
+                        default:
+                            return AutoCadOperationResult.Fail($"不支持的实体类型: {entityType}（支持 Line/Circle/Polyline/Arc/Text）");
+                    }
+
+                    // 设置图层
+                    if (!string.IsNullOrEmpty(layer) && entity != null)
+                    {
+                        entity.Layer = layer;
+                    }
+
+                    string handle = entity?.Handle;
+                    return AutoCadOperationResult.Ok(handle);
+                }, $"CreateEntity({entityType})");
+            }
+            catch (Exception ex)
+            {
+                return AutoCadOperationResult.Fail($"创建实体失败 ({entityType}): {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 添加文字
+        /// </summary>
+        /// <param name="position">插入点</param>
+        /// <param name="content">文字内容</param>
+        /// <param name="height">文字高度（mm）</param>
+        /// <param name="layer">图层名（null 则用当前图层）</param>
+        /// <param name="rotation">旋转角度（度，0=水平）</param>
+        /// <returns>操作结果，Handle 为创建的文字实体 Handle</returns>
+        public AutoCadOperationResult AddText(Point3D position, string content, double height,
+                                              string layer = null, double rotation = 0)
+        {
+            var connCheck = EnsureConnected("AddText");
+            if (connCheck != null) return connCheck;
+
+            if (position == null)
+                return AutoCadOperationResult.Fail("插入点为空");
+            if (string.IsNullOrEmpty(content))
+                return AutoCadOperationResult.Fail("文字内容为空");
+            if (height <= 0)
+                return AutoCadOperationResult.Fail($"文字高度必须大于 0，当前: {height}");
+
+            try
+            {
+                return WithRetry(() =>
+                {
+                    var modelSpace = _activeDoc.ModelSpace;
+                    var entity = modelSpace.AddText(content, position.ToArray(), height);
+
+                    // 设置旋转角度（弧度）
+                    if (Math.Abs(rotation) > 0.001)
+                    {
+                        entity.Rotation = rotation * Math.PI / 180.0;
+                    }
+
+                    if (!string.IsNullOrEmpty(layer))
+                    {
+                        entity.Layer = layer;
+                    }
+
+                    return AutoCadOperationResult.Ok(entity.Handle);
+                }, "AddText");
+            }
+            catch (Exception ex)
+            {
+                return AutoCadOperationResult.Fail($"添加文字失败: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region P1: SetLayer / AddDimension / SaveDrawing / GetLayers
+
+        /// <summary>
+        /// 创建或修改图层
+        /// </summary>
+        /// <param name="name">图层名</param>
+        /// <param name="color">ACI 颜色号（1-255，null 不修改）</param>
+        /// <param name="linetype">线型名（null 不修改）</param>
+        /// <param name="frozen">是否冻结（null 不修改）</param>
+        /// <param name="locked">是否锁定（null 不修改）</param>
+        /// <returns>操作结果</returns>
+        public AutoCadOperationResult SetLayer(string name, int? color = null, string linetype = null,
+                                               bool? frozen = null, bool? locked = null)
+        {
+            var connCheck = EnsureConnected("SetLayer");
+            if (connCheck != null) return connCheck;
+
+            if (string.IsNullOrWhiteSpace(name))
+                return AutoCadOperationResult.Fail("图层名为空");
+
+            // 保护系统图层
+            if (name.Equals("0", StringComparison.Ordinal) ||
+                name.Equals("DEFPOINTS", StringComparison.OrdinalIgnoreCase))
+            {
+                return AutoCadOperationResult.Fail($"不允许修改系统图层: {name}");
+            }
+
+            try
+            {
+                return WithRetry(() =>
+                {
+                    var layers = _activeDoc.Layers;
+                    dynamic layer;
+
+                    // 尝试获取已存在的图层，不存在则创建
+                    try
+                    {
+                        layer = layers.Item(name);
+                    }
+                    catch
+                    {
+                        layer = layers.Add(name);
+                    }
+
+                    if (color.HasValue && color.Value >= 0 && color.Value <= 256)
+                    {
+                        layer.Color = color.Value;
+                    }
+
+                    if (!string.IsNullOrEmpty(linetype))
+                    {
+                        // 设置线型前需确保线型已加载
+                        try { _activeDoc.Linetypes.Load(linetype, "acad.lin"); } catch { /* 已加载 */ }
+                        layer.Linetype = linetype;
+                    }
+
+                    if (frozen.HasValue)
+                    {
+                        layer.Freeze = frozen.Value;
+                    }
+
+                    if (locked.HasValue)
+                    {
+                        layer.Lock = locked.Value;
+                    }
+
+                    return AutoCadOperationResult.Ok();
+                }, $"SetLayer({name})");
+            }
+            catch (Exception ex)
+            {
+                return AutoCadOperationResult.Fail($"设置图层失败 ({name}): {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 添加尺寸标注
+        /// </summary>
+        /// <param name="dimType">标注类型：Aligned / Linear / Angular</param>
+        /// <param name="start">起点</param>
+        /// <param name="end">终点</param>
+        /// <param name="dimLinePos">尺寸线位置点</param>
+        /// <param name="layer">图层名（null 则用当前图层）</param>
+        /// <returns>操作结果，Handle 为创建的标注实体 Handle</returns>
+        public AutoCadOperationResult AddDimension(string dimType, Point3D start, Point3D end,
+                                                   Point3D dimLinePos, string layer = null)
+        {
+            var connCheck = EnsureConnected("AddDimension");
+            if (connCheck != null) return connCheck;
+
+            if (start == null || end == null || dimLinePos == null)
+                return AutoCadOperationResult.Fail("标注的起点/终点/尺寸线位置不能为空");
+
+            if (string.IsNullOrWhiteSpace(dimType))
+                dimType = "Aligned";
+
+            try
+            {
+                return WithRetry(() =>
+                {
+                    var modelSpace = _activeDoc.ModelSpace;
+                    dynamic entity;
+                    string typeUpper = dimType.ToUpperInvariant();
+
+                    switch (typeUpper)
+                    {
+                        case "ALIGNED":
+                            // 对齐标注（沿两点连线方向）
+                            entity = modelSpace.AddDimAligned(
+                                start.ToArray(),
+                                end.ToArray(),
+                                dimLinePos.ToArray());
+                            break;
+
+                        case "LINEAR":
+                            // 线性标注（水平或垂直）
+                            // COM 自动化用 AddDimRotated（旋转角度决定方向）
+                            double dx = end.X - start.X;
+                            double dy = end.Y - start.Y;
+                            double rotation = Math.Abs(dy) > Math.Abs(dx)
+                                ? Math.PI / 2  // 垂直
+                                : 0;           // 水平
+                            entity = modelSpace.AddDimRotated(
+                                start.ToArray(),
+                                end.ToArray(),
+                                dimLinePos.ToArray(),
+                                rotation);
+                            break;
+
+                        case "ANGULAR":
+                            // 角度标注（需要圆弧或两条线，简化为对齐标注）
+                            entity = modelSpace.AddDimAligned(
+                                start.ToArray(),
+                                end.ToArray(),
+                                dimLinePos.ToArray());
+                            break;
+
+                        default:
+                            return AutoCadOperationResult.Fail($"不支持的标注类型: {dimType}（支持 Aligned/Linear/Angular）");
+                    }
+
+                    if (!string.IsNullOrEmpty(layer))
+                    {
+                        entity.Layer = layer;
+                    }
+
+                    return AutoCadOperationResult.Ok(entity.Handle);
+                }, $"AddDimension({dimType})");
+            }
+            catch (Exception ex)
+            {
+                return AutoCadOperationResult.Fail($"添加标注失败 ({dimType}): {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 保存当前图纸
+        /// </summary>
+        /// <param name="path">保存路径（null 则保存到原路径）</param>
+        /// <returns>操作结果</returns>
+        public AutoCadOperationResult SaveDrawing(string path = null)
+        {
+            var connCheck = EnsureConnected("SaveDrawing");
+            if (connCheck != null) return connCheck;
+
+            try
+            {
+                return WithRetry(() =>
+                {
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        _activeDoc.Save();
+                    }
+                    else
+                    {
+                        // SaveAs 格式：ac2018_dwg = 61（AutoCAD 2018 DWG）
+                        // 传 0 让 AutoCAD 根据文件扩展名自动判断
+                        _activeDoc.SaveAs(path, 0);
+                    }
+                    return AutoCadOperationResult.Ok();
+                }, "SaveDrawing");
+            }
+            catch (Exception ex)
+            {
+                return AutoCadOperationResult.Fail($"保存图纸失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 获取所有图层名
+        /// </summary>
+        /// <returns>操作结果，Data["Layers"] 为图层名列表</returns>
+        public AutoCadOperationResult GetLayers()
+        {
+            var connCheck = EnsureConnected("GetLayers");
+            if (connCheck != null) return connCheck;
+
+            try
+            {
+                return WithRetry(() =>
+                {
+                    var layers = _activeDoc.Layers;
+                    var names = new List<string>();
+                    for (int i = 0; i < layers.Count; i++)
+                    {
+                        try { names.Add(layers.Item(i).Name); }
+                        catch { /* 跳过无法读取的图层 */ }
+                    }
+                    var result = AutoCadOperationResult.Ok();
+                    result.Data["Layers"] = names;
+                    return result;
+                }, "GetLayers");
+            }
+            catch (Exception ex)
+            {
+                return AutoCadOperationResult.Fail($"获取图层列表失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 获取实体属性
+        /// </summary>
+        /// <param name="handle">实体 Handle</param>
+        /// <returns>操作结果，Data 包含 Layer/EntityType/Points 等</returns>
+        public AutoCadOperationResult GetEntityProperties(string handle)
+        {
+            var connCheck = EnsureConnected("GetEntityProperties");
+            if (connCheck != null) return connCheck;
+
+            if (string.IsNullOrWhiteSpace(handle))
+                return AutoCadOperationResult.Fail("实体 Handle 为空");
+
+            try
+            {
+                return WithRetry(() =>
+                {
+                    var entity = _activeDoc.HandleToObject(handle);
+                    if (entity == null)
+                        return AutoCadOperationResult.Fail($"未找到 Handle 为 {handle} 的实体");
+
+                    var info = ExtractEntityInfo(entity);
+                    var result = AutoCadOperationResult.Ok(handle);
+                    result.Data["Layer"] = info.Layer;
+                    result.Data["EntityType"] = info.EntityType;
+                    // 手动构建点列表（避免 dynamic 调度下 lambda 报错 CS1977）
+                    var pointsList = new List<double[]>();
+                    foreach (Point3D p in info.Points)
+                    {
+                        pointsList.Add(new double[] { p.X, p.Y, p.Z });
+                    }
+                    result.Data["Points"] = pointsList;
+                    foreach (var kv in info.Properties)
+                        result.Data[kv.Key] = kv.Value;
+                    return result;
+                }, "GetEntityProperties");
+            }
+            catch (Exception ex)
+            {
+                return AutoCadOperationResult.Fail($"获取实体属性失败: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #endregion
     }
 }

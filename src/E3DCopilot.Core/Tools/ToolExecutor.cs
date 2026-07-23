@@ -380,6 +380,10 @@ namespace E3DCopilot.Core.Tools
             executor.Register(new CadImportHandler(dispatcher));   // cad_import
             executor.Register(new AutoCadHandler(dispatcher));     // autocad
 
+            // CAD-E3D 双向控制（直接操作运行中的 AutoCAD + E3D→DXF 反向导出）
+            executor.Register(new AutoCadControlHandler(dispatcher));   // autocad_control
+            executor.Register(new E3dToCadExportHandler(dispatcher));   // e3d_to_cad_export
+
             // 接入可选路由器
             executor.Router = router;
 
