@@ -2,25 +2,26 @@
  * SubagentPanel — 子代理折叠面板
  * 按 agentName 分组渲染子代理的工具调用和结果
  */
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { ChevronRight, Loader2, Bot } from 'lucide-react'
 import type { Message } from '@/types'
 import { MessageRow } from './MessageRow'
 import { ToolGroup, groupConsecutiveTools } from './ToolGroup'
+import { computeFinalAssistantIds } from './MessageList'
 
 interface SubagentPanelProps {
   agentName: string
   messages: Message[]
-  allMessages: Message[]
   subcalls: Map<string, Message[]>
 }
 
-export function SubagentPanel({ agentName, messages, allMessages, subcalls }: SubagentPanelProps) {
+export function SubagentPanel({ agentName, messages, subcalls }: SubagentPanelProps) {
   const [open, setOpen] = useState(true)
   const isRunning = messages.some((m) => !m.finalized)
   const doneCount = messages.filter((m) => m.finalized && !m.toolError).length
   const errorCount = messages.filter((m) => m.toolError).length
   const grouped = groupConsecutiveTools(messages)
+  const finalIds = useMemo(() => computeFinalAssistantIds(messages), [messages])
 
   return (
     <div className="subagent-panel" data-running={isRunning ? '' : undefined}>
@@ -58,18 +59,18 @@ export function SubagentPanel({ agentName, messages, allMessages, subcalls }: Su
                   kind={item.groupKind}
                   messages={item.messages}
                   subcalls={subcalls}
-                  allMessages={allMessages}
                 />
               )
             }
             const msg = item.msg
             const toolId = msg.toolId || msg.id
+            const isFinal = msg.role === 'assistant' ? finalIds.has(msg.id) : undefined
             return (
               <MessageRow
                 key={`sa-m-${i}`}
                 msg={msg}
                 subcalls={subcalls.get(toolId)}
-                allMessages={allMessages}
+                isFinal={isFinal}
                 isStreaming={isRunning}
               />
             )

@@ -7,6 +7,7 @@
  * 4. 子代理嵌套展示
  * 5. Shell 输出预览（前 10 行 + "显示全部"）
  * 6. DiffView 集成
+ * 7. 结构化结果卡片（CAD 工具的 layerStats / export / entity 信息）
  */
 
 import { useState, useMemo, memo } from 'react'
@@ -23,8 +24,6 @@ interface ToolCardProps {
   msg: Message
   /** 子调用列表（由 MessageList 传入） */
   subcalls?: Message[]
-  /** 所有消息（用于查找子调用） */
-  allMessages?: Message[]
 }
 
 const SHELL_PREVIEW_LINES = 10
@@ -283,6 +282,13 @@ export const ToolCard = memo(function ToolCard({ msg, subcalls = [] }: ToolCardP
                 </div>
               )}
 
+              {/* 结构化结果卡片 — CAD 工具优先渲染（P1-12） */}
+              {msg.toolMeta && (
+                <div className="tool__section">
+                  <ToolResultCard toolName={msg.toolName || ''} meta={msg.toolMeta} />
+                </div>
+              )}
+
               {/* 输出结果 — Markdown 渲染（支持表格/代码块等） */}
               {resultStr && !diffData && (
                 <div className="tool__section">
@@ -379,3 +385,149 @@ function argsStr(msg: Message): string | undefined {
     return String(msg.toolArgs)
   }
 }
+
+// ═══════════════════════════════════════════
+// 结构化结果卡片 — CAD 工具专用（P1-12）
+// 根据 msg.toolMeta 渲染图层统计/导出结果/元素表格
+// ═══════════════════════════════════════════
+
+interface StatsRow {
+  key: string
+  value: number | string
+}
+
+/** 图层/类型统计表格 */
+function StatsTable({ title, rows }: { title: string; rows: StatsRow[] }) {
+  if (!rows.length) return null
+  const total = rows.reduce((s, r) => s + (typeof r.value === 'number' ? r.value : 0), 0)
+  return (
+    <div className="tool__card-section">
+      <div className="tool__card-title">{title} <span className="tool__card-count">({total})</span></div>
+      <div className="tool__stats-table">
+        {rows.map((r) => (
+          <div key={r.key} className="tool__stats-row">
+            <span className="tool__stats-key">{r.key}</span>
+            <span className="tool__stats-val">{r.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** 键值对展示（导出路径、CAD handle 等） */
+function MetaFields({ fields }: { fields: Array<[string, string]> }) {
+  if (!fields.length) return null
+  return (
+    <div className="tool__card-section">
+      <div className="tool__meta-grid">
+        {fields.map(([k, v]) => (
+          <div key={k} className="tool__meta-row">
+            <span className="tool__meta-key">{k}</span>
+            <span className="tool__meta-val">{v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** 把对象转为 StatsRow[]，按数量降序 */
+function toStatsRows(stats: unknown): StatsRow[] {
+  if (!stats || typeof stats !== 'object') return []
+  const entries = Object.entries(stats as Record<string, unknown>)
+  return entries
+    .map(([k, v]) => ({ key: k, value: typeof v === 'number' ? v : String(v ?? '') }))
+    .sort((a, b) => (typeof b.value === 'number' && typeof a.value === 'number' ? b.value - a.value : 0))
+}
+
+function fmtVal(v: unknown): string {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'boolean') return v ? '是' : '否'
+  return String(v)
+}
+
+/** 结构化结果卡片 — 根据 toolName + toolMeta 渲染 */
+function ToolResultCard({ toolName, meta }: { toolName: string; meta: unknown }) {
+  if (!meta || typeof meta !== 'object') return null
+  const m = meta as Record<string, unknown>
+
+  // e3d_to_cad_export / autocad_control 共用
+  const layerStats = toStatsRows(m.layerStats)
+  const typeStats = toStatsRows(m.typeStats)
+
+  // 通用字段
+  const fields: Array<[string, string]> = []
+  if (m.outputPath) fields.push(['输出文件', String(m.outputPath)])
+  if (m.elementCount !== undefined) fields.push(['元素数', String(m.elementCount)])
+  if (m.totalCount !== undefined) fields.push(['总数', String(m.totalCount)])
+  if (m.format) fields.push(['格式', String(m.format).toUpperCase()])
+  if (m.scope) fields.push(['范围', String(m.scope)])
+  if (m.elementType) fields.push(['类型过滤', String(m.elementType)])
+  if (m.projection) fields.push(['投影', String(m.projection)])
+  if (m.scale !== undefined) fields.push(['比例', String(m.scale)])
+  if (m.includeText !== undefined) fields.push(['标注', m.includeText ? '是' : '否'])
+  // CAD 实体相关
+  if (m.handle) fields.push(['Handle', String(m.handle)])
+  if (m.entityType) fields.push(['实体类型', String(m.entityType)])
+  if (m.layer) fields.push(['图层', String(m.layer)])
+  if (m.command) fields.push(['命令', String(m.command)])
+  if (m.text) fields.push(['文字', String(m.text)])
+  if (m.height !== undefined) fields.push(['高度', String(m.height)])
+  if (m.rotation !== undefined) fields.push(['旋转', String(m.rotation)])
+  if (m.color !== undefined) fields.push(['颜色', fmtVal(m.color)])
+  if (m.linetype !== undefined) fields.push(['线型', fmtVal(m.linetype)])
+  if (m.frozen !== undefined) fields.push(['冻结', m.frozen ? '是' : '否'])
+  if (m.locked !== undefined) fields.push(['锁定', m.locked ? '是' : '否'])
+  if (m.savedPath !== undefined) fields.push(['保存路径', String(m.savedPath)])
+  if (m.count !== undefined) fields.push(['数量', String(m.count)])
+
+  const isExportTool = toolName === 'e3d_to_cad_export'
+  const isCadTool = toolName === 'autocad_control'
+
+  if (!fields.length && !layerStats.length && !typeStats.length) return null
+
+  return (
+    <div className="tool__result-card" data-tool={toolName}>
+      {/* 导出工具头部标记 */}
+      {isExportTool && (
+        <div className="tool__card-header">📐 导出结果</div>
+      )}
+      {isCadTool && (
+        <div className="tool__card-header">🎯 CAD 操作结果</div>
+      )}
+
+      <MetaFields fields={fields} />
+
+      {layerStats.length > 0 && (
+        <StatsTable title="图层分布" rows={layerStats} />
+      )}
+      {typeStats.length > 0 && (
+        <StatsTable title="类型分布" rows={typeStats} />
+      )}
+
+      {/* CAD 图层列表（layers 数组） */}
+      {Array.isArray(m.layers) && (m.layers as unknown[]).length > 0 && (
+        <div className="tool__card-section">
+          <div className="tool__card-title">图层列表 ({(m.layers as unknown[]).length})</div>
+          <div className="tool__stats-table">
+            {(m.layers as Array<Record<string, unknown>>).slice(0, 50).map((l, i) => (
+              <div key={l.name ? String(l.name) : i} className="tool__stats-row">
+                <span className="tool__stats-key">{String(l.name ?? `layer-${i}`)}</span>
+                <span className="tool__stats-val">
+                  {[
+                    l.color !== undefined ? `颜色=${l.color}` : '',
+                    l.on !== undefined ? (l.on ? '开' : '关') : '',
+                    l.frozen !== undefined ? (l.frozen ? '冻结' : '') : '',
+                    l.locked !== undefined ? (l.locked ? '锁' : '') : '',
+                  ].filter(Boolean).join(' · ')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+

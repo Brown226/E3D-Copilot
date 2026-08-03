@@ -24,7 +24,10 @@ export default defineConfig({
           'vendor-react': ['react', 'react-dom'],
           'vendor-zustand': ['zustand'],
           'vendor-icons': ['lucide-react'],
-          'vendor-markdown': ['react-markdown', 'rehype-katex', 'rehype-highlight', 'remark-math', 'katex'],
+          'vendor-markdown': ['react-markdown', 'remark-gfm', 'rehype-highlight', 'remark-math'],
+          // mermaid / katex 体积大且按需使用，独立 chunk 避免阻塞首屏
+          'vendor-mermaid': ['mermaid'],
+          'vendor-katex': ['katex', 'rehype-katex'],
         },
       },
     },

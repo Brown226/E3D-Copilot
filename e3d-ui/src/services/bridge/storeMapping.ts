@@ -182,7 +182,7 @@ export function registerStoreMappings(bridgeInstance: Bridge): void {
 
       case MessageTypes.ToolResult: {
         const p = msg.payload as ToolResultPayload;
-        s.handleToolResult(p.id, p.result, p.error, tabId, p.durationMs);
+        s.handleToolResult(p.id, p.result, p.error, tabId, p.durationMs, p.meta);
         if (p.agentName) {
           s.setMessageAgentName(p.id, p.agentName, tabId);
         }
@@ -191,7 +191,7 @@ export function registerStoreMappings(bridgeInstance: Bridge): void {
 
       case MessageTypes.ToolError: {
         const p = msg.payload as ToolResultPayload;
-        s.handleToolResult(p.id, undefined, p.error, tabId, p.durationMs);
+        s.handleToolResult(p.id, undefined, p.error, tabId, p.durationMs, p.meta);
         if (p.agentName) {
           s.setMessageAgentName(p.id, p.agentName, tabId);
         }

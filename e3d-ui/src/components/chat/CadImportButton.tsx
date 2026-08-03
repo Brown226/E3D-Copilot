@@ -88,7 +88,7 @@ export function CadImportButton() {
     return (
       <button
         onClick={togglePanel}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
         title="导入 CAD 图纸"
       >
         <FileUp className="w-4 h-4" />
@@ -98,34 +98,33 @@ export function CadImportButton() {
   }
 
   return (
-    <div 
-      className="fixed bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden"
+    <div
+      className="fixed z-[var(--z-modal)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden"
       style={{
         bottom: '80px',
         left: '20px',
         width: '320px',
-        zIndex: 99999
       }}
     >
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">导入 CAD 图纸</h3>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">导入 CAD 图纸</h3>
         <button
           onClick={togglePanel}
-          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
         >
-          <X className="w-4 h-4 text-gray-500" />
+          <X className="w-4 h-4 text-slate-500" />
         </button>
       </div>
 
       {/* 导入方式选择 */}
-      <div className="flex gap-1 p-3 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex gap-1 p-3 border-b border-slate-200 dark:border-slate-700">
         <button
           onClick={() => setState(prev => ({ ...prev, mode: 'autocad' }))}
           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
             state.mode === 'autocad'
               ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Link className="w-3.5 h-3.5" />
@@ -136,7 +135,7 @@ export function CadImportButton() {
           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
             state.mode === 'file'
               ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <FileUp className="w-3.5 h-3.5" />
@@ -147,7 +146,7 @@ export function CadImportButton() {
           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
             state.mode === 'coordinates'
               ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Code className="w-3.5 h-3.5" />
@@ -178,7 +177,7 @@ export function CadImportButton() {
               </button>
             </div>
             
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               1. 先启动 AutoCAD 并打开图纸<br/>
               2. 点击"连接 AutoCAD"<br/>
               3. 在 AutoCAD 中选中要导入的图形<br/>
@@ -192,13 +191,13 @@ export function CadImportButton() {
           <div className="space-y-2">
             <button
               onClick={openDwgFileDialog}
-              className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors cursor-pointer"
+              className="w-full border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors cursor-pointer"
             >
-              <FileUp className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <FileUp className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+              <p className="text-sm text-slate-600 dark:text-slate-400">
                 点击选择 DWG/DXF 文件
               </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
                 支持 .dwg 和 .dxf 格式
               </p>
             </button>
@@ -212,7 +211,7 @@ export function CadImportButton() {
               value={state.coordinates}
               onChange={(e) => setState(prev => ({ ...prev, coordinates: e.target.value }))}
               placeholder="输入坐标，格式：[(0,0,0),(5000,0,0)],[(5000,0,0),(5000,3000,0)]"
-              className="w-full h-24 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full h-24 px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
         )}
@@ -220,25 +219,25 @@ export function CadImportButton() {
         {/* 参数设置 */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               墙高 (mm)
             </label>
             <input
               type="number"
               value={state.wallHeight}
               onChange={(e) => setState(prev => ({ ...prev, wallHeight: Number(e.target.value) }))}
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               墙厚 (mm)
             </label>
             <input
               type="number"
               value={state.wallThickness}
               onChange={(e) => setState(prev => ({ ...prev, wallThickness: Number(e.target.value) }))}
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>

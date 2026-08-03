@@ -45,10 +45,9 @@ interface ToolGroupProps {
   kind: ToolGroupKind
   messages: Message[]
   subcalls?: Map<string, Message[]>
-  allMessages?: Message[]
 }
 
-export const ToolGroup = memo(function ToolGroup({ kind, messages, subcalls, allMessages }: ToolGroupProps) {
+export const ToolGroup = memo(function ToolGroup({ kind, messages, subcalls }: ToolGroupProps) {
   const [expanded, setExpanded] = useState(messages.length <= 3) // 3 个以内默认展开
 
   return (
@@ -77,7 +76,6 @@ export const ToolGroup = memo(function ToolGroup({ kind, messages, subcalls, all
               key={msg.id}
               msg={msg}
               subcalls={subcalls?.get(msg.toolId || msg.id)}
-              allMessages={allMessages}
             />
           ))}
         </div>

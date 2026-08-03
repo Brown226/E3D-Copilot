@@ -15,12 +15,13 @@ import { useChatStore } from '@/store/useChatStore'
 interface MessageRowProps {
   msg: Message
   subcalls?: Message[]
-  allMessages?: Message[]
+  /** assistant 消息是否为最终回复（由父组件预计算，避免 O(n²) 遍历） */
+  isFinal?: boolean
   /** 当前是否正在流式接收（由父组件传入，避免每条消息独立订阅 store） */
   isStreaming: boolean
 }
 
-export const MessageRow = memo(function MessageRow({ msg, subcalls, allMessages, isStreaming }: MessageRowProps) {
+export const MessageRow = memo(function MessageRow({ msg, subcalls, isFinal, isStreaming }: MessageRowProps) {
   switch (msg.role) {
     case 'user':
       return (
@@ -37,21 +38,15 @@ export const MessageRow = memo(function MessageRow({ msg, subcalls, allMessages,
           )}
         </div>
       )
-    case 'assistant': {
-      // 判断是否为最终回复：后面没有 tool_call/tool_result/assistant 的就是最终回复
-      const msgIdx = allMessages?.findIndex(m => m.id === msg.id) ?? -1
-      const isFinal = msgIdx < 0 || !allMessages?.some((m, i) =>
-        i > msgIdx && (m.role === 'tool_call' || m.role === 'tool_result' || m.role === 'assistant')
-      )
+    case 'assistant':
       return (
         <div className="msg-row msg-row--assistant" data-msg-id={msg.id}>
           {msg.confidence === 'low' && (
             <span className="confidence-badge" title="低置信度，请核实">⚠️</span>
           )}
-          <AssistantBubble msg={msg} isFinal={isFinal} />
+          <AssistantBubble msg={msg} isFinal={isFinal ?? false} />
         </div>
       )
-    }
     case 'thinking':
       // thinking 消息始终独立渲染（Reasonix 风格：思考在前、工具在中、回复在后）
       return <ReasoningBlock msg={msg} />
@@ -61,7 +56,6 @@ export const MessageRow = memo(function MessageRow({ msg, subcalls, allMessages,
         <ToolCard
           msg={msg}
           subcalls={subcalls}
-          allMessages={allMessages}
         />
       )
     case 'error':

@@ -164,7 +164,7 @@ export function ModelSwitcher() {
         <div
           ref={panelRef}
           style={panelStyle}
-          className="overflow-y-auto bg-white rounded-xl shadow-xl shadow-slate-200/60 border border-slate-200 z-[9999] dark:bg-slate-800 dark:border-slate-600 dark:shadow-slate-900/60"
+          className="overflow-y-auto bg-white rounded-xl shadow-xl shadow-slate-200/60 border border-slate-200 z-[var(--z-dropdown)] dark:bg-slate-800 dark:border-slate-600 dark:shadow-slate-900/60"
         >
           {isLoadingModels ? (
             <div className="flex items-center justify-center py-8">

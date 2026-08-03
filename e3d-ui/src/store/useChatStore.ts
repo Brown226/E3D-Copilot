@@ -12,6 +12,7 @@
 
 import { create } from 'zustand';
 import type { ChatStore } from './types';
+import type { Message } from '../types';
 import { createTabSlice } from './slices/tabSlice';
 import { createMessageSlice } from './slices/messageSlice';
 import { createSessionSlice } from './slices/sessionSlice';
@@ -34,20 +35,22 @@ export const useChatStore = create<ChatStore>()((set, get, api) => ({
 // 派生 hooks
 // ============================================
 
+// 稳定空数组引用：当 tab 不存在时返回此常量，避免每次创建新数组触发 React error #185
+const EMPTY_MESSAGES: Message[] = [];
+
 /**
- * useActiveTab — 单个选择器获取当前 activeTab 的关键字段
- * 避免多个组件各自重复 `s.tabs.find(t => t.id === s.activeTabId)?.xxx`
+ * useActiveTab — 获取当前 activeTab 的关键字段
+ *
+ * Zustand v5 + React 18 注意：选择器不能返回新对象字面量，
+ * 否则 useSyncExternalStore 检测到 snapshot 不稳定 → error #185。
+ * 这里拆分为多个独立选择器，每个返回基本类型或稳定引用。
  */
 export function useActiveTab() {
-  return useChatStore((s) => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId)
-    return {
-      messages: tab?.messages ?? [],
-      isStreaming: tab?.isStreaming ?? false,
-      pendingApproval: tab?.pendingApproval ?? null,
-      pendingQuestion: tab?.pendingQuestion ?? null,
-    }
-  })
+  const messages = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.messages ?? EMPTY_MESSAGES);
+  const isStreaming = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStreaming ?? false);
+  const pendingApproval = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.pendingApproval ?? null);
+  const pendingQuestion = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.pendingQuestion ?? null);
+  return { messages, isStreaming, pendingApproval, pendingQuestion };
 }
 
 // ============================================

@@ -34,6 +34,29 @@ type DisplayItem =
   | { kind: 'group'; groupKind: ToolGroupKind; messages: Message[] }
   | { kind: 'folded'; messages: Message[]; toolCount: number; durationMs: number }
 
+/**
+ * 计算给定消息序列中"最终 assistant 消息"的 id 集合。
+ * 最终 = 该 assistant 之后没有更多 tool_call/tool_result/assistant 消息。
+ * 用于让 MessageRow 的 memo 生效（避免每条消息独立 O(n) 遍历）。
+ */
+export function computeFinalAssistantIds(messages: Message[]): Set<string> {
+  const ids = new Set<string>()
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    if (m.role !== 'assistant') continue
+    let hasAfter = false
+    for (let j = i + 1; j < messages.length; j++) {
+      const r = messages[j].role
+      if (r === 'tool_call' || r === 'tool_result' || r === 'assistant') {
+        hasAfter = true
+        break
+      }
+    }
+    if (!hasAfter) ids.add(m.id)
+  }
+  return ids
+}
+
 // ── Turn 分组：以 user 消息为界 ──
 interface TurnGroup {
   startIdx: number
@@ -79,6 +102,36 @@ function buildDisplayItems(
   // 先用 groupConsecutiveTools 分组
   const grouped = groupConsecutiveTools(messages)
 
+  // 预扫描：找到最后一个"锚点"消息（user/thinking/assistant有内容/error）的索引
+  // 流式中，此索引之后的工具保持全量渲染（用户需要看到当前进度）
+  let lastAnchorIdx = -1
+  for (let i = grouped.length - 1; i >= 0; i--) {
+    const item = grouped[i]
+    if (item.kind === 'message') {
+      const msg = item.msg
+      if (msg.role === 'user' || msg.role === 'thinking' ||
+          (msg.role === 'assistant' && msg.content.trim()) || msg.role === 'error') {
+        lastAnchorIdx = i
+        break
+      }
+    }
+  }
+
+  // 判断工具项是否已完成且无错误（可折叠）
+  const isCompletedClean = (item: typeof grouped[number]): boolean => {
+    if (item.kind === 'message') {
+      const msg = item.msg
+      if (msg.role === 'tool_result') return !msg.toolError
+      if (msg.role === 'tool_call') return msg.finalized === true
+      return false
+    }
+    // ToolGroup：所有 tool_call 已 finalized 且所有 tool_result 无错误
+    return item.messages.every(m =>
+      (m.role === 'tool_call' && m.finalized === true) ||
+      (m.role === 'tool_result' && !m.toolError)
+    )
+  }
+
   // 合并连续的已完成工具组/消息为 folded
   const result: DisplayItem[] = []
   let foldedMessages: Message[] = []
@@ -99,7 +152,9 @@ function buildDisplayItems(
     foldedDuration = 0
   }
 
-  for (const item of grouped) {
+  for (let idx = 0; idx < grouped.length; idx++) {
+    const item = grouped[idx]
+
     if (item.kind === 'message') {
       const msg = item.msg
 
@@ -111,13 +166,12 @@ function buildDisplayItems(
       }
 
       // thinking 消息：始终独立渲染 ReasoningBlock（Reasonix 风格）
-      // paired thinking (thinking → assistant) 和 orphan thinking 都统一渲染
       if (msg.role === 'thinking') {
         flushFolded()
         // 流式中保持展开，完成后折叠
         const displayMsg = isStreaming
-          ? msg  // 流式中：finalized=undefined → ReasoningBlock 自动展开
-          : { ...msg, finalized: true }  // 已结束：折叠
+          ? msg
+          : { ...msg, finalized: true }
         result.push({ kind: 'message', msg: displayMsg })
         continue
       }
@@ -128,7 +182,6 @@ function buildDisplayItems(
         if (msg.content.trim()) {
           result.push(item)
         }
-        // 空的 assistant 占位消息不渲染也不折叠
         continue
       }
 
@@ -139,14 +192,39 @@ function buildDisplayItems(
         continue
       }
 
-      // tool_call / tool_result：始终全量渲染（不折叠），保持工具调用可见
-      // thinking 已经始终独立渲染，tool 卡片也应保持可见
-      flushFolded()
-      result.push(item)
+      // tool_call / tool_result
+      // 流式中且位于最后一个锚点消息之后：全量渲染（保持当前进度可见）
+      if (isStreaming && idx > lastAnchorIdx) {
+        flushFolded()
+        result.push(item)
+      } else if (!isCompletedClean(item)) {
+        // 未完成或有错误：全量渲染
+        flushFolded()
+        result.push(item)
+      } else {
+        // 可折叠：加入 folded 桶
+        foldedMessages.push(msg)
+        if (msg.role === 'tool_call') foldedToolCount++
+        if (msg.role === 'tool_result' && msg.durationMs) foldedDuration += msg.durationMs
+      }
     } else {
-      // ToolGroup：始终全量渲染，保持工具组可见
-      flushFolded()
-      result.push(item)
+      // ToolGroup
+      // 流式中且位于最后一个锚点消息之后：全量渲染
+      if (isStreaming && idx > lastAnchorIdx) {
+        flushFolded()
+        result.push(item)
+      } else if (!isCompletedClean(item)) {
+        // 组内有未完成或出错的工具：全量渲染
+        flushFolded()
+        result.push(item)
+      } else {
+        // 可折叠：整组加入 folded 桶
+        foldedMessages.push(...item.messages)
+        foldedToolCount += item.messages.filter(m => m.role === 'tool_call').length
+        for (const m of item.messages) {
+          if (m.role === 'tool_result' && m.durationMs) foldedDuration += m.durationMs
+        }
+      }
     }
   }
   flushFolded()
@@ -310,17 +388,24 @@ export function MessageList() {
     useChatStore.getState().setPendingQuestion(null)
   }, [])
 
+  // 预计算 Hot zone 内"最终 assistant 消息"id 集合（避免 renderItem 内 O(n²) 遍历）
+  const finalAssistantIds = useMemo(
+    () => computeFinalAssistantIds(hotMessages),
+    [hotMessages],
+  )
+
   // 渲染单个 DisplayItem
-  const renderItem = (item: DisplayItem, key: string, allMsgs: Message[]) => {
+  const renderItem = (item: DisplayItem, key: string, finalIds: Set<string> = finalAssistantIds) => {
     if (item.kind === 'folded') {
-      return <FoldedStep key={key} messages={item.messages} toolCount={item.toolCount} durationMs={item.durationMs} subcalls={subcallMap} allMessages={allMsgs} />
+      return <FoldedStep key={key} messages={item.messages} toolCount={item.toolCount} durationMs={item.durationMs} subcalls={subcallMap} />
     }
     if (item.kind === 'group') {
-      return <ToolGroup key={key} kind={item.groupKind} messages={item.messages} subcalls={subcallMap} allMessages={allMsgs} />
+      return <ToolGroup key={key} kind={item.groupKind} messages={item.messages} subcalls={subcallMap} />
     }
     const msg = item.msg
     const toolId = msg.toolId || msg.id
-    return <MessageRow key={key} msg={msg} subcalls={subcallMap.get(toolId)} allMessages={allMsgs} isStreaming={isStreaming} />
+    const isFinal = msg.role === 'assistant' ? finalIds.has(msg.id) : undefined
+    return <MessageRow key={key} msg={msg} subcalls={subcallMap.get(toolId)} isFinal={isFinal} isStreaming={isStreaming} />
   }
 
   return (
@@ -344,6 +429,7 @@ export function MessageList() {
             const expanded = expandedWarmTurns.has(turnIdx)
             const warmMessages = messages.slice(group.startIdx, group.endIdx)
             const warmDisplay = buildDisplayItems(warmMessages, subcallMap, false)
+            const warmFinalIds = computeFinalAssistantIds(warmMessages)
 
             if (expanded) {
               return (
@@ -360,7 +446,7 @@ export function MessageList() {
                     )}
                   </button>
                   <div className="warm-turn__content">
-                    {warmDisplay.map((item, i) => renderItem(item, `we-${turnIdx}-${i}`, warmMessages))}
+                    {warmDisplay.map((item, i) => renderItem(item, `we-${turnIdx}-${i}`, warmFinalIds))}
                   </div>
                 </div>
               )
@@ -390,7 +476,7 @@ export function MessageList() {
           {/* TodoPanel：从消息流提取最新 todo_write 状态 */}
           <TodoPanel />
 
-          {hotDisplayItems.map((item, i) => renderItem(item, `hot-${i}`, hotMessages))}
+          {hotDisplayItems.map((item, i) => renderItem(item, `hot-${i}`))}
 
           {/* ═══════ 子代理面板 ═══════ */}
           {Array.from(subagentGroups.entries()).map(([name, msgs]) => (
@@ -398,7 +484,6 @@ export function MessageList() {
               key={`subagent-${name}`}
               agentName={name}
               messages={msgs}
-              allMessages={hotMessages}
               subcalls={subcallMap}
             />
           ))}
@@ -431,13 +516,11 @@ function FoldedStep({
   toolCount,
   durationMs,
   subcalls,
-  allMessages,
 }: {
   messages: Message[]
   toolCount: number
   durationMs: number
   subcalls: Map<string, Message[]>
-  allMessages: Message[]
 }) {
   const [open, setOpen] = useState(false)
   const seconds = Math.round(durationMs / 1000)
@@ -445,6 +528,7 @@ function FoldedStep({
 
   if (open) {
     const displayItems = buildDisplayItems(messages, subcalls, false)
+    const finalIds = computeFinalAssistantIds(messages)
     return (
       <div className="turn-collapse turn-collapse--open">
         <button
@@ -459,15 +543,16 @@ function FoldedStep({
           {displayItems.map((item, i) => {
             if (item.kind === 'folded') {
               return (
-                <FoldedStep key={`fs-${i}`} messages={item.messages} toolCount={item.toolCount} durationMs={item.durationMs} subcalls={subcalls} allMessages={allMessages} />
+                <FoldedStep key={`fs-${i}`} messages={item.messages} toolCount={item.toolCount} durationMs={item.durationMs} subcalls={subcalls} />
               )
             }
             if (item.kind === 'group') {
-              return <ToolGroup key={`fg-${i}`} kind={item.groupKind} messages={item.messages} subcalls={subcalls} allMessages={allMessages} />
+              return <ToolGroup key={`fg-${i}`} kind={item.groupKind} messages={item.messages} subcalls={subcalls} />
             }
             const msg = item.msg
             const toolId = msg.toolId || msg.id
-            return <MessageRow key={`fm-${i}`} msg={msg} subcalls={subcalls.get(toolId)} allMessages={allMessages} isStreaming={false} />
+            const isFinal = msg.role === 'assistant' ? finalIds.has(msg.id) : undefined
+            return <MessageRow key={`fm-${i}`} msg={msg} subcalls={subcalls.get(toolId)} isFinal={isFinal} isStreaming={false} />
           })}
         </div>
       </div>

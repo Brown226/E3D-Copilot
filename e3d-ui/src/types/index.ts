@@ -37,6 +37,8 @@ export interface Message {
   errorMessage?: string;
   /** 工具执行耗时（毫秒） */
   durationMs?: number;
+  /** 工具结构化结果数据（后端 ToolResult.Data，供前端渲染结果卡片） */
+  toolMeta?: unknown;
   /** 是否已完成（流式结束） */
   finalized?: boolean;
   /** 来源 Agent 名称（null = 主 Agent，非 null = 子代理名） */

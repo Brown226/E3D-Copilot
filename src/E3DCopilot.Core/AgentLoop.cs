@@ -684,7 +684,8 @@ namespace E3DCopilot.Core
                     }
 
                     string output = TruncateToolResult(toolResult.Text, call.Name);
-                    _sink?.Emit(CopilotEvent.ToolComplete(call.Id, output));
+                    // 传递结构化 Data 给前端渲染结果卡片（对齐 P1-12）
+                    _sink?.Emit(CopilotEvent.ToolComplete(call.Id, output, toolResult.Data));
                     return (output, null);
                 }
                 else

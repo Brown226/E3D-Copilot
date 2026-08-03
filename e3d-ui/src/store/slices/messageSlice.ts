@@ -23,7 +23,7 @@ export interface MessageSlice {
   finalizeAssistantMessage: (id: string, tabId?: string) => void;
   setAssistantErrorMessage: (id: string, errorMessage: string, tabId?: string) => void;
   handleThinkingDelta: (text: string, tabId?: string) => void;
-  handleToolResult: (toolId: string, result?: string, error?: string, tabId?: string, durationMs?: number) => void;
+  handleToolResult: (toolId: string, result?: string, error?: string, tabId?: string, durationMs?: number, meta?: unknown) => void;
   handleToolProgress: (toolId: string, text: string, progress: unknown, tabId?: string) => void;
   finalizeThinkingMessage: (tabId?: string) => void;
   stopStreaming: (tabId?: string) => void;
@@ -202,7 +202,7 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageSlice> =
     }))
   },
 
-  handleToolResult: (toolId, result, error, tabId, durationMs) => {
+  handleToolResult: (toolId, result, error, tabId, durationMs, meta) => {
     const targetId = tabId || get().activeTabId
     set((s) => ({
       tabs: s.tabs.map((t) =>
@@ -217,6 +217,7 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageSlice> =
                       content: error ? `Error: ${error}` : (result || 'Done'),
                       toolError: error,
                       durationMs: durationMs ?? m.durationMs,
+                      toolMeta: meta ?? m.toolMeta,
                       finalized: true,
                     }
                   : m

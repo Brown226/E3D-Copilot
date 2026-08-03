@@ -153,6 +153,8 @@ export interface ToolResultPayload {
   tabId?: string;
   durationMs?: number;
   agentName?: string;
+  /** 工具结构化结果数据（后端 ToolResult.Data） */
+  meta?: unknown;
 }
 
 export interface ApprovalRequestPayload {

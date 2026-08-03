@@ -85,7 +85,7 @@ export const AssistantBubble = memo(function AssistantBubble({ msg, isFinal = tr
           <MarkdownBlock markdown={msg.content} showCursor={!msg.finalized} />
         ) : hasError ? (
           /* 有真实错误信息时显示 */
-          <div style={{ color: 'var(--error)', fontSize: '14px' }}>
+          <div style={{ color: 'var(--err)', fontSize: '14px' }}>
             <strong>错误：</strong>{errorText}
           </div>
         ) : (

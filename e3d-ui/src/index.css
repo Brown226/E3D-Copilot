@@ -707,6 +707,98 @@ body {
 .tool__showall:hover {
   background: color-mix(in srgb, var(--accent-soft) 60%, transparent);
 }
+
+/* ═══════════════════════════════════════════
+   结构化结果卡片 — CAD 工具专用（P1-12）
+   ═══════════════════════════════════════════ */
+.tool__result-card {
+  margin: 2px 0;
+  padding: 8px 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.dark .tool__result-card {
+  background: rgba(255, 255, 255, 0.02);
+}
+.tool__card-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.tool__card-section {
+  margin-top: 6px;
+}
+.tool__card-section:first-child {
+  margin-top: 0;
+}
+.tool__card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.tool__card-count {
+  color: var(--accent);
+  font-weight: 400;
+}
+.tool__meta-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px 8px;
+}
+.tool__meta-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tool__meta-key {
+  color: var(--fg-faint);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+.tool__meta-val {
+  color: var(--fg);
+  word-break: break-all;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.tool__stats-table {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.tool__stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 8px;
+  background: var(--bg);
+  font-size: 11px;
+}
+.dark .tool__stats-row {
+  background: rgba(0, 0, 0, 0.15);
+}
+.tool__stats-key {
+  color: var(--fg);
+  font-family: var(--mono);
+}
+.tool__stats-val {
+  color: var(--accent);
+  font-weight: 600;
+  font-family: var(--mono);
+}
+
 .tool__note {
   font-size: var(--font-caption);
   color: var(--fg-faint);

@@ -130,7 +130,7 @@ export function CommandPalette() {
   if (!show) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[20vh]">
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[20vh]">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={toggle} />
       <div className="relative w-full max-w-lg bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in zoom-in-95 fade-in duration-150">
         {/* 搜索框 */}

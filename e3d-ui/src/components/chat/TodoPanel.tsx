@@ -36,8 +36,11 @@ function extractTodos(messages: Message[]): TodoItem[] {
   return []
 }
 
+// 稳定空数组引用，避免选择器每次返回新数组导致 React error #185
+const EMPTY_MESSAGES: Message[] = []
+
 export const TodoPanel = memo(function TodoPanel() {
-  const messages = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.messages ?? [])
+  const messages = useChatStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.messages ?? EMPTY_MESSAGES)
   const [collapsed, setCollapsed] = useState(false)
 
   const todos = useMemo(() => extractTodos(messages), [messages])
