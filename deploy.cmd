@@ -2,77 +2,81 @@
 chcp 65001 >nul
 setlocal
 
-:: EÐ¡ÖÇ v1.0 ²¿Êð½Å±¾
-:: ½«±àÒëºóµÄ DLL + React Ç°¶Ë¸´ÖÆµ½ E3D °²×°Ä¿Â¼
+:: Eå°æ™º v1.0 éƒ¨ç½²è„šæœ¬
+:: å°†ç¼–è¯‘åŽçš„ DLL + React å‰ç«¯å¤åˆ¶åˆ° E3D å®‰è£…ç›®å½•
 
 set E3D_DIR=D:\AVEVA\Everything3D2.10
 set SRC_DIR=%~dp0src
 
 echo ========================================
-echo EÐ¡ÖÇ v1.0 ²¿Êð½Å±¾
+echo Eå°æ™º v1.0 éƒ¨ç½²è„šæœ¬
 echo ========================================
 echo.
-echo E3D Ä¿Â¼: %E3D_DIR%
-echo Ô´Ä¿Â¼: %SRC_DIR%
+echo E3D ç›®å½•: %E3D_DIR%
+echo æºç›®å½•: %SRC_DIR%
 echo.
 
-:: ¼ì²é E3D Ä¿Â¼ÊÇ·ñ´æÔÚ
+:: æ£€æŸ¥ E3D ç›®å½•æ˜¯å¦å­˜åœ¨
 if not exist "%E3D_DIR%" (
-    echo [´íÎó] E3D Ä¿Â¼²»´æÔÚ: %E3D_DIR%
+    echo [é”™è¯¯] E3D ç›®å½•ä¸å­˜åœ¨: %E3D_DIR%
     pause
     exit /b 1
 )
 
-:: ¼ì²é E3D ÊÇ·ñÕýÔÚÔËÐÐ
+:: æ£€æŸ¥ E3D æ˜¯å¦æ­£åœ¨è¿è¡Œ
 tasklist /fi "imagename eq des.exe" 2>nul | findstr /i "des.exe" >nul
 if %errorlevel% equ 0 (
-    echo [¾¯¸æ] E3D ÕýÔÚÔËÐÐ£¬ÇëÏÈ¹Ø±Õ E3D£¡
+    echo [è­¦å‘Š] E3D æ­£åœ¨è¿è¡Œï¼Œè¯·å…ˆå…³é—­ E3Dï¼
     echo.
     pause
     exit /b 1
 )
 
-echo [1/7] ¸´ÖÆ E3DCopilot.Loader.dll...
+echo [1/7] å¤åˆ¶ E3DCopilot.Loader.dll...
 copy /y "%SRC_DIR%\E3DCopilot.Loader\bin\Release\net48\E3DCopilot.Loader.dll" "%E3D_DIR%\" >nul
 
-echo [2/7] ¸´ÖÆ E3DCopilot.Addin.dll...
+echo [2/7] å¤åˆ¶ E3DCopilot.Addin.dll...
 copy /y "%SRC_DIR%\E3DCopilot.Addin\bin\Release\net48\E3DCopilot.Addin.dll" "%E3D_DIR%\" >nul
 
-echo [3/7] ¸´ÖÆ E3DCopilot.Core.dll...
+echo [3/7] å¤åˆ¶ E3DCopilot.Core.dll...
 copy /y "%SRC_DIR%\E3DCopilot.Core\bin\Release\net48\E3DCopilot.Core.dll" "%E3D_DIR%\" >nul
 
-echo [4/7] ¸´ÖÆ E3DCopilot.Tools.dll...
+echo [4/7] å¤åˆ¶ E3DCopilot.Tools.dll...
 copy /y "%SRC_DIR%\E3DCopilot.Tools\bin\Release\net48\E3DCopilot.Tools.dll" "%E3D_DIR%\" >nul
 
-echo [5/7] ¸´ÖÆ E3DCopilot.WebHost.dll...
+echo [5/7] å¤åˆ¶ E3DCopilot.WebHost.dll...
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\E3DCopilot.WebHost.dll" "%E3D_DIR%\" >nul
 
-echo [6/7] ¸´ÖÆ WebView2 ÔËÐÐÊ± DLL...
+echo [6/7] å¤åˆ¶ WebView2 è¿è¡Œæ—¶ DLL...
+echo [6.5/7] å¤åˆ¶å†…ç½® skills ç›®å½•...
+if not exist "%E3D_DIR%\skills" mkdir "%E3D_DIR%\skills"
+xcopy /y /e /i /q "%SRC_DIR%\E3DCopilot.Core\bin\Release\net48\skills\*" "%E3D_DIR%\skills\" >nul
+
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\Microsoft.Web.WebView2.Core.dll" "%E3D_DIR%\" >nul
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\Microsoft.Web.WebView2.WinForms.dll" "%E3D_DIR%\" >nul
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\Microsoft.Web.WebView2.Wpf.dll" "%E3D_DIR%\" >nul 2>nul
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\WebView2Loader.dll" "%E3D_DIR%\" >nul 2>nul
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\WebView2Loader32.dll" "%E3D_DIR%\" >nul 2>nul
 
-echo [7/7] ¹¹½¨²¢¸´ÖÆ React Ç°¶Ë (e3d-ui)...
-echo ¹¹½¨ÐÂ e3d-ui Ç°¶Ë...
+echo [7/7] æž„å»ºå¹¶å¤åˆ¶ React å‰ç«¯ (e3d-ui)...
+echo æž„å»ºæ–° e3d-ui å‰ç«¯...
 cd /d "%~dp0e3d-ui"
 call npm run build >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [¾¯¸æ] e3d-ui ¹¹½¨Ê§°Ü£¬Çë¼ì²é¹¹½¨´íÎó
+    echo [è­¦å‘Š] e3d-ui æž„å»ºå¤±è´¥ï¼Œè¯·æ£€æŸ¥æž„å»ºé”™è¯¯
 )
 
-echo ¸´ÖÆÇ°¶Ëµ½ E3D wwwroot Ä¿Â¼...
+echo å¤åˆ¶å‰ç«¯åˆ° E3D wwwroot ç›®å½•...
 if not exist "%E3D_DIR%\wwwroot" mkdir "%E3D_DIR%\wwwroot"
 if exist "%E3D_DIR%\wwwroot\assets" rmdir /s /q "%E3D_DIR%\wwwroot\assets"
 xcopy /y /e /i /q "%~dp0src\E3DCopilot.WebHost\wwwroot\*" "%E3D_DIR%\wwwroot\" >nul
 
 echo.
 echo ========================================
-echo ²¿ÊðÍê³É£¡
+echo éƒ¨ç½²å®Œæˆï¼
 echo ========================================
 echo.
-echo UI Ä£Ê½: ÓÅÏÈ WebView2+React£¬WebView2 ²»¿ÉÓÃÊ±×Ô¶¯½µ¼¶ WinForms
-echo ÇëÆô¶¯ E3D ²âÊÔ EÐ¡ÖÇ²å¼þ¡£
+echo UI æ¨¡å¼: ä¼˜å…ˆ WebView2+Reactï¼ŒWebView2 ä¸å¯ç”¨æ—¶è‡ªåŠ¨é™çº§ WinForms
+echo è¯·å¯åŠ¨ E3D æµ‹è¯• Eå°æ™ºæ’ä»¶ã€‚
 echo.
 pause

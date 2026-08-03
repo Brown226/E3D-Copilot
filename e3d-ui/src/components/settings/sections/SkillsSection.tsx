@@ -26,9 +26,11 @@ import {
   Lock,
   AlertCircle,
   Loader2,
+  Sparkles,
 } from 'lucide-react'
 import type { SkillInfo, SkillSource } from '@/services/messageContracts'
 import { useToastStore } from '@/store/useToastStore'
+import { useChatStore } from '@/store/useChatStore'
 
 // ── 内置技能由后端动态生成，不再硬编码 ──
 
@@ -78,6 +80,29 @@ export default function SkillsSection() {
   const [newSourcePath, setNewSourcePath] = useState('')
   const [showAddInput, setShowAddInput] = useState(false)
   const addToast = useToastStore((s) => s.addToast)
+  const sendMessage = useChatStore((s) => s.sendMessage)
+  const toggleSettings = useChatStore((s) => s.toggleSettings)
+
+  // ── 通过对话创建技能（触发 skill-creator 元技能） ──
+  const handleCreateSkill = useCallback(async () => {
+    // 先关闭设置面板，回到对话界面
+    toggleSettings()
+    try {
+      const { default: bridge } = await import('@/services/bridgeService')
+      if (!bridge.isAvailable()) {
+        addToast('warning', '未连接到后端，无法创建技能')
+        return
+      }
+      // 发送一条明确的消息，引导 LLM 调用 run_skill("skill-creator")
+      sendMessage(
+        bridge.sendUserMessage.bind(bridge),
+        undefined,
+        '我想创建一个新的技能。请先使用 run_skill 工具加载 "skill-creator" 元技能，然后按照它的指引引导我完成技能创建。'
+      )
+    } catch {
+      addToast('error', '触发技能创建失败')
+    }
+  }, [sendMessage, toggleSettings, addToast])
 
   // ── 从后端加载技能 ──
   const loadSkills = useCallback(async () => {
@@ -215,16 +240,26 @@ export default function SkillsSection() {
 
   return (
     <div className="space-y-4">
-      {/* 搜索栏 */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="搜索技能... (名称/描述/标签)"
-          className="w-full pl-10 pr-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-        />
+      {/* 搜索栏 + 创建按钮 */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索技能... (名称/描述/标签)"
+            className="w-full pl-10 pr-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+          />
+        </div>
+        <button
+          onClick={handleCreateSkill}
+          className="flex items-center gap-1.5 px-4 py-2.5 text-sm rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all shrink-0"
+          title="通过对话引导创建新技能"
+        >
+          <Sparkles className="w-4 h-4" />
+          创建技能
+        </button>
       </div>
 
       {/* 统计概览 */}

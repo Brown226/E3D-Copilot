@@ -55,11 +55,26 @@ namespace E3DCopilot.Core.Skills
 
             LoadState();
 
-            // 默认包含应用目录下的 skills 文件夹
+            // 默认扫描路径 1: 应用目录下的 skills 文件夹（内置 skills，只读）
             var appDir = AppDomain.CurrentDomain.BaseDirectory;
             var defaultPath = Path.Combine(appDir, "skills");
             if (Directory.Exists(defaultPath))
                 _sourcePaths.Add(defaultPath);
+
+            // 默认扫描路径 2: 用户目录下的 skills 文件夹（用户创建的 skills，可写）
+            // skill-creator 元技能创建的新 skill 会放在这里
+            var userSkillsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "E3DCopilot", "skills");
+            try
+            {
+                Directory.CreateDirectory(userSkillsPath); // 确保目录存在
+                _sourcePaths.Add(userSkillsPath);
+            }
+            catch
+            {
+                // 权限不足或路径无效时静默跳过
+            }
         }
 
         /// <summary>
@@ -131,6 +146,10 @@ namespace E3DCopilot.Core.Skills
         public List<SkillSource> ListSources()
         {
             var sources = new List<SkillSource>();
+            // 内置目录（应用目录下的 skills）不可移除
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            var builtinPath = Path.Combine(appDir, "skills");
+
             foreach (var path in _sourcePaths)
             {
                 var skillCount = 0;
@@ -158,7 +177,7 @@ namespace E3DCopilot.Core.Skills
                     Path = path,
                     Status = status,
                     SkillCount = skillCount,
-                    Removable = true,
+                    Removable = !string.Equals(path, builtinPath, StringComparison.OrdinalIgnoreCase),
                 });
             }
 
