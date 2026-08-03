@@ -46,7 +46,7 @@ namespace E3DCopilot.Core.Skills
             @"\[(.*?)\]",
             RegexOptions.Compiled);
 
-        public SkillManager(string stateFilePath = null)
+        public SkillManager(string stateFilePath = null, IEnumerable<string> sourcePaths = null)
         {
             _stateFilePath = stateFilePath
                 ?? Path.Combine(
@@ -54,6 +54,17 @@ namespace E3DCopilot.Core.Skills
                     "E3DCopilot", "skills-state.json");
 
             LoadState();
+
+            if (sourcePaths != null)
+            {
+                // 显式注入源路径（测试隔离/自定义场景），跳过默认目录扫描
+                foreach (var path in sourcePaths)
+                {
+                    if (!string.IsNullOrWhiteSpace(path))
+                        _sourcePaths.Add(path);
+                }
+                return;
+            }
 
             // 默认扫描路径 1: 应用目录下的 skills 文件夹（内置 skills，只读）
             var appDir = AppDomain.CurrentDomain.BaseDirectory;

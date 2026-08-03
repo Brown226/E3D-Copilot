@@ -20,8 +20,8 @@ namespace E3DCopilot.Tests
             _stateFilePath = Path.Combine(_tempDir, "state.json");
             Directory.CreateDirectory(_skillSourceDir);
 
-            _mgr = new SkillManager(_stateFilePath);
-            _mgr.AddSource(_skillSourceDir);
+            // 注入隔离的源路径，避免扫描到真实环境（应用目录 skills / 用户目录 skills）
+            _mgr = new SkillManager(_stateFilePath, new[] { _skillSourceDir });
         }
 
         [TearDown]
@@ -182,8 +182,7 @@ namespace E3DCopilot.Tests
             _mgr.ToggleSkill("my-skill"); // disable
 
             // Create new manager with same state file
-            var mgr2 = new SkillManager(_stateFilePath);
-            mgr2.AddSource(_skillSourceDir);
+            var mgr2 = new SkillManager(_stateFilePath, new[] { _skillSourceDir });
             CreateSkill("my-skill", "---\nname: my-skill\ndescription: Test\n---\nBody");
 
             var skills = mgr2.ListSkills();
