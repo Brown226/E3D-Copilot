@@ -48,6 +48,13 @@ export const MessageTypes = {
   SessionsList: 'sessions:list',
   SessionsDelete: 'sessions:delete',
 
+  // === MCP 管理 ===
+  McpStatus: 'mcp:status',
+  McpRestart: 'mcp:restart',
+  McpDiagnose: 'mcp:diagnose',
+  McpAdd: 'mcp:add',
+  McpRemove: 'mcp:remove',
+
   // === 中途干预 ===
   UserSteer: 'user:steer',
 
@@ -442,6 +449,74 @@ export interface SkillsListResultPayload {
 export interface SkillsTogglePayload {
   name: string;
   enabled: boolean;
+}
+
+// ============================================
+// MCP 管理
+// ============================================
+
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  readOnly?: boolean;
+  destructive?: boolean;
+}
+
+export interface McpServerInfo {
+  name: string;
+  transport: string;        // 'stdio' | 'http' | 'sse'
+  connected: boolean;
+  toolCount: number;
+  hasTools: boolean;
+  hasPrompts: boolean;
+  hasResources: boolean;
+  tools: McpToolInfo[];
+}
+
+export interface McpFailure {
+  server: string;
+  error: string;
+  time: string;
+}
+
+export interface McpStatusResultPayload {
+  servers: McpServerInfo[];
+  failures: McpFailure[];
+  totalTools?: number;
+  message?: string;
+}
+
+export interface McpDiagnoseCheck {
+  check: string;
+  passed: boolean;
+  detail: string;
+  durationMs?: number;
+}
+
+export interface McpDiagnoseResultPayload {
+  server?: string;
+  healthy: boolean;
+  summary: string;
+  timestamp?: string;
+  checks: McpDiagnoseCheck[];
+}
+
+export interface McpRestartResultPayload {
+  server: string;
+  success: boolean;
+  message: string;
+}
+
+// MCP server 配置（添加时传给后端）
+export interface McpServerConfig {
+  name: string;
+  type: 'stdio' | 'http' | 'streamable-http' | 'sse';
+  command?: string;           // stdio 模式启动命令
+  args?: string[];            // stdio 模式启动参数
+  env?: Record<string, string>;
+  url?: string;               // http/sse 模式端点
+  headers?: Record<string, string>;
+  dir?: string;               // stdio 工作目录
 }
 
 // ============================================

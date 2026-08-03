@@ -20,6 +20,10 @@ import type {
   SkillsListResultPayload,
   MemoryListResultPayload,
   SessionsListResultPayload,
+  McpStatusResultPayload,
+  McpRestartResultPayload,
+  McpDiagnoseResultPayload,
+  McpServerConfig,
 } from '../messageContracts';
 import { MessageTypes } from '../messageContracts';
 
@@ -221,6 +225,30 @@ export class Bridge {
 
   refreshSkills(): Promise<unknown> {
     return this.sendAndWait(MessageTypes.SkillsRefresh, null, 10000);
+  }
+
+  // ============================================
+  // MCP 管理
+  // ============================================
+
+  getMcpStatus(): Promise<McpStatusResultPayload | null> {
+    return this.sendAndWait(MessageTypes.McpStatus, null, 10000) as Promise<McpStatusResultPayload | null>;
+  }
+
+  restartMcpServer(server: string): Promise<McpRestartResultPayload | null> {
+    return this.sendAndWait(MessageTypes.McpRestart, { server }, 30000) as Promise<McpRestartResultPayload | null>;
+  }
+
+  diagnoseMcpServer(server: string): Promise<McpDiagnoseResultPayload | null> {
+    return this.sendAndWait(MessageTypes.McpDiagnose, { server }, 15000) as Promise<McpDiagnoseResultPayload | null>;
+  }
+
+  addMcpServer(config: McpServerConfig): Promise<McpRestartResultPayload | null> {
+    return this.sendAndWait(MessageTypes.McpAdd, config, 60000) as Promise<McpRestartResultPayload | null>;
+  }
+
+  removeMcpServer(server: string): Promise<McpRestartResultPayload | null> {
+    return this.sendAndWait(MessageTypes.McpRemove, { server }, 10000) as Promise<McpRestartResultPayload | null>;
   }
 
   // ============================================

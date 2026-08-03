@@ -5,11 +5,11 @@
  */
 
 import { useEffect, useState } from 'react'
-import { X, Settings, User, Box, Palette, Brain, Zap, Info } from 'lucide-react'
+import { X, Settings, User, Box, Palette, Brain, Zap, Info, Plug } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 
 // ── Tab 定义 ──
-type SettingsTab = 'general' | 'models' | 'skills' | 'appearance' | 'memory' | 'about'
+type SettingsTab = 'general' | 'models' | 'skills' | 'mcp' | 'appearance' | 'memory' | 'about'
 
 interface TabDef {
   id: SettingsTab
@@ -21,6 +21,7 @@ const TABS: TabDef[] = [
   { id: 'general', label: '通用', icon: <User className="w-4 h-4" /> },
   { id: 'models', label: '模型', icon: <Box className="w-4 h-4" /> },
   { id: 'skills', label: '技能', icon: <Zap className="w-4 h-4" /> },
+  { id: 'mcp', label: 'MCP', icon: <Plug className="w-4 h-4" /> },
   { id: 'appearance', label: '外观', icon: <Palette className="w-4 h-4" /> },
   { id: 'memory', label: '记忆', icon: <Brain className="w-4 h-4" /> },
   { id: 'about', label: '介绍', icon: <Info className="w-4 h-4" /> },
@@ -30,6 +31,7 @@ const TABS: TabDef[] = [
 const GeneralSection = () => import('./sections/GeneralSection')
 const ModelsSection = () => import('./sections/ModelsSection')
 const SkillsSection = () => import('./sections/SkillsSection')
+const McpSection = () => import('./sections/McpSection')
 const AppearanceSection = () => import('./sections/AppearanceSection')
 const MemorySection = () => import('./sections/MemorySection')
 const AboutSection = () => import('./sections/AboutSection')
@@ -38,6 +40,7 @@ const sectionLoaders: Record<SettingsTab, () => Promise<{ default: React.Compone
   general: GeneralSection,
   models: ModelsSection,
   skills: SkillsSection,
+  mcp: McpSection,
   appearance: AppearanceSection,
   memory: MemorySection,
   about: AboutSection,

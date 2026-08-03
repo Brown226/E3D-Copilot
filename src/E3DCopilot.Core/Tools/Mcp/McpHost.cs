@@ -315,6 +315,57 @@ namespace E3DCopilot.Core.Tools.Mcp
             return true;
         }
 
+        /// <summary>
+        /// 添加并启动一个新的 MCP server（运行时动态添加）
+        /// </summary>
+        public async Task<bool> AddServerAsync(CopilotConfig.McpServerConfig config, CancellationToken ct = default)
+        {
+            if (config == null || string.IsNullOrWhiteSpace(config.Name)) return false;
+
+            lock (_lock)
+            {
+                // 已存在则先移除
+                if (_configs.ContainsKey(config.Name))
+                {
+                    var oldClient = _clients.FirstOrDefault(c => c.Name.Equals(config.Name, StringComparison.OrdinalIgnoreCase));
+                    if (oldClient != null)
+                    {
+                        _clients.Remove(oldClient);
+                        _tools.RemoveAll(t => t.ServerName.Equals(config.Name, StringComparison.OrdinalIgnoreCase));
+                        try { oldClient.Dispose(); } catch { }
+                    }
+                    _failures.RemoveAll(f => f.ServerName.Equals(config.Name, StringComparison.OrdinalIgnoreCase));
+                }
+                _configs[config.Name] = config;
+            }
+
+            await StartServerAsync(config, ct).ConfigureAwait(false);
+            return true;
+        }
+
+        /// <summary>
+        /// 移除并停止一个 MCP server
+        /// </summary>
+        public bool RemoveServer(string serverName)
+        {
+            if (string.IsNullOrWhiteSpace(serverName)) return false;
+
+            lock (_lock)
+            {
+                if (!_configs.Remove(serverName)) return false;
+
+                var oldClient = _clients.FirstOrDefault(c => c.Name.Equals(serverName, StringComparison.OrdinalIgnoreCase));
+                if (oldClient != null)
+                {
+                    _clients.Remove(oldClient);
+                    _tools.RemoveAll(t => t.ServerName.Equals(serverName, StringComparison.OrdinalIgnoreCase));
+                    try { oldClient.Dispose(); } catch { }
+                }
+                _failures.RemoveAll(f => f.ServerName.Equals(serverName, StringComparison.OrdinalIgnoreCase));
+                return true;
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed) return;

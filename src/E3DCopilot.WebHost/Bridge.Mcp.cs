@@ -1,6 +1,9 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using E3DCopilot.Core.Config;
 using E3DCopilot.Core.Messaging;
 
 namespace E3DCopilot.WebHost
@@ -159,6 +162,143 @@ namespace E3DCopilot.WebHost
             catch (Exception ex)
             {
                 SendToFrontend(MessageTypes.Error, new { message = $"MCP 诊断失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        /// <summary>
+        /// 添加 MCP server（运行时动态添加，同步保存到 user.json）
+        /// </summary>
+        private async void HandleMcpAdd(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                if (!payload.HasValue)
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少 MCP 配置参数" }, requestId);
+                    return;
+                }
+
+                var p = payload.Value;
+                var config = new CopilotConfig.McpServerConfig
+                {
+                    Name = p.TryGetProperty("name", out var n) ? n.GetString() : null,
+                    Type = p.TryGetProperty("type", out var t) ? t.GetString() : "stdio",
+                    Command = p.TryGetProperty("command", out var cmd) ? cmd.GetString() : null,
+                    Url = p.TryGetProperty("url", out var url) ? url.GetString() : null,
+                    Dir = p.TryGetProperty("dir", out var dir) ? dir.GetString() : null,
+                };
+
+                // Args 数组
+                if (p.TryGetProperty("args", out var argsEl) && argsEl.ValueKind == JsonValueKind.Array)
+                {
+                    config.Args = new System.Collections.Generic.List<string>();
+                    foreach (var a in argsEl.EnumerateArray())
+                        config.Args.Add(a.GetString() ?? "");
+                }
+
+                // Env 字典
+                if (p.TryGetProperty("env", out var envEl) && envEl.ValueKind == JsonValueKind.Object)
+                {
+                    config.Env = new System.Collections.Generic.Dictionary<string, string>();
+                    foreach (var prop in envEl.EnumerateObject())
+                        config.Env[prop.Name] = prop.Value.GetString() ?? "";
+                }
+
+                // Headers 字典
+                if (p.TryGetProperty("headers", out var hdrEl) && hdrEl.ValueKind == JsonValueKind.Object)
+                {
+                    config.Headers = new System.Collections.Generic.Dictionary<string, string>();
+                    foreach (var prop in hdrEl.EnumerateObject())
+                        config.Headers[prop.Name] = prop.Value.GetString() ?? "";
+                }
+
+                if (string.IsNullOrWhiteSpace(config.Name))
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少 MCP server 名称" }, requestId);
+                    return;
+                }
+
+                var mcpHost = _controller.McpHost;
+                if (mcpHost == null)
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "MCP 未配置" }, requestId);
+                    return;
+                }
+
+                // 启动新 server
+                bool success = await mcpHost.AddServerAsync(config, CancellationToken.None);
+
+                // 保存到 user.json（持久化）
+                if (success)
+                {
+                    var cfg = CopilotConfig.Load();
+                    // 移除同名旧配置
+                    cfg.McpServers.RemoveAll(s => string.Equals(s.Name, config.Name, StringComparison.OrdinalIgnoreCase));
+                    cfg.McpServers.Add(config);
+                    cfg.Save();
+                }
+
+                // 注册新工具到 Executor
+                foreach (var tool in mcpHost.GetAllTools())
+                {
+                    if (_controller.Executor.GetHandler(tool.Name) == null)
+                        _controller.Executor.Register(tool);
+                }
+
+                SendToFrontend(MessageTypes.McpAdd, new
+                {
+                    server = config.Name,
+                    success,
+                    message = success ? $"MCP server '{config.Name}' 已添加并启动" : $"添加 '{config.Name}' 失败"
+                }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"添加 MCP 失败: {ex.Message}" }, requestId);
+            }
+        }
+
+        /// <summary>
+        /// 移除 MCP server（停止连接 + 从 user.json 删除）
+        /// </summary>
+        private void HandleMcpRemove(JsonElement? payload, string requestId)
+        {
+            try
+            {
+                string serverName = null;
+                if (payload.HasValue && payload.Value.TryGetProperty("server", out var serverProp))
+                    serverName = serverProp.GetString();
+
+                if (string.IsNullOrEmpty(serverName))
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "缺少 server 参数" }, requestId);
+                    return;
+                }
+
+                var mcpHost = _controller.McpHost;
+                if (mcpHost == null)
+                {
+                    SendToFrontend(MessageTypes.Error, new { message = "MCP 未配置" }, requestId);
+                    return;
+                }
+
+                bool success = mcpHost.RemoveServer(serverName);
+
+                // 从 user.json 删除
+                var cfg = CopilotConfig.Load();
+                cfg.McpServers.RemoveAll(s => string.Equals(s.Name, serverName, StringComparison.OrdinalIgnoreCase));
+                cfg.Save();
+
+                SendToFrontend(MessageTypes.McpRemove, new
+                {
+                    server = serverName,
+                    success,
+                    message = success ? $"MCP server '{serverName}' 已移除" : $"未找到 MCP server '{serverName}'"
+                }, requestId);
+            }
+            catch (Exception ex)
+            {
+                SendToFrontend(MessageTypes.Error, new { message = $"移除 MCP 失败: {ex.Message}" }, requestId);
             }
         }
     }

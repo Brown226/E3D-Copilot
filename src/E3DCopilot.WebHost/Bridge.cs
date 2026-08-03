@@ -243,6 +243,12 @@ namespace E3DCopilot.WebHost
                     case MessageTypes.McpDiagnose:
                         HandleMcpDiagnose(payload, requestId);
                         break;
+                    case MessageTypes.McpAdd:
+                        HandleMcpAdd(payload, requestId);
+                        break;
+                    case MessageTypes.McpRemove:
+                        HandleMcpRemove(payload, requestId);
+                        break;
 
                     case "devtools:open":
                         _webView.CoreWebView2.OpenDevToolsWindow();

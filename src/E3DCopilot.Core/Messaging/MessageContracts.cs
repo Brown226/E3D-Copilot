@@ -61,6 +61,8 @@ namespace E3DCopilot.Core.Messaging
         public const string McpStatus = "mcp:status";
         public const string McpRestart = "mcp:restart";
         public const string McpDiagnose = "mcp:diagnose";
+        public const string McpAdd = "mcp:add";
+        public const string McpRemove = "mcp:remove";
 
         // === 后端 → 前端 ===
         public const string Pong = "pong";
