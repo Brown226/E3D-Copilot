@@ -97,7 +97,16 @@ namespace E3DCopilot.WebHost
                 if (payload.HasValue && payload.Value.TryGetProperty("name", out var prop))
                     name = prop.GetString();
                 bool ok = ProvidersService.DeleteProvider(_controller.Config, name ?? "");
-                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config), rid);
+
+                // 先发送删除结果（含 success/message），让前端知道是否成功
+                SendToFrontend(MessageTypes.ProviderDelete, new
+                {
+                    success = ok,
+                    message = ok ? null : (string.IsNullOrEmpty(name) ? "删除失败" : $"内置 Provider '{name}' 不可删除（如需恢复默认配置，请清空其字段而非删除）")
+                }, rid);
+
+                // 再推送最新 provider 列表
+                SendToFrontend(MessageTypes.ProvidersListResult, ProvidersService.ListProviders(_controller.Config));
             }
             catch (Exception ex)
             {

@@ -144,10 +144,24 @@ namespace E3DCopilot.Core.Providers
 
         /// <summary>
         /// 删除 provider
+        /// 规则：
+        ///   - 用户添加的 provider（不在全局 config.json 中）→ 可删除
+        ///   - 用户修改过的内置 provider（在 user.json 中有覆盖配置）→ 可删除（删除覆盖，恢复全局默认）
+        ///   - 纯内置 provider（只在全局 config.json 中，用户未修改）→ 不可删除
         /// </summary>
         public static bool DeleteProvider(CopilotConfig config, string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return false;
+
+            // 检查是否在用户配置文件中（user.json）
+            bool inUserConfig = IsInUserConfig(name);
+            bool inGlobalConfig = IsBuiltIn(name);
+
+            // 纯内置 provider（不在用户配置中，只在全局配置中）不可删除
+            if (inGlobalConfig && !inUserConfig)
+            {
+                return false;
+            }
 
             var removed = config.Providers.RemoveAll(p => p.Name == name);
             if (removed > 0)
@@ -158,9 +172,97 @@ namespace E3DCopilot.Core.Providers
                     config.DefaultModel = config.Providers.FirstOrDefault()?.DefaultModel ?? "";
                 }
                 Save(config);
+
+                // 如果删除的是用户覆盖的内置 provider，需要重新加载以恢复全局默认
+                if (inGlobalConfig && inUserConfig)
+                {
+                    // 从 user.json 移除后，重新合并会恢复全局 provider
+                    ReloadConfig();
+                }
                 return true;
             }
             return false;
+        }
+
+        /// <summary>检查 provider 是否在用户配置文件 (user.json) 中</summary>
+        private static bool IsInUserConfig(string name)
+        {
+            try
+            {
+                var userPath = CopilotConfig.GetUserConfigPath();
+                if (!File.Exists(userPath)) return false;
+                var json = File.ReadAllText(userPath);
+                var userConfig = JsonConvert.DeserializeObject<CopilotConfig.UserConfig>(json);
+                if (userConfig?.Providers == null) return false;
+                foreach (var p in userConfig.Providers)
+                {
+                    if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>重新加载配置（删除用户覆盖的内置 provider 后恢复全局默认）</summary>
+        private static void ReloadConfig()
+        {
+            try
+            {
+                // 读取当前合并配置（已被 DeleteProvider 修改过，不含被删除的 provider）
+                var current = CopilotConfig.Load();
+
+                // 重新读取全局配置，恢复被删除的内置 provider
+                // 注意：Load 是单例，不会重新加载。需要手动合并。
+                var globalPath = CopilotConfig.GetGlobalConfigPath();
+                var globalConfig = LoadGlobalConfig(globalPath);
+                if (globalConfig?.Providers != null)
+                {
+                    // 将全局 provider 恢复到 current.Providers（如果不存在）
+                    foreach (var g in globalConfig.Providers)
+                    {
+                        if (!current.Providers.Any(p => string.Equals(p.Name, g.Name, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            // 深拷贝后添加（CloneProvider 是 private 的，这里手动 clone）
+                            current.Providers.Add(new CopilotConfig.ProviderConfig
+                            {
+                                Name = g.Name,
+                                Kind = g.Kind,
+                                BaseUrl = g.BaseUrl,
+                                ApiKey = g.ApiKey,
+                                Models = g.Models != null ? new List<string>(g.Models) : new List<string>(),
+                                DefaultModel = g.DefaultModel,
+                                TimeoutMs = g.TimeoutMs,
+                                Temperature = g.Temperature,
+                                MaxTokens = g.MaxTokens,
+                                ContextWindow = g.ContextWindow,
+                                VisionModels = g.VisionModels != null ? new List<string>(g.VisionModels) : new List<string>(),
+                                Effort = g.Effort,
+                                ReasoningProtocol = g.ReasoningProtocol
+                            });
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // 静默忽略重载失败
+            }
+        }
+
+        /// <summary>读取全局配置文件</summary>
+        private static CopilotConfig LoadGlobalConfig(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return null;
+                var json = File.ReadAllText(path);
+                return JsonConvert.DeserializeObject<CopilotConfig>(json);
+            }
+            catch { return null; }
         }
 
         /// <summary>
@@ -245,9 +347,16 @@ namespace E3DCopilot.Core.Providers
 
         private static bool IsBuiltIn(string name)
         {
-            // 只保留核心的三个内置 Provider：mimo、qwen37、local
-            // deepseek 系列需要用户自行添加（支持 DeepSeek 特有的 effort/reasoning 配置）
-            return name == "mimo" || name == "qwen37" || name == "local";
+            // 基于 global config.json 判断：出现在全局配置中的 provider 即为"内置"
+            // 开发者通过 config.json 预设的 provider 用户不可删除
+            var global = CopilotConfig.GetGlobalConfig();
+            if (global?.Providers == null) return false;
+            foreach (var p in global.Providers)
+            {
+                if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         private static string MaskKey(string key)

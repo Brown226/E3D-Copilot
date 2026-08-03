@@ -387,7 +387,14 @@ function AccessTab() {
   const handleDelete = async (providerName: string) => {
     try {
       const { default: bridge } = await import('@/services/bridgeService')
-      await bridge.deleteProvider(providerName)
+      const result = await bridge.deleteProvider(providerName) as { success?: boolean; message?: string } | null
+      // 检查后端返回的 success 字段
+      if (result && result.success === false) {
+        setFetchError(result.message || `Provider '${providerName}' 删除失败`)
+        setDeleteConfirm(null)
+        reloadProviders()
+        return
+      }
       setDeleteConfirm(null)
       reloadProviders()
     } catch (err) {
@@ -756,7 +763,7 @@ function AccessTab() {
 
       {/* 编辑/添加表单 Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-[60]">
+        <div className="fixed inset-0 z-[var(--z-overlay)]">
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => { setShowForm(false); setEditingProvider(null) }}

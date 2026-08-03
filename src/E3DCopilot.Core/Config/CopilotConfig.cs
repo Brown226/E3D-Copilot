@@ -243,6 +243,11 @@ namespace E3DCopilot.Core.Config
         // ════════════════════════════════════════
 
         /// <summary>
+        /// 获取已加载的全局配置（供外部判断 provider 是否为内置）
+        /// </summary>
+        public static CopilotConfig GetGlobalConfig() => _globalConfig;
+
+        /// <summary>
         /// 全局配置文件路径（插件目录，管理员维护）
         /// </summary>
         public static string GetGlobalConfigPath()
@@ -277,14 +282,40 @@ namespace E3DCopilot.Core.Config
 
         /// <summary>
         /// 保存用户级配置到 user.json
+        /// 保存策略：
+        ///   - 用户添加的 provider（不在全局配置中）→ 保存
+        ///   - 用户修改过的内置 provider（与全局配置字段值不同）→ 保存（覆盖全局）
+        ///   - 未修改的内置 provider（与全局配置完全相同）→ 不保存（避免冗余）
+        /// 这样可确保用户对内置 provider 的修改（如 ApiKey、BaseUrl）被持久化，
+        /// 同时用户删除覆盖后能恢复全局默认。
         /// </summary>
         public void SaveUserConfig()
         {
+            var userProviders = new List<ProviderConfig>();
+            if (this.Providers != null)
+            {
+                foreach (var p in this.Providers)
+                {
+                    var globalP = FindGlobalProvider(p.Name);
+                    if (globalP == null)
+                    {
+                        // 不在全局配置中 → 用户添加的，保存
+                        userProviders.Add(p);
+                    }
+                    else if (!ProviderEquals(p, globalP))
+                    {
+                        // 在全局配置中但字段值不同 → 用户修改过，保存
+                        userProviders.Add(p);
+                    }
+                    // 否则：与全局配置完全相同 → 不保存
+                }
+            }
+
             var userConfig = new UserConfig
             {
                 DefaultProvider = this.DefaultProvider,
                 DefaultModel = this.DefaultModel,
-                Providers = this.Providers,
+                Providers = userProviders,
                 Ui = this.Ui,
                 Safety = this.Safety,
                 // 保存用户级别的ISO配置
@@ -301,6 +332,45 @@ namespace E3DCopilot.Core.Config
                 Directory.CreateDirectory(dir);
 
             File.WriteAllText(path, JsonConvert.SerializeObject(userConfig, Formatting.Indented));
+        }
+
+        /// <summary>在全局配置中按名称查找 provider</summary>
+        private ProviderConfig FindGlobalProvider(string name)
+        {
+            if (string.IsNullOrEmpty(name) || _globalConfig?.Providers == null) return null;
+            foreach (var g in _globalConfig.Providers)
+            {
+                if (string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return g;
+            }
+            return null;
+        }
+
+        /// <summary>比较两个 provider 的字段值是否相同（用于判断用户是否修改过内置 provider）</summary>
+        private static bool ProviderEquals(ProviderConfig a, ProviderConfig b)
+        {
+            if (a == null && b == null) return true;
+            if (a == null || b == null) return false;
+            return string.Equals(a.Kind, b.Kind, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.BaseUrl, b.BaseUrl, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.ApiKey, b.ApiKey, StringComparison.Ordinal)
+                && string.Equals(a.DefaultModel, b.DefaultModel, StringComparison.OrdinalIgnoreCase)
+                && a.ContextWindow == b.ContextWindow
+                && a.TimeoutMs == b.TimeoutMs
+                && a.Temperature == b.Temperature
+                && a.MaxTokens == b.MaxTokens
+                && ListEquals(a.Models, b.Models)
+                && ListEquals(a.VisionModels, b.VisionModels);
+        }
+
+        private static bool ListEquals(List<string> a, List<string> b)
+        {
+            if (a == null && b == null) return true;
+            if (a == null || b == null) return false;
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+                if (!string.Equals(a[i], b[i], StringComparison.Ordinal)) return false;
+            return true;
         }
 
         /// <summary>
@@ -433,10 +503,10 @@ namespace E3DCopilot.Core.Config
             result.DefaultProvider = !string.IsNullOrEmpty(user.DefaultProvider) ? user.DefaultProvider : global.DefaultProvider;
             result.DefaultModel = !string.IsNullOrEmpty(user.DefaultModel) ? user.DefaultModel : global.DefaultModel;
 
-            // Providers — 用户有自己的就用用户的，否则用全局的
-            result.Providers = (user.Providers != null && user.Providers.Count > 0)
-                ? user.Providers
-                : global.Providers;
+            // Providers — 合并：全局配置为基础，用户配置追加/覆盖同名
+            // 场景：开发者通过全局 config.json 预设默认供应商，用户通过 UI 添加自己的供应商
+            // 二者是合并关系，不是替换关系
+            result.Providers = MergeProviders(global.Providers, user.Providers);
 
             // Ui — 逐字段合并
             result.Ui = MergeUiConfig(global.Ui, user.Ui);
@@ -461,6 +531,64 @@ namespace E3DCopilot.Core.Config
             result.MigrateFromLegacy();
 
             return result;
+        }
+
+        /// <summary>
+        /// 合并 Provider 列表：全局配置为基础，用户配置追加/覆盖同名
+        /// - 全局 provider 先加入（深拷贝，避免引用共享导致 _globalConfig 被意外修改）
+        /// - 用户 provider 同名则覆盖全局的，不同名则追加
+        /// </summary>
+        private static List<ProviderConfig> MergeProviders(List<ProviderConfig> global, List<ProviderConfig> user)
+        {
+            var result = new List<ProviderConfig>();
+            var userNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // 用户 provider 先收集名称
+            if (user != null)
+            {
+                foreach (var u in user) userNames.Add(u.Name ?? "");
+            }
+
+            // 全局 provider 加入结果（用户未覆盖的）— 深拷贝避免引用共享
+            if (global != null)
+            {
+                foreach (var g in global)
+                {
+                    if (!userNames.Contains(g.Name ?? ""))
+                        result.Add(CloneProvider(g));
+                }
+            }
+
+            // 用户 provider 追加（包括覆盖同名的）— 深拷贝
+            if (user != null)
+            {
+                foreach (var u in user)
+                    result.Add(CloneProvider(u));
+            }
+
+            return result;
+        }
+
+        /// <summary>深拷贝 ProviderConfig，避免运行时修改影响 _globalConfig</summary>
+        private static ProviderConfig CloneProvider(ProviderConfig src)
+        {
+            if (src == null) return null;
+            return new ProviderConfig
+            {
+                Name = src.Name,
+                Kind = src.Kind,
+                BaseUrl = src.BaseUrl,
+                ApiKey = src.ApiKey,
+                Models = src.Models != null ? new List<string>(src.Models) : new List<string>(),
+                DefaultModel = src.DefaultModel,
+                TimeoutMs = src.TimeoutMs,
+                Temperature = src.Temperature,
+                MaxTokens = src.MaxTokens,
+                ContextWindow = src.ContextWindow,
+                VisionModels = src.VisionModels != null ? new List<string>(src.VisionModels) : new List<string>(),
+                Effort = src.Effort,
+                ReasoningProtocol = src.ReasoningProtocol
+            };
         }
 
         private static UiConfig MergeUiConfig(UiConfig global, UiConfig user)
