@@ -2,15 +2,31 @@
 chcp 65001 >nul
 setlocal
 
-:: E小智 v1.0 部署脚本
-:: 将编译后的 DLL + React 前端复制到 E3D 安装目录
+:: E3DCopilot v1.0 deploy script
+:: Copies built DLLs + React frontend into the E3D install dir
 
 set E3D_DIR=D:\AVEVA\Everything3D2.10
 set SRC_DIR=%~dp0src
 
-:: dwg-sidecar：DWG 几何解析的独立进程（x64 自包含，绕开 .NET 4.8 / x86 限制）
-:: 找不到时部署仍继续，但 cad_import 会回退到旧 Teigha 解析器（几何覆盖不全）
-set SIDECAR_DIR=E:\工作\Reactor-Work\apps\zcode-cli\packages\dwg-tools-plugin\tools\dwg-sidecar\bin\Release\net9.0\win-x64
+:: dwg-sidecar: standalone x64 process for DWG geometry parsing.
+:: If missing, deploy continues but cad_import falls back to the old Teigha
+:: parser (layer-name keyword filter, incomplete geometry).
+::
+:: IMPORTANT: do NOT hardcode a non-ASCII path here.
+:: cmd.exe parses this .cmd file with the current ANSI code page BEFORE
+:: chcp 65001 takes effect, so CJK characters become garbage and the set
+:: fails silently. Resolve the path from an argument or env var instead.
+:: Priority: arg 1 > E3D_DWG_SIDECAR env var.
+if not "%~1"=="" (
+    set "SIDECAR_DIR=%~1"
+) else if not "%E3D_DWG_SIDECAR%"=="" (
+    set "SIDECAR_DIR=%E3D_DWG_SIDECAR%"
+) else (
+    set "SIDECAR_DIR="
+)
+:: If an .exe was given, take its parent directory
+if /i "%SIDECAR_DIR:~-4%"==".exe" for %%F in ("%SIDECAR_DIR%") do set "SIDECAR_DIR=%%~dpF"
+if "%SIDECAR_DIR:~-1%"=="\" set "SIDECAR_DIR=%SIDECAR_DIR:~0,-1%"
 
 echo ========================================
 echo E小智 v1.0 部署脚本
@@ -20,14 +36,14 @@ echo E3D 目录: %E3D_DIR%
 echo 源目录: %SRC_DIR%
 echo.
 
-:: 检查 E3D 目录是否存在
+:: Check E3D install dir exists
 if not exist "%E3D_DIR%" (
     echo [错误] E3D 目录不存在: %E3D_DIR%
     pause
     exit /b 1
 )
 
-:: 检查 E3D 是否正在运行
+:: Check whether E3D is running
 tasklist /fi "imagename eq des.exe" 2>nul | findstr /i "des.exe" >nul
 if %errorlevel% equ 0 (
     echo [警告] E3D 正在运行，请先关闭 E3D！
