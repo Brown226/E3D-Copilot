@@ -15,9 +15,13 @@ import {
   Loader2,
   ChevronRight,
   Bot,
+  Database,
 } from 'lucide-react'
 import type { Message } from '@/types'
 import { DiffView } from './DiffView'
+import { WorkflowCard } from './WorkflowCard'
+import { DwgDiffCard } from './DwgDiffCard'
+import { PlatformCard } from './PlatformCard'
 import MarkdownBlock from '@/components/common/MarkdownBlock'
 
 interface ToolCardProps {
@@ -140,8 +144,13 @@ export const ToolCard = memo(function ToolCard({ msg, subcalls = [] }: ToolCardP
   const AUTO_EXPAND_TOOLS = new Set([
     'modify', 'design', 'piping', 'batch', 'structure_drawing',
     'generate_iso_drawing', 'write_file', 'cad_import', 'autocad', 'undo_redo',
+    // 演示主角：流程编排与 AB 差异的结果卡片必须一眼可见，不能藏在折叠里
+    'design_workflow', 'dwg_diff',
   ])
-  const shouldAutoExpand = isError || isRunning || AUTO_EXPAND_TOOLS.has(msg.toolName || '')
+  const name = msg.toolName || ''
+  // MCP 平台工具（query_history / record_*）同样默认展开
+  const shouldAutoExpand = isError || isRunning || AUTO_EXPAND_TOOLS.has(name) ||
+    name.startsWith('mcp__')
   const open = userOpen ?? shouldAutoExpand
   const toggleOpen = () => setUserOpen((prev) => prev === null ? !shouldAutoExpand : !prev)
 
@@ -292,6 +301,9 @@ export const ToolCard = memo(function ToolCard({ msg, subcalls = [] }: ToolCardP
                 </div>
               )}
 
+              {/* 演示主角卡片：流程 / AB 差异 / 平台记录 */}
+              <DemoCard msg={msg} />
+
               {/* 结构化结果卡片 — CAD 工具优先渲染（P1-12） */}
               {msg.toolMeta && (
                 <div className="tool__section">
@@ -328,6 +340,68 @@ export const ToolCard = memo(function ToolCard({ msg, subcalls = [] }: ToolCardP
     </div>
   )
 })
+
+// ═══════════════════════════════════════════
+// 演示主角卡片分派
+// ═══════════════════════════════════════════
+
+function DemoCard({ msg }: { msg: Message }) {
+  const name = msg.toolName || ''
+
+  // design_workflow：Data = { platformSynced, steps[] }
+  if (name === 'design_workflow' && msg.toolMeta) {
+    return <WorkflowCard meta={msg.toolMeta} />
+  }
+
+  // dwg_diff：Data = { added[], removed[], modified[], ...counts }
+  if (name === 'dwg_diff' && msg.toolMeta) {
+    return <DwgDiffCard meta={msg.toolMeta} />
+  }
+
+  // MCP 平台工具：结果只在 content 里（McpRemoteTool 不填 Data）
+  if (name.startsWith('mcp__') && msg.role === 'tool_result' && msg.content) {
+    if (name.includes('query_history')) {
+      return <PlatformCard content={msg.content} />
+    }
+    return <PlatformWriteBadge name={name} content={msg.content} />
+  }
+
+  return null
+}
+
+/** 平台写入类工具（record_*）的结果徽标：证明数据已落库 */
+function PlatformWriteBadge({ name, content }: { name: string; content: string }) {
+  const ok = parseOk(content)
+  if (ok === null) return null
+
+  const op = name.split('__').pop() || name
+  const labelMap: Record<string, string> = {
+    record_drawing: '图纸台账已登记',
+    log_operation: '操作已留痕',
+    record_model: '模型清单已回写',
+    record_diff: '差异清单已回写',
+  }
+  const label = labelMap[op] || op
+
+  return (
+    <div className={'plat-badge' + (ok ? ' plat-badge--ok' : ' plat-badge--err')}>
+      <Database size={12} />
+      <span>{label}</span>
+      <span className="plat-badge__state">{ok ? '✓ 平台已记录' : '✗ 写入失败'}</span>
+    </div>
+  )
+}
+
+/** 从 record_* 的返回文本里取 ok 字段，取不到返回 null（不猜） */
+function parseOk(content: string): boolean | null {
+  try {
+    const parsed = JSON.parse(content.trim()) as Record<string, unknown>
+    if (typeof parsed.ok === 'boolean') return parsed.ok
+    return null
+  } catch {
+    return null
+  }
+}
 
 // ═══════════════════════════════════════════
 // 子调用行（内联展示）— Reasonix 紧凑风格
