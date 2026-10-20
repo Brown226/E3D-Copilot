@@ -28,6 +28,16 @@ if not "%~1"=="" (
 if /i "%SIDECAR_DIR:~-4%"==".exe" for %%F in ("%SIDECAR_DIR%") do set "SIDECAR_DIR=%%~dpF"
 if "%SIDECAR_DIR:~-1%"=="\" set "SIDECAR_DIR=%SIDECAR_DIR:~0,-1%"
 
+:: Data-platform MCP stub (local stand-in until the real platform ships).
+:: Lives inside the repo, so no external path is needed. Override with
+:: E3D_MCP_STUB_DIR if you keep a different copy.
+if not "%E3D_MCP_STUB_DIR%"=="" (
+    set "MCP_STUB_DIR=%E3D_MCP_STUB_DIR%"
+) else (
+    set "MCP_STUB_DIR=%~dp0tools\mcp-stub"
+)
+if "%MCP_STUB_DIR:~-1%"=="\" set "MCP_STUB_DIR=%MCP_STUB_DIR:~0,-1%"
+
 echo ========================================
 echo E小智 v1.0 部署脚本
 echo ========================================
@@ -86,6 +96,18 @@ if exist "%SIDECAR_DIR%\dwg-sidecar.exe" (
 ) else (
     echo   [警告] 未找到 dwg-sidecar: %SIDECAR_DIR%
     echo   [警告] cad_import 将回退到旧 Teigha 解析器（按图层名关键词筛选，几何覆盖不全）
+)
+
+echo [6.9/7] 复制 MCP 平台桩（数据管理平台替身）...
+if exist "%MCP_STUB_DIR%\server.mjs" (
+    if not exist "%E3D_DIR%\mcp\e3d-data-platform" mkdir "%E3D_DIR%\mcp\e3d-data-platform"
+    xcopy /y /e /i /q "%MCP_STUB_DIR%\*" "%E3D_DIR%\mcp\e3d-data-platform\" >nul
+    echo   MCP 桩已部署
+    echo   [注意] config.json 的 McpServers 需指向这里的 server.mjs
+) else (
+    echo   [警告] 未找到 MCP 桩: %MCP_STUB_DIR%
+    echo   [警告] 平台回写（record_drawing / log_operation / record_model / record_diff）将不可用
+    echo   [警告] design_workflow 的本地五步仍可跑完，平台侧会标注「未就绪」
 )
 
 echo [7/7] 构建并复制 React 前端 (e3d-ui)...
