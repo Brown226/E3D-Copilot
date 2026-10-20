@@ -45,6 +45,13 @@ function splitPreview(text: string, n: number): { preview: string; total: number
   return { preview: lines.slice(0, n).join('\n'), total, hasMore: true }
 }
 
+/** 只取路径最后一段，用于卡片上显示文件名而不是整条路径 */
+function basename(p?: string): string {
+  if (!p) return ''
+  const parts = p.split(/[\\/]/)
+  return parts[parts.length - 1] || p
+}
+
 /** 工具摘要 — 对齐后端真实 Schema 字段名 */
 function summarizeTool(name: string, args?: string, error?: string): string {
   if (error) return error.slice(0, 80)
@@ -89,6 +96,9 @@ function summarizeTool(name: string, args?: string, error?: string): string {
       case 'get_pipe_info': return `${p.action || ''} ${p.pipe_name || ''}`.trim()
       case 'structure_drawing': return `${p.action || ''} ${p.direction || ''}`.trim()
       case 'cad_import': return `${p.action || ''} ${p.file_path || ''}`.trim()
+      case 'dwg_diff': return `${basename(p.file_a)} vs ${basename(p.file_b)}`
+      case 'design_workflow':
+        return `${p.drawing_no || ''} ${basename(p.file_a || '')}${p.file_b ? ' → ' + basename(p.file_b) : ''}`.trim()
       case 'autocad': return p.action || ''
       case 'memory': return `${p.action || ''} ${p.query || p.key || ''}`.trim()
       case 'run_skill': return p.name || ''

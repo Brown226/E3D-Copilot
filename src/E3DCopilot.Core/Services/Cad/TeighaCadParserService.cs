@@ -64,7 +64,7 @@ namespace E3DCopilot.Core.Services.Cad
     /// CAD 解析服务（集成 Teigha.NET 4.00）
     /// 支持离线解析 DWG/DXF 文件，无需打开 AutoCAD
     /// </summary>
-    public class TeighaCadParserService
+    public class TeighaCadParserService : ICadParser
     {
         private static Teigha.Runtime.Services _teighaServices;
         private static readonly object _initLock = new object();

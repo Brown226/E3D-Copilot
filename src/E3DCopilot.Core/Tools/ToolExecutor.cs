@@ -378,11 +378,15 @@ namespace E3DCopilot.Core.Tools
 
             // CAD 工具（文件/坐标导入 + AutoCAD 运行时交互）
             executor.Register(new CadImportHandler(dispatcher));   // cad_import
+            executor.Register(new DwgDiffHandler());               // dwg_diff（A/B 版图纸几何比对）
             executor.Register(new AutoCadHandler(dispatcher));     // autocad
 
             // CAD-E3D 双向控制（直接操作运行中的 AutoCAD + E3D→DXF 反向导出）
             executor.Register(new AutoCadControlHandler(dispatcher));   // autocad_control
             executor.Register(new E3dToCadExportHandler(dispatcher));   // e3d_to_cad_export
+
+            // 设计全流程确定性编排（寄存器末尾：需要 executor 自身按名调用其它工具）
+            executor.Register(new DesignWorkflowHandler(executor, dispatcher));   // design_workflow
 
             // 接入可选路由器
             executor.Router = router;

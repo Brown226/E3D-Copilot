@@ -46,7 +46,14 @@ namespace E3DCopilot.Core.Tools.Mcp
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                // MCP 协议规定 JSON-RPC 走 UTF-8。不显式指定时 .NET 用系统 ANSI 代码页
+                // （中文 Windows 为 GBK）解码，多字节字符会被截断成非法 JSON，
+                // 进而被 ReadLoop 的 JsonReaderException 静默丢弃，表现为"server 无响应"超时。
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8
+                // 注意：net48 的 ProcessStartInfo 没有 StandardInputEncoding（仅 .NET Core 有），
+                // stdin 编码在下面用 StreamWriter 显式指定。
             };
 
             // 工作目录（对齐 Reasonix Spec.Dir）
@@ -62,7 +69,10 @@ namespace E3DCopilot.Core.Tools.Mcp
 
             _proc = new Process { StartInfo = startInfo };
             _proc.Start();
-            _stdin = _proc.StandardInput;
+
+            // stdin 用 UTF-8 StreamWriter 包装：net48 的 StandardInput 是系统 ANSI（GBK）编码，
+            // 直接写入会让含中文的 JSON-RPC 参数在 server 侧变成乱码。
+            _stdin = new StreamWriter(_proc.StandardInput.BaseStream, new System.Text.UTF8Encoding(false));
             _stdout = _proc.StandardOutput;
             _readLoop = Task.Run(() => ReadLoop());
         }

@@ -921,7 +921,7 @@ namespace E3DCopilot.Core
                 "undo_redo", "report", "compare", "hierarchy", "batch",
                 "ask", "todo_write", "complete_step", "read_file", "write_file",
                 "run_skill", "grep", "glob", "memory",
-                "cad_import", "autocad",
+                "cad_import", "dwg_diff", "design_workflow", "autocad",
                 "autocad_control", "e3d_to_cad_export",  // CAD-E3D 双向控制
                 "structure_drawing",  // 土建结构出图工具
                 "generate_iso_drawing", "query_material", "get_pipe_info"  // ISO 出图三件套

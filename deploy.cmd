@@ -8,6 +8,10 @@ setlocal
 set E3D_DIR=D:\AVEVA\Everything3D2.10
 set SRC_DIR=%~dp0src
 
+:: dwg-sidecar：DWG 几何解析的独立进程（x64 自包含，绕开 .NET 4.8 / x86 限制）
+:: 找不到时部署仍继续，但 cad_import 会回退到旧 Teigha 解析器（几何覆盖不全）
+set SIDECAR_DIR=E:\工作\Reactor-Work\apps\zcode-cli\packages\dwg-tools-plugin\tools\dwg-sidecar\bin\Release\net9.0\win-x64
+
 echo ========================================
 echo E小智 v1.0 部署脚本
 echo ========================================
@@ -57,6 +61,16 @@ copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\Microsoft.Web.WebView2.W
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\Microsoft.Web.WebView2.Wpf.dll" "%E3D_DIR%\" >nul 2>nul
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\WebView2Loader.dll" "%E3D_DIR%\" >nul 2>nul
 copy /y "%SRC_DIR%\E3DCopilot.WebHost\bin\Release\net48\WebView2Loader32.dll" "%E3D_DIR%\" >nul 2>nul
+
+echo [6.8/7] 复制 dwg-sidecar（DWG 几何解析引擎）...
+if exist "%SIDECAR_DIR%\dwg-sidecar.exe" (
+    if not exist "%E3D_DIR%\tools" mkdir "%E3D_DIR%\tools"
+    xcopy /y /e /i /q "%SIDECAR_DIR%\*" "%E3D_DIR%\tools\" >nul
+    echo   dwg-sidecar 已部署
+) else (
+    echo   [警告] 未找到 dwg-sidecar: %SIDECAR_DIR%
+    echo   [警告] cad_import 将回退到旧 Teigha 解析器（按图层名关键词筛选，几何覆盖不全）
+)
 
 echo [7/7] 构建并复制 React 前端 (e3d-ui)...
 echo 构建新 e3d-ui 前端...

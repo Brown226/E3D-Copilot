@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using E3DCopilot.Core.Logging;
 using E3DCopilot.Core.Models.Building;
 using E3DCopilot.Core.Models.Geometry;
 using E3DCopilot.Core.Services.Cad;
@@ -56,6 +57,11 @@ namespace E3DCopilot.Core.Tools.Handlers
       ""type"": ""string"",
       ""description"": ""父元素路径，默认 /IMPORT_ZONE""
     },
+    ""layers"": {
+      ""type"": ""array"",
+      ""items"": { ""type"": ""string"" },
+      ""description"": ""参与导入的图层名列表。强烈建议指定（如 [\""土建\"",\""C1 柱墙剖线\""]），否则轴线/标注/文字图层也会被当成构件。不填=全部图层""
+    },
     ""wall_height"": {
       ""type"": ""number"",
       ""description"": ""默认墙高(mm)，默认 3000""
@@ -80,15 +86,33 @@ namespace E3DCopilot.Core.Tools.Handlers
   ""required"": [""action""]
 }";
 
-        private readonly TeighaCadParserService _parser;
+        private readonly ICadParser _parser;
         private readonly PmlScriptGenerator _pmlGenerator;
         private readonly IToolDispatcher _dispatcher;
 
-        public CadImportHandler(IToolDispatcher dispatcher = null)
+        public CadImportHandler(IToolDispatcher dispatcher = null, ICadParser parser = null)
         {
-            _parser = new TeighaCadParserService();
+            _parser = parser ?? CreateDefaultParser();
             _pmlGenerator = new PmlScriptGenerator();
             _dispatcher = dispatcher;
+        }
+
+        /// <summary>
+        /// 选择解析引擎：配置了 sidecar 路径则用它（读取全量真实几何），
+        /// 否则回退到进程内 Teigha（按图层名关键词筛选）。
+        /// </summary>
+        private static ICadParser CreateDefaultParser()
+        {
+            var sidecar = new SidecarCadParserService();
+            if (!string.IsNullOrEmpty(sidecar.SidecarPath) && System.IO.File.Exists(sidecar.SidecarPath))
+                return sidecar;
+
+            // 静默回退是陷阱：旧解析器只认 6 个图层名关键词，几何覆盖不全。
+            // 部署后如果 sidecar 没带上，结果会「看着正常、实际全错」，所以必须留痕。
+            CopilotLogger.Warn(
+                "未找到 dwg-sidecar，已回退到进程内 Teigha 解析器（按图层名关键词筛选，几何覆盖不全）。" +
+                "部署形态请把 dwg-sidecar.exe 放到 <E3D目录>/tools/ 下，或设置环境变量 E3D_DWG_SIDECAR。");
+            return new TeighaCadParserService();
         }
 
         public async Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default)
@@ -271,6 +295,20 @@ namespace E3DCopilot.Core.Tools.Handlers
 
             if (!string.IsNullOrEmpty(filePath))
             {
+                // sidecar 支持按图层过滤；Teigha 走自己的关键词表，忽略此参数
+                var sidecarParser = _parser as SidecarCadParserService;
+                if (sidecarParser != null)
+                {
+                    var layersToken = json["layers"] as JArray;
+                    if (layersToken != null && layersToken.Count > 0)
+                    {
+                        sidecarParser.Layers = layersToken
+                            .Select(t => t?.ToString())
+                            .Where(s => !string.IsNullOrWhiteSpace(s))
+                            .ToList();
+                    }
+                }
+
                 var result = _parser.ParseFile(filePath);
                 if (!result.Success)
                     return (null, ToolResult.Fail(result.Error));
@@ -298,11 +336,12 @@ namespace E3DCopilot.Core.Tools.Handlers
 
             foreach (var segment in segments)
             {
-                if (segment.Length < 100) continue; // 忽略过短的线段
+                // 过短的线段是图框线/标注引线，建出来会是碎片墙
+                if (segment.Length < MinSegmentLength) continue;
 
                 var element = new BuildingElement
                 {
-                    Type = BuildingElementType.Wall,
+                    Type = ClassifyByLayer(segment.Layer),
                     Points = new List<Point3D> { segment.Start, segment.End }
                 };
 
@@ -327,6 +366,39 @@ namespace E3DCopilot.Core.Tools.Handlers
             }
 
             return elements;
+        }
+
+        /// <summary>线段短于此值(mm)不建模——多为图框、标注引线、填充碎片。</summary>
+        private const double MinSegmentLength = 100;
+
+        /// <summary>
+        /// 按图层名判定构件类型。
+        ///
+        /// 之前一律建成 Wall，导致柱、梁被当成墙，演示时无法向评委解释模型。
+        /// 这里只做关键词判定，判不出来就按墙处理（结构图里线段绝大多数是墙）。
+        /// </summary>
+        private static BuildingElementType ClassifyByLayer(string layer)
+        {
+            if (string.IsNullOrEmpty(layer)) return BuildingElementType.Wall;
+
+            if (ContainsAny(layer, "COLUMN", "COL", "柱"))
+                return BuildingElementType.Column;
+            if (ContainsAny(layer, "BEAM", "梁"))
+                return BuildingElementType.Beam;
+            if (ContainsAny(layer, "WALL", "墙"))
+                return BuildingElementType.Wall;
+
+            return BuildingElementType.Wall;
+        }
+
+        private static bool ContainsAny(string text, params string[] keywords)
+        {
+            foreach (var k in keywords)
+            {
+                if (text.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
