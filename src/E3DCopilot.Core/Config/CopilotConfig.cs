@@ -29,8 +29,9 @@ namespace E3DCopilot.Core.Config
         
         /// <summary>
         /// Backward compat: old single LLM config (deprecated, kept for migration)
+        /// 注意：此字段必须可反序列化，否则旧配置文件中的 Llm 段读不到，
+        /// 「向后兼容」形同虚设（此前靠类里的硬编码默认值才让迁移逻辑看似有效）。
         /// </summary>
-        [JsonIgnore]
         public LlmConfig Llm { get; set; } = new LlmConfig();
         
         public UiConfig Ui { get; set; } = new UiConfig();
@@ -89,12 +90,16 @@ namespace E3DCopilot.Core.Config
 
         /// <summary>
         /// Backward compat: old single LLM config (deprecated)
+        /// 注意：不得在此放置任何真实密钥或云端端点作为默认值。
+        /// 该字段带 [JsonIgnore]，不会被 config.json 覆盖；一旦这里写了具体值，
+        /// 部署目录缺少 config.json 时就会静默连到该端点（曾因此连上外部服务并报 401），
+        /// 与「数据不出域」要求冲突。默认留空，由配置文件显式提供。
         /// </summary>
         public class LlmConfig
         {
-            public string BaseUrl { get; set; } = "https://token-plan-cn.xiaomimimo.com/v1";
-            public string Model { get; set; } = "mimo-v2.5";
-            public string ApiKey { get; set; } = "tp-c6vbxwk3ttizyn5z97ua2to1szxz3eso49r11x65nwoi4r2e";
+            public string BaseUrl { get; set; } = "";
+            public string Model { get; set; } = "";
+            public string ApiKey { get; set; } = "";
             public double Temperature { get; set; } = 0.1;
             public int MaxTokens { get; set; } = 8192;
             public int TimeoutMs { get; set; } = 120000;
@@ -412,16 +417,18 @@ namespace E3DCopilot.Core.Config
                 _globalConfig = LoadFromFile(globalPath);
 
                 // 如果全局配置不存在，自动生成模板配置文件
+                // 注意：必须把模板本身作为当前配置使用。此前只写文件、不复用模板，
+                // 导致首次启动时内存中的 Providers 为空（配置文件有内容但未生效）
                 if (_globalConfig == null)
                 {
-                    _globalConfig = new CopilotConfig();
-                    _globalConfig.InitDefaultProviders();
-                    GenerateDefaultConfigFile(globalPath);
+                    _globalConfig = GenerateDefaultConfigFile(globalPath);
                 }
 
                 // Step 2: 加载用户配置（%LOCALAPPDATA%）
+                // 注意：用户配置是「部分配置」，Providers 为空是常态（表示沿用全局），
+                // 不能走 MigrateFromLegacy，否则会用旧 Llm 默认值注入 provider 并劫持 DefaultModel
                 string userPath = GetUserConfigPath();
-                var userConfig = LoadFromFile(userPath);
+                var userConfig = LoadFromFile(userPath, migrate: false);
 
                 // Step 3: 合并 — 用户配置覆盖全局配置
                 _instance = MergeConfigs(_globalConfig, userConfig);
@@ -431,17 +438,18 @@ namespace E3DCopilot.Core.Config
         }
 
         /// <summary>
-        /// 首次启动时自动生成 config.json 模板
+        /// 首次启动时自动生成 config.json 模板，并返回该模板作为当前配置使用。
+        /// 返回模板是必须的：只写文件不返回，会导致首次启动时内存里的 Providers 为空。
         /// </summary>
-        private static void GenerateDefaultConfigFile(string path)
+        private static CopilotConfig GenerateDefaultConfigFile(string path)
         {
+            var template = new CopilotConfig();
             try
             {
                 var dir = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
-                var template = new CopilotConfig();
                 template.Providers = new List<ProviderConfig>
                 {
                     new ProviderConfig
@@ -466,9 +474,17 @@ namespace E3DCopilot.Core.Config
             {
                 E3DCopilot.Core.Logging.CopilotLogger.Error(ex, "生成默认配置文件失败");
             }
+            return template;
         }
 
-        private static CopilotConfig LoadFromFile(string path)
+        /// <summary>
+        /// 从文件加载配置。
+        /// </summary>
+        /// <param name="migrate">
+        /// 是否执行旧版 Llm 配置迁移。仅全局配置需要；用户配置是部分配置，
+        /// Providers 为空表示「沿用全局」，迁移会把旧 Llm 默认值固化成 provider 并劫持默认模型。
+        /// </param>
+        private static CopilotConfig LoadFromFile(string path, bool migrate = true)
         {
             if (File.Exists(path))
             {
@@ -476,7 +492,7 @@ namespace E3DCopilot.Core.Config
                 var config = JsonConvert.DeserializeObject<CopilotConfig>(json);
                 if (config != null)
                 {
-                    config.MigrateFromLegacy();
+                    if (migrate) config.MigrateFromLegacy();
                     return config;
                 }
             }
@@ -517,6 +533,10 @@ namespace E3DCopilot.Core.Config
             // Memory / Logging — 用全局的（管理员控制）
             result.Memory = global.Memory;
             result.Logging = global.Logging;
+
+            // MCP server — 由管理员在全局配置中维护（数据平台等外部接入）
+            // 缺失此行会让 result 保持构造默认的空列表，导致平台工具全部注册不到
+            result.McpServers = global.McpServers ?? new List<McpServerConfig>();
             
             // ISO 配置 — 管理员默认 + 用户覆盖
             // 从 CopilotConfig.Iso 中提取用户级别的配置

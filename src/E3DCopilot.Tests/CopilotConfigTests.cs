@@ -11,11 +11,20 @@ namespace E3DCopilot.Tests
     {
         private string _tempDir;
 
+        private const string DataDirEnv = "E3DCOPILOT_DATA";
+        private string _originalDataDir;
+
         [SetUp]
         public void SetUp()
         {
             _tempDir = Path.Combine(Path.GetTempPath(), "e3dcopilot_test_" + Path.GetRandomFileName());
             Directory.CreateDirectory(_tempDir);
+
+            // 把用户配置目录隔离到临时目录，否则 Load() 会读到本机真实的 user.json，
+            // 导致用例结果依赖运行机器
+            _originalDataDir = System.Environment.GetEnvironmentVariable(DataDirEnv);
+            System.Environment.SetEnvironmentVariable(DataDirEnv, Path.Combine(_tempDir, "userdata"));
+
             // Reset singleton via reflection for test isolation
             var field = typeof(CopilotConfig).GetField("_instance", BindingFlags.Static | BindingFlags.NonPublic);
             field?.SetValue(null, null);
@@ -27,6 +36,8 @@ namespace E3DCopilot.Tests
             // Reset singleton again
             var field = typeof(CopilotConfig).GetField("_instance", BindingFlags.Static | BindingFlags.NonPublic);
             field?.SetValue(null, null);
+
+            System.Environment.SetEnvironmentVariable(DataDirEnv, _originalDataDir);
 
             if (Directory.Exists(_tempDir))
                 Directory.Delete(_tempDir, true);
@@ -238,22 +249,82 @@ namespace E3DCopilot.Tests
         public void Load_LegacyConfig_MigratesProviders()
         {
             var path = Path.Combine(_tempDir, "legacy.json");
-            // Simulate old config: empty Providers, but Llm section present
+            // 真·旧版配置：没有 Providers 段，只有一个 Llm 段。
+            // （此前该用例的 JSON 里根本没有 Llm 段，能通过纯属类里硬编码了默认值）
             var json = @"{
-                ""DefaultProvider"": """",
-                ""DefaultModel"": """",
-                ""Providers"": [],
                 ""Ui"": { ""Language"": ""zh-CN"" },
                 ""Safety"": {},
                 ""Memory"": {},
-                ""Logging"": {}
+                ""Logging"": {},
+                ""Llm"": {
+                    ""BaseUrl"": ""http://legacy-host:8000/v1"",
+                    ""Model"": ""legacy-model"",
+                    ""ApiKey"": ""legacy-key""
+                }
             }";
             File.WriteAllText(path, json);
 
             var config = CopilotConfig.Load(path);
 
-            // After migration, Providers should be populated
+            // 迁移后：Providers 由 Llm 段生成，且默认模型指向它
             Assert.Greater(config.Providers.Count, 0);
+            Assert.AreEqual("default", config.DefaultProvider);
+            Assert.AreEqual("legacy-model", config.DefaultModel.Substring("default/".Length));
+            var migrated = config.Providers.Find(p => p.Name == "default");
+            Assert.IsNotNull(migrated);
+            Assert.AreEqual("http://legacy-host:8000/v1", migrated.BaseUrl);
+        }
+
+        [Test]
+        public void Load_UserConfigWithoutProviders_DoesNotHijackDefaultModel()
+        {
+            // 回归用例：用户配置 Providers 为空（表示沿用全局），
+            // 不得被旧版迁移逻辑注入 provider 并劫持 DefaultModel。
+            var path = Path.Combine(_tempDir, "global.json");
+            var global = new CopilotConfig
+            {
+                DefaultProvider = "myprovider",
+                DefaultModel = "myprovider/my-model"
+            };
+            global.Providers.Add(new CopilotConfig.ProviderConfig
+            {
+                Name = "myprovider",
+                BaseUrl = "http://127.0.0.1:9999/v1",
+                DefaultModel = "my-model",
+                Models = new System.Collections.Generic.List<string> { "my-model" }
+            });
+            File.WriteAllText(path, JsonConvert.SerializeObject(global, Formatting.Indented));
+
+            var config = CopilotConfig.Load(path);
+
+            Assert.AreEqual("myprovider", config.DefaultProvider);
+            Assert.AreEqual("myprovider/my-model", config.DefaultModel);
+            Assert.IsFalse(config.Providers.Exists(p => p.Name == "default"),
+                "用户配置 Providers 为空时不应被迁移逻辑注入 default provider");
+        }
+
+        [Test]
+        public void Merge_McpServers_ComesFromGlobalConfig()
+        {
+            // 回归用例：MCP server 由管理员在全局配置维护，
+            // 合并用户配置后不能被吞掉（否则数据平台工具全部注册失败）。
+            var path = Path.Combine(_tempDir, "with-mcp.json");
+            var global = new CopilotConfig { DefaultProvider = "p", DefaultModel = "p/m" };
+            global.Providers.Add(new CopilotConfig.ProviderConfig
+            {
+                Name = "p", BaseUrl = "http://127.0.0.1:1/v1", DefaultModel = "m",
+                Models = new System.Collections.Generic.List<string> { "m" }
+            });
+            global.McpServers.Add(new CopilotConfig.McpServerConfig
+            {
+                Name = "test-platform", Type = "stdio", Command = "node"
+            });
+            File.WriteAllText(path, JsonConvert.SerializeObject(global, Formatting.Indented));
+
+            var config = CopilotConfig.Load(path);
+
+            Assert.AreEqual(1, config.McpServers.Count);
+            Assert.AreEqual("test-platform", config.McpServers[0].Name);
         }
     }
 }

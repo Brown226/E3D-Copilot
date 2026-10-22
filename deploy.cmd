@@ -113,15 +113,26 @@ if exist "%MCP_STUB_DIR%\server.mjs" (
 echo [7/7] 构建并复制 React 前端 (e3d-ui)...
 echo 构建新 e3d-ui 前端...
 cd /d "%~dp0e3d-ui"
+:: vite.config.ts 的 outDir 直接指向 %E3D_DIR%\wwwroot
+:: 所以 npm run build 已把前端写进目标目录
+:: 这里不能再从 src\E3DCopilot.WebHost\wwwroot 覆盖回来
+:: 该目录是构建时由 csproj 拷贝的旧快照
+:: 否则每次部署都会把刚构建的前端换回旧版本
+if not exist "%E3D_DIR%\wwwroot" mkdir "%E3D_DIR%\wwwroot"
+if exist "%E3D_DIR%\wwwroot\assets" rmdir /s /q "%E3D_DIR%\wwwroot\assets"
+
 call npm run build >nul 2>&1
 if %errorlevel% neq 0 (
     echo [警告] e3d-ui 构建失败，请检查构建错误
 )
 
-echo 复制前端到 E3D wwwroot 目录...
-if not exist "%E3D_DIR%\wwwroot" mkdir "%E3D_DIR%\wwwroot"
-if exist "%E3D_DIR%\wwwroot\assets" rmdir /s /q "%E3D_DIR%\wwwroot\assets"
-xcopy /y /e /i /q "%~dp0src\E3DCopilot.WebHost\wwwroot\*" "%E3D_DIR%\wwwroot\" >nul
+if exist "%E3D_DIR%\wwwroot\index.html" (
+    echo   前端已构建到 E3D wwwroot
+) else (
+    echo [警告] 未在 E3D wwwroot 找到 index.html，回退为复制 WebHost 输出目录
+    echo [警告] 该目录可能不是最新构建，请确认 vite.config.ts 的 outDir
+    xcopy /y /e /i /q "%~dp0src\E3DCopilot.WebHost\wwwroot\*" "%E3D_DIR%\wwwroot\" >nul
+)
 
 echo.
 echo ========================================
