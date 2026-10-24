@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using E3DCopilot.Core.Events;
 using Newtonsoft.Json.Linq;
 
+using E3DCopilot.Core.Logging;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
@@ -550,7 +551,7 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (count == 0)
                 return ToolResult.Ok($"在知识库中未找到 '{query}' 的相关结果。试试换其他关键词或 source=all。", null);
 
-            _sink?.Emit(CopilotEvent.Notice($"Knowledge search: '{query}' → {count} results"));
+            CopilotLogger.Debug($"[grep] knowledge search: {query} → {count} results");
             return ToolResult.Ok(sb.ToString().TrimEnd(), new { query, source, count });
         }
 

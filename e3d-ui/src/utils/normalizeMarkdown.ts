@@ -22,15 +22,26 @@ const TABLE_CELL_RE = /\|[^|]+\|[^|]+\|/
 function splitInlineTable(text: string): string {
   if (!/\|\s*\|/.test(text)) return text
 
-  const pipeCount = (text.match(/\|/g) || []).length
-  if (pipeCount < 8) return text
-
   // 检查是否有分隔行特征（:---:、---、:-: 等）
   const hasSep = /\|:?-{2,}:?\||\|:-:\|/.test(text)
   if (!hasSep) return text
 
-  // 按 |\s*| 拆分（覆盖 || 和 | | 两种行分隔符）
-  let result = text.replace(/\|\s*\|/g, '\n|')
+  // 逐行处理：只有当同一行内出现 ≥2 个「|| / | |」时，
+  // 才说明这一行装着多行内容（LLM 把整表写成一行）。
+  // 单个 || 是合法空单元格，绝不能拆 —— 否则整张表会被拆成单列。
+  let changed = false
+  const lines = text.split('\n').map((line) => {
+    const seps = line.match(/\|\s*\|/g)
+    if (!seps || seps.length < 2) return line
+    changed = true
+    // 「||」既是上一行的结束符，也是下一行的起始符，
+    // 必须还原成「|\n|」，否则每行都会丢掉尾部的管道符
+    return line.replace(/\|\s*\|/g, '|\n|')
+  })
+
+  if (!changed) return text
+
+  let result = lines.join('\n')
 
   // 修复分隔行横杠：1-2个横杠 → 3个（GFM 要求3+）
   result = result.replace(/\|:?-{1,2}:?\|/g, (match) => {
@@ -76,27 +87,16 @@ function normalizeTableRow(line: string): string {
   // 3. 行尾 || → |
   fixed = fixed.replace(/\|\|$/, '|')
 
-  // 4. 拆分列，去除空列（模型重复导致的空白列）
+  // 4. 拆分列，只去掉首尾因管道符产生的空串
+  //    注意：不能删中间的空白单元格，也不能对重复列去重
+  //    ——「|措施|效果|措施|效果|」这种成对表头是合法的两组建模对比
   const parts = fixed.split('|')
-  const cleaned: string[] = []
-  for (let i = 0; i < parts.length; i++) {
-    const p = parts[i]
-    if (p === '' && (i === 0 || i === parts.length - 1)) continue
-    if (p.trim() === '') continue
-    cleaned.push(p)
+  if (parts.length > 2) {
+    parts.shift()
+    parts.pop()
   }
 
-  // 5. 去重：LLM 有时输出 | 属性 | 值 | 属性 | 值 这种重复表头
-  const deduped: string[] = []
-  const seen = new Set<string>()
-  for (const c of cleaned) {
-    const key = c.trim().toLowerCase()
-    if (seen.has(key)) continue  // 跳过重复列
-    seen.add(key)
-    deduped.push(c)
-  }
-
-  return '|' + deduped.join('|') + '|'
+  return '|' + parts.join('|') + '|'
 }
 
 /**
@@ -141,23 +141,39 @@ function fixInconsistentColumns(lines: string[]): string[] {
     const line = lines[i]
     const trimmed = line.trim()
 
-    // 分隔行：确定列数，并回补表头行
-    if (isSeparatorLine(trimmed)) {
-      headerCols = trimmed.split('|').length - 2
-      if (headerCols < 1) headerCols = 2
+    // 空行：表头与分隔行之间、分隔行与数据行之间不能有空行，
+    // 否则 GFM 不认成表格。表格内部的空行直接丢弃；
+    // 表格外保留（并保留候选表头，等分隔行来认领）。
+    if (trimmed === '') {
+      if (headerCols > 0) continue
+      result.push(line)
+      continue
+    }
 
-      // 回补表头行（如果列数不够则补齐）
+    // 分隔行：确定列数，并回补表头行
+    if (isSeparatorLine(trimmed) && trimmed.includes('|')) {
+      // 列数以表头行为准：LLM 常把分隔行写短（|---|--|），
+      // 若以分隔行为准会把 4 列表格压成 2 列
+      const headerCells = pendingHeaderLine
+        ? pendingHeaderLine.split('|').slice(1, -1)
+        : []
+      const sepCells = trimmed.split('|').slice(1, -1)
+      headerCols = headerCells.length || sepCells.length || 2
+
+      // 回补表头行（列数不足则补齐空格）
       if (pendingHeaderLine) {
-        const headerCells = pendingHeaderLine.split('|')
-        // 分隔行 split 后有 headerCols+2 个元素（首尾各一个空串）
-        while (headerCells.length < headerCols + 2) {
-          headerCells.splice(headerCells.length - 1, 0, ' ')
-        }
-        result.push(headerCells.join('|'))
+        while (headerCells.length < headerCols) headerCells.push(' ')
+        // 表头与分隔行之间不能有空行，否则 GFM 不认成表格
+        while (result.length > 0 && result[result.length - 1].trim() === '') result.pop()
+        result.push('|' + headerCells.join('|') + '|')
         pendingHeaderLine = ''
       }
 
-      result.push(line)
+      // 分隔行补齐到表头列数
+      const alignedSep = sepCells.length >= headerCols
+        ? sepCells.slice(0, headerCols)
+        : sepCells.concat(Array(headerCols - sepCells.length).fill('---'))
+      result.push('|' + alignedSep.map((c) => c.trim() || '---').join('|') + '|')
       continue
     }
 
@@ -167,21 +183,32 @@ function fixInconsistentColumns(lines: string[]): string[] {
       const cellCount = trimmed.split('|').length - 2
 
       // 如果还没确定表头列数，先缓存这一行作为表头候选
+      // 注意：此处只缓存不 push，等确认是表格后在分隔行处统一输出，
+      // 否则表头会被插入两次
       if (headerCols === 0) {
         pendingHeaderLine = trimmed
-        result.push(line)
         continue
       }
 
-      // 数据行列数是表头的整数倍 → 拆分
-      if (cellCount > headerCols && cellCount % headerCols === 0) {
-        const cells = trimmed.split('|').filter((_, idx, arr) => {
-          if (idx === 0 || idx === arr.length - 1) return false
-          return true
-        })
-        const rowCount = cellCount / headerCols
-        for (let r = 0; r < rowCount; r++) {
-          const rowCells = cells.slice(r * headerCols, (r + 1) * headerCols)
+      // 数据行宽度达到表头 2 倍以上 → LLM 把多行压成了一行，按表头列数切块。
+      // 末块不足一列时补空单元格，保证不破坏表格结构；
+      // 只是略多一点（<2 倍）时不动，避免把正常宽行切错位。
+      if (cellCount >= headerCols * 2) {
+        const cells = trimmed.split('|').slice(1, -1)
+        const chunks: string[][] = []
+        for (let i = 0; i < cells.length; i += headerCols) {
+          chunks.push(cells.slice(i, i + headerCols))
+        }
+        // 末块只剩零星内容（不足表头一半）时并入上一行，避免出现一格独占一行的残表；
+        // 并入后该行会略宽，但仍在本表之内，比断成两截更易读
+        if (chunks.length > 1 && chunks[chunks.length - 1].length < Math.ceil(headerCols / 2)) {
+          const tail = chunks.pop()!
+          chunks[chunks.length - 1].push(...tail)
+        }
+        for (const rowCells of chunks) {
+          while (rowCells.length < headerCols) rowCells.push('')
+          // 表格内部不能有空行，否则 GFM 会把表格截断
+          while (result.length > 0 && result[result.length - 1].trim() === '') result.pop()
           result.push('|' + rowCells.join('|') + '|')
         }
         continue
@@ -205,11 +232,18 @@ function fixInconsistentColumns(lines: string[]): string[] {
       continue
     }
 
-    // 非表格行
+    // 非表格行：把上面暂存但没等到分隔行的候选表头原样还回去
+    if (pendingHeaderLine) {
+      result.push(pendingHeaderLine)
+      pendingHeaderLine = ''
+    }
     headerCols = 0
-    pendingHeaderLine = ''
     result.push(line)
   }
+
+  // 收尾：始终没等到分隔行的候选表头，原样保留
+  if (pendingHeaderLine) result.push(pendingHeaderLine)
+
   return result
 }
 

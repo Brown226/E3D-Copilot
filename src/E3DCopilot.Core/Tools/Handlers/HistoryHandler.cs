@@ -10,6 +10,7 @@ using E3DCopilot.Core.Memory;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
+using E3DCopilot.Core.Logging;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
@@ -152,7 +153,7 @@ namespace E3DCopilot.Core.Tools.Handlers
 
             sb.AppendLine("Use operation='around' with doc_id and line to read context around a hit.");
 
-            _sink?.Emit(CopilotEvent.Notice($"History search: '{query}' → {hits.Count} hits"));
+            CopilotLogger.Debug($"[history] search: {query} → {hits.Count} hits");
             return ToolResult.Ok(sb.ToString().TrimEnd(), new { query, count = hits.Count });
         }
 

@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Events;
 
+using E3DCopilot.Core.Logging;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
@@ -137,7 +138,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                 // 写入文件（UTF-8 无 BOM）
                 await Task.Run(() => File.WriteAllText(fullPath, content, new System.Text.UTF8Encoding(false)), ct);
 
-                _sink?.Emit(CopilotEvent.Notice($"Wrote file: {fullPath} ({content.Length} bytes)"));
+                CopilotLogger.Debug($"[write_file] {fullPath} ({content.Length} bytes)");
 
                 return ToolResult.Ok($"wrote {content.Length} bytes to {fullPath}",
                     new { path = fullPath, bytes = content.Length, changed = true });

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Events;
 
+using E3DCopilot.Core.Logging;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
@@ -133,7 +134,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                     content = string.Join("\n", lines, start, count);
                 }
 
-                _sink?.Emit(CopilotEvent.Notice($"Read file: {fullPath} ({content.Length} chars)"));
+                CopilotLogger.Debug($"[read_file] {fullPath} ({content.Length} chars)");
 
                 return ToolResult.Ok(content, new
                 {

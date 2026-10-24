@@ -8,6 +8,7 @@ using E3DCopilot.Core.Events;
 using E3DCopilot.Core.Memory;
 using Newtonsoft.Json.Linq;
 
+using E3DCopilot.Core.Logging;
 namespace E3DCopilot.Core.Tools.Handlers
 {
     /// <summary>
@@ -165,7 +166,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                     sb.AppendLine();
                 }
 
-                _sink?.Emit(CopilotEvent.Notice($"Memory search: '{query}' → {bm25Results.Count} results (BM25)"));
+                CopilotLogger.Debug($"[memory] search: {query} → {bm25Results.Count} results (BM25)");
                 return ToolResult.Ok(sb.ToString().TrimEnd(), new { query, count = bm25Results.Count });
             }
 

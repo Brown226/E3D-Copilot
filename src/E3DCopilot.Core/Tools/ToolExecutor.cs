@@ -42,7 +42,8 @@ namespace E3DCopilot.Core.Tools
                 throw new ArgumentNullException(nameof(handler));
 
             _handlers[handler.Name] = handler;
-            _sink?.Emit(CopilotEvent.Notice($"已注册工具: {handler.Name}"));
+            // 注册是内部机制，写日志即可；发 Notice 会让 UI 每次启动弹几十条 Toast
+            CopilotLogger.Debug($"[ToolExecutor] 已注册工具: {handler.Name}");
         }
 
         /// <summary>
@@ -130,7 +131,7 @@ namespace E3DCopilot.Core.Tools
             if (!string.IsNullOrEmpty(name) && _handlers.ContainsKey(name))
             {
                 _handlers.Remove(name);
-                _sink?.Emit(CopilotEvent.Notice($"工具已移除: {name}"));
+                CopilotLogger.Debug($"[ToolExecutor] 已移除工具: {name}");
             }
         }
 
