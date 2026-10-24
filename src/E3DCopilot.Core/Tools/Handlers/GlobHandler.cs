@@ -53,15 +53,36 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (Directory.Exists(knowledgeDir)) roots.Add(knowledgeDir);
             if (Directory.Exists(docsDir)) roots.Add(docsDir);
 
-            // 向上搜索：将沿途所有目录加入可搜索范围
+            // 向上搜索：将沿途目录加入可搜索范围，用于定位工程根、配置、图纸等。
+            // 修正：原来无条件上溯 10 层，从 ...\bin\Release\net48 出发第 8 层就会到磁盘根（如 E:\），
+            // 导致不传 path 的 glob 会在整个磁盘上枚举文件（实测 E 盘 30s 仍有 34 万文件未扫完，
+            // 一次调用直接顶到 60s 超时）。这里跳过磁盘根，并限制上溯层数。
             var dir = appDir;
-            for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+            for (int i = 0; i < 5 && !string.IsNullOrEmpty(dir); i++)
             {
-                if (!roots.Contains(dir)) roots.Add(dir);
                 dir = Path.GetDirectoryName(dir);
+                if (string.IsNullOrEmpty(dir)) break;
+                if (IsDriveRoot(dir)) break;   // 绝不允许把磁盘根纳入搜索范围
+                if (!roots.Contains(dir)) roots.Add(dir);
             }
 
             return roots.ToArray();
+        }
+
+        /// <summary>判断是否为磁盘根目录（如 E:\ 或 \\server\share 的根）。</summary>
+        private static bool IsDriveRoot(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return true;
+            try
+            {
+                var full = Path.GetFullPath(path);
+                var parent = Path.GetDirectoryName(full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                return string.IsNullOrEmpty(parent);
+            }
+            catch
+            {
+                return true;
+            }
         }
 
         public GlobHandler(IEventSink sink = null)
@@ -98,6 +119,18 @@ namespace E3DCopilot.Core.Tools.Handlers
         public bool IsReadOnly => true;
 
         public async Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default)
+        {
+            // 全局时间上限：无论如何都不允许 glob 拖住整轮对话。
+            // 实测 E 盘全盘 walk 30s 仍有 34 万文件未扫完，故必须有硬上限。
+            const int HardTimeoutMs = 15000;
+            using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeoutCts.CancelAfter(HardTimeoutMs);
+                return await ExecuteCoreAsync(args, timeoutCts.Token);
+            }
+        }
+
+        private async Task<ToolResult> ExecuteCoreAsync(string args, CancellationToken ct)
         {
             return await Task.Run(() =>
             {
@@ -214,7 +247,9 @@ namespace E3DCopilot.Core.Tools.Handlers
                 }
                 catch (OperationCanceledException)
                 {
-                    return ToolResult.Fail("Search cancelled");
+                    return ToolResult.Fail(
+                        "Glob 搜索超时（15s）或已被取消。搜索范围可能过大：请通过 path 参数指定更具体的目录，" +
+                        "或使用更精确的 pattern（如 **/*.dwg 会递归整个目录树）。");
                 }
                 catch (Exception ex)
                 {

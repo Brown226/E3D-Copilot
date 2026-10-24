@@ -459,7 +459,13 @@ namespace E3DCopilot.WebHost
             }
 
             if (_webView.InvokeRequired)
-                _webView.Invoke((Action)post);
+            {
+                // 异步投递：PostWebMessageAsString 无返回值，无需等待 UI 线程完成。
+                // 同步 Invoke 会让后台线程（LLM 流）被 E3D 的 UI 繁忙节奏阻塞。
+                try { _webView.BeginInvoke((Action)post); }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
+            }
             else
                 post();
         }
