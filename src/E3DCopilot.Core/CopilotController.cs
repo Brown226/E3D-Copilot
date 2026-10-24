@@ -269,6 +269,11 @@ namespace E3DCopilot.Core
             if (Executor.GetHandler("history") == null)
                 Executor.Register(new Tools.Handlers.HistoryHandler(Sessions, _sink));
 
+            // 注册 trace 分析工具（需要 ConversationTracer）
+            // 用于定位"执行卡顿"的真实原因：把耗时拆成 LLM/审批/工具三块
+            if (Executor.GetHandler("trace_analyze") == null)
+                Executor.Register(new Tools.Handlers.TraceAnalyzeHandler(Tracer));
+
             _session = new CopilotSession();
 
             // 将 Controller 自身注入为 AskUserHandler 的 IAsker

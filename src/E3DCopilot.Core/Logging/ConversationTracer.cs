@@ -30,6 +30,7 @@ namespace E3DCopilot.Core.Logging
         private ConversationTrace _current;
         private TraceStep _currentStep;
         private Stopwatch _stepWatch;
+        private Stopwatch _llmWatch;
         private readonly Dictionary<string, TraceToolCall> _pendingTools = new Dictionary<string, TraceToolCall>();
 
         // ── 截断保护 ──
@@ -92,6 +93,7 @@ namespace E3DCopilot.Core.Logging
                     Model = model
                 };
                 _pendingTools.Clear();
+                _llmWatch = null;
             }
         }
 
@@ -168,7 +170,94 @@ namespace E3DCopilot.Core.Logging
                     Timestamp = DateTime.Now
                 };
                 _stepWatch = Stopwatch.StartNew();
+                _llmWatch = null;
                 _pendingTools.Clear();
+            }
+        }
+
+        /// <summary>
+        /// 记录本次请求的上下文规模（诊断 prompt 膨胀 / 工具 schema 过大）
+        /// </summary>
+        public void RecordContext(int messages, int tools, int toolSchemaChars, int systemPromptChars, int messageChars)
+        {
+            if (!_enabled || _currentStep == null) return;
+
+            lock (_lock)
+            {
+                _currentStep.Context = new TraceContextSize
+                {
+                    Messages = messages,
+                    Tools = tools,
+                    ToolSchemaChars = toolSchemaChars,
+                    SystemPromptChars = systemPromptChars,
+                    MessageChars = messageChars
+                };
+            }
+        }
+
+        /// <summary>
+        /// LLM 调用开始 — 启动独立计时，用于把"时间花在等模型还是等工具"分开
+        /// </summary>
+        public void BeginLlmCall()
+        {
+            if (!_enabled || _currentStep == null) return;
+
+            lock (_lock)
+            {
+                _llmWatch = Stopwatch.StartNew();
+                if (_currentStep.TtftMs < 0) _currentStep.TtftMs = -1;
+            }
+        }
+
+        /// <summary>
+        /// LLM 调用结束 — 累计耗时
+        /// </summary>
+        public void EndLlmCall()
+        {
+            if (!_enabled || _currentStep == null) return;
+
+            lock (_lock)
+            {
+                if (_llmWatch != null)
+                {
+                    _llmWatch.Stop();
+                    _currentStep.LlmMs += _llmWatch.ElapsedMilliseconds;
+                    _llmWatch = null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 记录首个流式增量到达的时刻（TTFT）。
+        /// 只记第一次，后续调用忽略。
+        /// </summary>
+        public void MarkFirstToken()
+        {
+            if (!_enabled || _currentStep == null) return;
+
+            lock (_lock)
+            {
+                if (_currentStep.TtftMs >= 0) return;
+                _currentStep.TtftMs = _llmWatch != null ? _llmWatch.ElapsedMilliseconds : 0;
+            }
+        }
+
+        /// <summary>
+        /// 记录审批等待耗时与结果
+        /// </summary>
+        public void RecordApproval(string toolId, long waitMs, string decision)
+        {
+            if (!_enabled || _currentStep == null) return;
+
+            lock (_lock)
+            {
+                _currentStep.ApprovalMs += waitMs;
+                TraceToolCall toolCall;
+                if (!string.IsNullOrEmpty(toolId) && _pendingTools.TryGetValue(toolId, out toolCall))
+                {
+                    toolCall.ApprovalMs = waitMs;
+                    toolCall.Approval = decision;
+                }
             }
         }
 
@@ -241,6 +330,7 @@ namespace E3DCopilot.Core.Logging
                 {
                     Id = id,
                     Name = name,
+                    ArgsLen = arguments?.Length ?? 0,
                     Arguments = Truncate(arguments, MaxArgumentsChars)
                 };
                 _pendingTools[id] = toolCall;
@@ -260,6 +350,7 @@ namespace E3DCopilot.Core.Logging
                 TraceToolCall toolCall;
                 if (_pendingTools.TryGetValue(id, out toolCall))
                 {
+                    toolCall.ResultLen = result?.Length ?? 0;
                     toolCall.Result = Truncate(result, MaxToolResultChars);
                     toolCall.Success = success;
                     toolCall.DurationMs = durationMs;
@@ -412,6 +503,14 @@ namespace E3DCopilot.Core.Logging
             {
                 _stepWatch.Stop();
                 _currentStep.DurationMs = _stepWatch.ElapsedMilliseconds;
+            }
+
+            // 若 LLM 调用未正常收尾（异常/取消），兜底结算，避免耗时统计失真
+            if (_llmWatch != null)
+            {
+                _llmWatch.Stop();
+                _currentStep.LlmMs += _llmWatch.ElapsedMilliseconds;
+                _llmWatch = null;
             }
 
             _current?.Steps.Add(_currentStep);

@@ -268,7 +268,9 @@ namespace E3DCopilot.Core
                     });
 
                     // 2. Call LLM (streaming)
+                    _tracer?.BeginLlmCall();
                     var result = await StreamLlmAsync(request, ct);
+                    _tracer?.EndLlmCall();
 
                     // 2.5 流中断恢复（对齐 Reasonix streamRecovery）
                     if (result.Interrupted && _streamRecoveries < MaxStreamRecoveries)
@@ -587,6 +589,8 @@ namespace E3DCopilot.Core
 
             // ── 4.1 通知前端工具开始（审批前就发射，让 ToolCard 先显示）──
             _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
+            // Trace：登记工具（放在审批之前，审批耗时才能挂到这条工具记录上）
+            _tracer?.RecordToolStart(call.Id, call.Name, call.Arguments);
 
             if (needsApproval)
             {
@@ -611,7 +615,13 @@ namespace E3DCopilot.Core
                     });
                 }
 
+                // Trace：记录审批等待时长（这段等待以前在 trace 里完全不可见）
+                var approvalWatch = System.Diagnostics.Stopwatch.StartNew();
                 var approvalResult = await approval.WaitAsync(ct);
+                approvalWatch.Stop();
+                _tracer?.RecordApproval(call.Id, approvalWatch.ElapsedMilliseconds,
+                    approvalResult.TimedOut ? "timeout" : (approvalResult.Allow ? "allow" : "reject"));
+
                 if (!approvalResult.Allow)
                 {
                     string msg = approvalResult.TimedOut
@@ -619,13 +629,13 @@ namespace E3DCopilot.Core
                         : $"User rejected {call.Name}";
                     string reason = approvalResult.TimedOut ? "approval timed out" : "user rejected";
                     _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
+                    _tracer?.RecordToolEnd(call.Id, null, false, 0, msg);
                     return (msg, reason);
                 }
             }
 
             // ── 5. 实际执行（ToolStart 已在第 4 步发射）──
             CopilotLogger.Info("工具执行开始: {0}, args={1}", call.Name, call.Arguments?.Substring(0, Math.Min(200, call.Arguments?.Length ?? 0)));
-            _tracer?.RecordToolStart(call.Id, call.Name, call.Arguments);
             try
             {
                 var toolResult = await _executor.ExecuteAsync(call.Name, call.Arguments, ct);
@@ -785,6 +795,7 @@ namespace E3DCopilot.Core
                     {
                         case ChunkType.Reasoning:
                             reasoningText += chunk.Content;
+                            _tracer?.MarkFirstToken();
                             _tracer?.RecordReasoning(chunk.Content);
                             _sink.Emit(CopilotEvent.Reasoning(chunk.Content));
                             break;
@@ -792,6 +803,7 @@ namespace E3DCopilot.Core
                             // D1 密钥脱敏：对 LLM 输出逐 chunk 遮蔽密钥/连接串等敏感信息
                             var safeText = SecretRedactor.Redact(chunk.Content);
                             text += safeText;
+                            _tracer?.MarkFirstToken();
                             _tracer?.RecordText(safeText);
                             _sink.Emit(CopilotEvent.TextEvent(safeText));
                             break;
@@ -920,7 +932,7 @@ namespace E3DCopilot.Core
                 "design", "piping", "geometry",
                 "undo_redo", "report", "compare", "hierarchy", "batch",
                 "ask", "todo_write", "complete_step", "read_file", "write_file",
-                "run_skill", "grep", "glob", "memory",
+                "run_skill", "grep", "glob", "memory", "trace_analyze",
                 "cad_import", "dwg_diff", "design_workflow", "autocad",
                 "autocad_control", "e3d_to_cad_export",  // CAD-E3D 双向控制
                 "structure_drawing",  // 土建结构出图工具
@@ -972,6 +984,28 @@ namespace E3DCopilot.Core
             if (!string.IsNullOrEmpty(memoryContext))
             {
                 request.Messages.Add(new ChatMessage(MessageRole.System, memoryContext));
+            }
+
+            // ── Trace：记录请求上下文规模（诊断 prompt 膨胀 / 工具 schema 过大）──
+            if (_tracer != null && _tracer.IsEnabled)
+            {
+                int schemaChars = 0;
+                for (int i = 0; i < toolSchemas.Count; i++)
+                {
+                    schemaChars += (toolSchemas[i].Name?.Length ?? 0)
+                                 + (toolSchemas[i].Description?.Length ?? 0)
+                                 + (toolSchemas[i].ParametersJson?.Length ?? 0);
+                }
+                int sysChars = 0, msgChars = 0;
+                for (int i = 0; i < request.Messages.Count; i++)
+                {
+                    var m = request.Messages[i];
+                    int len = m.Content?.Length ?? 0;
+                    msgChars += len;
+                    if (m.Role == MessageRole.System) sysChars += len;
+                }
+                _tracer.RecordContext(request.Messages.Count, toolSchemas.Count,
+                    schemaChars, sysChars, msgChars);
             }
 
             return request;

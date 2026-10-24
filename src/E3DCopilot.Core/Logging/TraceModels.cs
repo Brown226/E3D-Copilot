@@ -91,6 +91,48 @@ namespace E3DCopilot.Core.Logging
         /// <summary>本步骤耗时（毫秒）</summary>
         [JsonProperty("durationMs")]
         public long DurationMs { get; set; }
+
+        /// <summary>其中 LLM 调用耗时（毫秒）</summary>
+        [JsonProperty("llmMs")]
+        public long LlmMs { get; set; }
+
+        /// <summary>LLM 首 token 延迟 TTFT（毫秒），未收到任何增量时为 -1</summary>
+        [JsonProperty("ttftMs")]
+        public long TtftMs { get; set; } = -1;
+
+        /// <summary>其中审批等待耗时（毫秒）</summary>
+        [JsonProperty("approvalMs")]
+        public long ApprovalMs { get; set; }
+
+        /// <summary>本步骤的请求上下文规模（诊断"越跑越慢"用）</summary>
+        [JsonProperty("context", NullValueHandling = NullValueHandling.Ignore)]
+        public TraceContextSize Context { get; set; }
+    }
+
+    /// <summary>
+    /// 请求上下文规模 — 用于诊断 prompt 膨胀
+    /// </summary>
+    public class TraceContextSize
+    {
+        /// <summary>历史消息条数</summary>
+        [JsonProperty("messages")]
+        public int Messages { get; set; }
+
+        /// <summary>暴露给 LLM 的工具数量</summary>
+        [JsonProperty("tools")]
+        public int Tools { get; set; }
+
+        /// <summary>工具 schema 序列化字符数</summary>
+        [JsonProperty("toolSchemaChars")]
+        public int ToolSchemaChars { get; set; }
+
+        /// <summary>系统提示词字符数</summary>
+        [JsonProperty("systemPromptChars")]
+        public int SystemPromptChars { get; set; }
+
+        /// <summary>全部消息内容字符数</summary>
+        [JsonProperty("messageChars")]
+        public int MessageChars { get; set; }
     }
 
     /// <summary>
@@ -125,6 +167,22 @@ namespace E3DCopilot.Core.Logging
         /// <summary>错误信息（失败时）</summary>
         [JsonProperty("error", NullValueHandling = NullValueHandling.Ignore)]
         public string Error { get; set; }
+
+        /// <summary>审批等待耗时（毫秒），未走审批时为 -1</summary>
+        [JsonProperty("approvalMs")]
+        public long ApprovalMs { get; set; } = -1;
+
+        /// <summary>审批结果: allow / reject / timeout / auto</summary>
+        [JsonProperty("approval", NullValueHandling = NullValueHandling.Ignore)]
+        public string Approval { get; set; }
+
+        /// <summary>参数与结果被截断前的原始长度，用于判断"是不是内容太大"</summary>
+        [JsonProperty("argsLen")]
+        public int ArgsLen { get; set; }
+
+        /// <summary>工具返回内容的原始长度</summary>
+        [JsonProperty("resultLen")]
+        public int ResultLen { get; set; }
     }
 
     /// <summary>
