@@ -150,12 +150,12 @@ export function TracePanel() {
     <>
       <button
         type="button"
-        className="composer-auto-toggle"
+        className="composer-auto-toggle trace-trigger"
         onClick={() => setOpen(true)}
         title="查看上一轮执行的耗时归因（不用导出文件）"
       >
-        <Activity size={15} />
-        <span>诊断</span>
+        <Activity size={15} className="shrink-0" />
+        <span className="trace-trigger__label">诊断</span>
       </button>
 
       {open && (

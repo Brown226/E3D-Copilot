@@ -316,6 +316,11 @@ export function InputBar() {
                 />
               </div>
 
+              {/* 权限模式选择器（四档） */}
+              <div className="composer-meta__control">
+                <ApprovalModeSwitcher />
+              </div>
+
               {/* CAD 导入按钮 */}
               <div className="composer-meta__control relative">
                 <CadImportButton />
@@ -324,11 +329,6 @@ export function InputBar() {
               {/* 执行诊断（查看上一轮耗时归因） */}
               <div className="composer-meta__control">
                 <TracePanel />
-              </div>
-
-              {/* 权限模式选择器（四档） */}
-              <div className="composer-meta__control">
-                <ApprovalModeSwitcher />
               </div>
             </div>
 

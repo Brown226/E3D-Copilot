@@ -1452,11 +1452,15 @@ body.composer-resizing * {
   min-width: 0;
   flex: 1 1 auto;
   margin-left: 0;
+  /* 兜底：空间真不够时宁可裁掉尾部的次要按钮，
+     也不让它们越过边界压到右侧模型选择器上（重叠的根源）。 */
+  overflow: hidden;
 }
 .composer-meta__control {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   height: 32px;
   min-width: 0;
 }
@@ -1464,6 +1468,10 @@ body.composer-resizing * {
   flex: 0 0 auto;
   max-width: min(380px, 50vw);
 }
+
+/* 窄宽度降级规则统一放在文件末尾——见「Composer 窄宽度降级」小节。
+   原因：这些规则与 .composer-auto-toggle / .perm-switch__trigger 等基础规则
+   特异性相同，必须后定义才能覆盖它们的 padding 与 width。 */
 
 /* ── Auto Toggle (自动执行开关) ── */
 .composer-auto-toggle {
@@ -1714,6 +1722,10 @@ body.composer-resizing * {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* flex 子项默认 min-width:auto 会拒绝收缩，
+     窄面板下模型选择器宁可被压缩也不该挤到左侧按钮上。 */
+  flex: 0 1 auto;
+  min-width: 0;
   margin-left: auto;
   font-size: 12px;
   color: var(--fg-faint);
@@ -2594,4 +2606,81 @@ body.composer-resizing * {
 .dark .perm-switch__menu {
   background: #0f172a;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   Composer 窄宽度降级（容器查询）
+   ────────────────────────────────────────────
+   容器是 .composer-card（container-type: inline-size）。
+   面板被拖窄时，底部工具栏「图标 + 文字」的总宽会超过可用空间，
+   左侧按钮组会越过边界压到右侧模型选择器上，表现为文字叠字。
+
+   按可用宽度逐级收掉文字，只留图标 + tooltip（title 已存在）：
+     620px  诊断      收字（最次要，且是纯辅助入口）
+     540px  导入 CAD  收字
+     460px  权限模式  收字（图标本身已能表达当前档位）
+     380px  模型名    收字（只留图标 + 下拉箭头）
+     320px  左右两侧贴边，去掉多余内边距
+
+   这些规则必须放在文件末尾：与 .composer-auto-toggle /
+   .perm-switch__trigger 等基础规则特异性相同，靠顺序覆盖其 padding/width。
+   ============================================ */
+
+@container (max-width: 620px) {
+  .trace-trigger__label {
+    display: none;
+  }
+  .trace-trigger {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+@container (max-width: 540px) {
+  .cad-import-trigger__label {
+    display: none;
+  }
+  .cad-import-trigger {
+    width: 28px;
+    padding-left: 0;
+    padding-right: 0;
+    gap: 0;
+    justify-content: center;
+  }
+}
+
+@container (max-width: 460px) {
+  .perm-switch__trigger-label {
+    display: none;
+  }
+  .perm-switch__trigger {
+    width: 28px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+}
+
+@container (max-width: 380px) {
+  .model-switch__label {
+    display: none;
+  }
+  /* 模型按钮收成纯图标，去掉给文字预留的横向空间 */
+  .model-switch__trigger {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}
+
+/* 极窄：工具栏本身也收紧，避免贴边溢出 */
+@container (max-width: 320px) {
+  .composer-meta {
+    gap: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .composer-meta__params {
+    gap: 4px;
+  }
 }

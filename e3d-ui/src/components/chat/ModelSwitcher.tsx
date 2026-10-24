@@ -144,7 +144,7 @@ export function ModelSwitcher() {
       <button
         ref={buttonRef}
         onClick={handleToggle}
-        className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white/80 hover:bg-white transition-colors dark:bg-slate-800/80 dark:border-slate-600 dark:hover:bg-slate-700 dark:text-slate-200"
+        className="model-switch__trigger flex items-center gap-1 px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white/80 hover:bg-white transition-colors dark:bg-slate-800/80 dark:border-slate-600 dark:hover:bg-slate-700 dark:text-slate-200"
         title="切换模型"
       >
         {isLoadingModels ? (
@@ -152,7 +152,7 @@ export function ModelSwitcher() {
         ) : (
           <Brain className="w-3 h-3 text-blue-500" />
         )}
-        <span className="max-w-[120px] truncate text-slate-700 dark:text-slate-200">
+        <span className="model-switch__label max-w-[120px] truncate text-slate-700 dark:text-slate-200">
           {displayLabel}
         </span>
         <ChevronDown

@@ -96,11 +96,11 @@ export function CadImportButton() {
     return (
       <button
         onClick={togglePanel}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+        className="cad-import-trigger flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
         title="导入 CAD 图纸"
       >
-        <FileUp className="w-4 h-4" />
-        <span>导入 CAD</span>
+        <FileUp className="w-4 h-4 shrink-0" />
+        <span className="cad-import-trigger__label">导入 CAD</span>
       </button>
     )
   }

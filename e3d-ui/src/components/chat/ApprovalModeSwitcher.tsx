@@ -110,8 +110,8 @@ export function ApprovalModeSwitcher() {
         aria-expanded={open}
         title={`当前权限：${current.label} — ${current.hint}`}
       >
-        <CurrentIcon size={14} />
-        <span>{current.label}</span>
+        <CurrentIcon size={14} className="shrink-0" />
+        <span className="perm-switch__trigger-label">{current.label}</span>
       </button>
 
       {open && createPortal(
