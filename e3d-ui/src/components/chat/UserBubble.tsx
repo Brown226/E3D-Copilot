@@ -46,7 +46,13 @@ export const UserBubble = memo(function UserBubble({ msg }: UserBubbleProps) {
   const handleCancelEdit = () => setEditing(false)
 
   const handleSubmitEdit = () => {
-    editUserMessage(msg.id, draftText)
+    if (!draftText.trim()) return
+    // 按钮文案是「发送」，就必须真的发出去：截断旧历史后以新内容重新发起本轮
+    import('@/services/bridgeService').then(({ default: bridge }) => {
+      editUserMessage(msg.id, draftText, (text, images, files, tabId) =>
+        bridge.sendUserMessage(text, images, files, tabId)
+      )
+    })
     setEditing(false)
   }
 

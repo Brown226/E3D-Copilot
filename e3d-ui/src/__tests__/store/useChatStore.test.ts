@@ -175,6 +175,68 @@ describe('useChatStore', () => {
     })
   })
 
+  describe('openSettings 直达分页', () => {
+    it('openSettings("models") 打开设置并记录目标页', () => {
+      useChatStore.setState({ showSettings: false, settingsTab: null })
+      useChatStore.getState().openSettings('models')
+      expect(useChatStore.getState().showSettings).toBe(true)
+      expect(useChatStore.getState().settingsTab).toBe('models')
+    })
+
+    it('openSettings() 不带参数时清空目标页，回到默认行为', () => {
+      useChatStore.setState({ showSettings: false, settingsTab: 'models' })
+      useChatStore.getState().openSettings()
+      expect(useChatStore.getState().showSettings).toBe(true)
+      expect(useChatStore.getState().settingsTab).toBeNull()
+    })
+  })
+
+  describe('editUserMessage 发送语义', () => {
+    it('传入 bridgeSend 时截断历史并真正重发', () => {
+      const tab = {
+        id: 'test_tab',
+        title: '新对话',
+        messages: [
+          { id: 'u1', role: 'user' as const, content: '原始问题', timestamp: Date.now() },
+          { id: 'a1', role: 'assistant' as const, content: '回复', timestamp: Date.now() },
+        ],
+        isStreaming: false,
+        currentAssistantMsgId: null,
+        currentThinkingMsgId: null,
+        pendingApproval: null,
+        pendingQuestion: null,
+      }
+      useChatStore.setState({ tabs: [tab], activeTabId: 'test_tab', inputValue: '' })
+
+      const sent: string[] = []
+      useChatStore.getState().editUserMessage('u1', '改后的问题', (text) => { sent.push(text) })
+
+      // 按钮写「发送」就必须真的发出去（原实现只塞回输入框）
+      expect(sent).toEqual(['改后的问题'])
+      // 旧历史被截断，重新走一遍
+      const msgs = useChatStore.getState().tabs[0].messages
+      expect(msgs.filter((m) => m.content === '改后的问题').length).toBe(1)
+      expect(msgs.some((m) => m.content === '回复')).toBe(false)
+    })
+
+    it('不传 bridgeSend 时退化为填回输入框（保持旧行为可用）', () => {
+      const tab = {
+        id: 'test_tab',
+        title: '新对话',
+        messages: [{ id: 'u2', role: 'user' as const, content: '原始', timestamp: Date.now() }],
+        isStreaming: false,
+        currentAssistantMsgId: null,
+        currentThinkingMsgId: null,
+        pendingApproval: null,
+        pendingQuestion: null,
+      }
+      useChatStore.setState({ tabs: [tab], activeTabId: 'test_tab', inputValue: '' })
+
+      useChatStore.getState().editUserMessage('u2', '仅填回')
+      expect(useChatStore.getState().inputValue).toBe('仅填回')
+    })
+  })
+
   describe('setPlanMode', () => {
     it('should enable plan mode', () => {
       useChatStore.getState().setPlanMode(true)

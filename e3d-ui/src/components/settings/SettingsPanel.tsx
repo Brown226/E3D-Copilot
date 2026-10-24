@@ -49,8 +49,14 @@ const sectionLoaders: Record<SettingsTab, () => Promise<{ default: React.Compone
 export default function SettingsPanel() {
   const showSettings = useChatStore((s) => s.showSettings)
   const toggleSettings = useChatStore((s) => s.toggleSettings)
+  const requestedTab = useChatStore((s) => s.settingsTab)
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
   const [SectionComponent, setSectionComponent] = useState<React.ComponentType | null>(null)
+
+  // 外部请求直达某一页（例如「未配置模型」时点进去直接落到 models）
+  useEffect(() => {
+    if (showSettings && requestedTab) setActiveTab(requestedTab)
+  }, [showSettings, requestedTab])
 
   // ESC 键关闭
   useEffect(() => {

@@ -88,6 +88,7 @@ export interface ChatStore {
   providers: ProviderInfo[];
   models: { ref: string; provider: string; model: string; current: boolean }[];
   showSettings: boolean;
+  settingsTab: 'general' | 'models' | 'skills' | 'mcp' | 'appearance' | 'memory' | 'about' | null;
   showHistory: boolean;
   showCommandPalette: boolean;
   showSearch: boolean;
@@ -134,6 +135,8 @@ export interface ChatStore {
   sendMessage: (bridgeSend: (text: string, images?: string[], files?: string[], tabId?: string) => void, attachments?: Attachment[], overrideText?: string) => void;
   clearSession: (bridgeNewSession: () => void) => void;
   toggleSettings: () => void;
+  /** 打开设置并直达指定分页 */
+  openSettings: (tab?: 'general' | 'models' | 'skills' | 'mcp' | 'appearance' | 'memory' | 'about') => void;
   toggleHistory: () => void;
   toggleCommandPalette: () => void;
   toggleSearch: () => void;
@@ -152,7 +155,12 @@ export interface ChatStore {
   setSessions: (sessions: SessionMeta[]) => void;
   newSession: (bridgeNewSession: () => void) => void;
   rerollLastMessage: (bridgeSend: (text: string, images?: string[]) => void) => void;
-  editUserMessage: (messageId: string, newText?: string) => void;
+  /** 编辑并「发送」：截断该消息之后的历史并以新内容重新发起本轮 */
+  editUserMessage: (
+    messageId: string,
+    newText?: string,
+    bridgeSend?: (text: string, images?: string[], files?: string[], tabId?: string) => void
+  ) => void;
   /** 回退到指定消息位置（从这继续 — 删除该消息之后的所有消息） */
   rollbackToMessage: (messageId: string) => void;
   /** 重试状态 */

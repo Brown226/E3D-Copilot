@@ -10,6 +10,9 @@ import { MessageTypes } from '../../services/messageContracts';
 import { updateTab } from './tabSlice';
 import type { StateCreator } from 'zustand';
 
+/** 设置面板分页（与 SettingsPanel 的 SettingsTab 保持一致） */
+export type SettingsTabName = 'general' | 'models' | 'skills' | 'mcp' | 'appearance' | 'memory' | 'about';
+
 // ============================================
 // Slice 定义
 // ============================================
@@ -19,6 +22,8 @@ export interface UISlice {
   isPlanMode: boolean;
   toolApprovalMode: ToolApprovalMode;
   showSettings: boolean;
+  /** 打开设置面板时要直接落到哪一页（null = 保持上次/默认 general） */
+  settingsTab: SettingsTabName | null;
   showHistory: boolean;
   showCommandPalette: boolean;
   showSearch: boolean;
@@ -35,6 +40,8 @@ export interface UISlice {
   sendMessage: (bridgeSend: (text: string, images?: string[], files?: string[], tabId?: string) => void, attachments?: Attachment[], overrideText?: string) => void;
   clearSession: (bridgeNewSession: () => void) => void;
   toggleSettings: () => void;
+  /** 打开设置并直达指定分页（如未配置模型时直达 models） */
+  openSettings: (tab?: SettingsTabName) => void;
   toggleHistory: () => void;
   toggleCommandPalette: () => void;
   toggleSearch: () => void;
@@ -42,7 +49,15 @@ export interface UISlice {
   togglePlanMode: () => void;
   setToolApprovalMode: (mode: ToolApprovalMode) => void;
   rerollLastMessage: (bridgeSend: (text: string, images?: string[]) => void) => void;
-  editUserMessage: (messageId: string, newText?: string) => void;
+  /**
+   * 编辑并「发送」：截断该消息之后的历史，并以新内容重新发起本轮。
+   * 不传 bridgeSend 时退化为「填回输入框」，保持旧行为可用。
+   */
+  editUserMessage: (
+    messageId: string,
+    newText?: string,
+    bridgeSend?: (text: string, images?: string[], files?: string[], tabId?: string) => void
+  ) => void;
   rollbackToMessage: (messageId: string) => void;
   setRetrying: (retrying: boolean) => void;
   setTurnStart: (timestamp: number | null) => void;
@@ -63,6 +78,7 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
     return 'ask';
   })(),
   showSettings: false,
+  settingsTab: null,
   showHistory: false,
   showCommandPalette: false,
   showSearch: false,
@@ -126,6 +142,8 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
   },
 
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
+
+  openSettings: (tab) => set({ showSettings: true, settingsTab: tab ?? null }),
   toggleHistory: () => set((s) => ({ showHistory: !s.showHistory })),
   toggleCommandPalette: () => set((s) => ({ showCommandPalette: !s.showCommandPalette })),
   toggleSearch: () => set((s) => ({ showSearch: !s.showSearch })),
@@ -182,7 +200,7 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
     bridgeSend(text, images)
   },
 
-  editUserMessage: (messageId, newText) => {
+  editUserMessage: (messageId, newText, bridgeSend) => {
     const { activeTabId } = get()
     const tab = get().tabs.find((t) => t.id === activeTabId)
     if (!tab) return
@@ -190,10 +208,13 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
     const msg = tab.messages.find((m) => m.id === messageId)
     if (!msg || msg.role !== 'user') return
 
-    // 将编辑后的内容（或原始内容）放回输入框，删除该消息及其之后的所有消息
     const msgIdx = tab.messages.findIndex((m) => m.id === messageId)
+    const text = (newText ?? msg.content).trim()
+    if (!text) return
+
+    // 先截断该消息及其之后的历史
     set((s) => ({
-      inputValue: newText ?? msg.content,
+      inputValue: bridgeSend ? '' : text,
       tabs: updateTab(s.tabs, activeTabId, () => ({
         messages: s.tabs.find((t) => t.id === activeTabId)?.messages.slice(0, msgIdx) ?? [],
         isStreaming: false,
@@ -201,6 +222,12 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
         currentThinkingMsgId: null,
       })),
     }))
+
+    // 按钮写的是「发送」，就真的发送。
+    // 原实现只把文本塞回输入框，用户点「发送」却什么都没发出去。
+    if (bridgeSend) {
+      get().sendMessage(bridgeSend, undefined, text)
+    }
   },
 
   rollbackToMessage: (messageId) => {

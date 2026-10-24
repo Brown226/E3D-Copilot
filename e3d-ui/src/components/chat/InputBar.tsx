@@ -369,6 +369,13 @@ export function InputBar() {
                     if (result?.path) {
                       sendMessage(bridge.sendUserMessage.bind(bridge), undefined, `/cad 导入文件: ${result.path}`)
                     }
+                  }).catch((err: unknown) => {
+                    // 原来没有 catch：后端不可用或超时 30s 后静默失败，用户点了没反应
+                    const msg = err instanceof Error ? err.message : String(err);
+                    console.warn('[/cad] 打开文件对话框失败', err);
+                    import('@/store/useToastStore').then(({ useToastStore }) => {
+                      useToastStore.getState().addToast('error', `无法打开文件对话框：${msg}`);
+                    });
                   })
                 })
               } else {

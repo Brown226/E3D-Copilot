@@ -175,7 +175,18 @@ export function ModelSwitcher() {
             <div className="p-6 text-center">
               <Brain className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
               <p className="text-sm text-slate-500 dark:text-slate-400">未配置模型</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">请到设置中添加 Provider</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  // 直达模型页：原来只 toggleSettings()，落在「通用」页，
+                  // 用户还得自己再点一次「模型」，首次使用容易卡住。
+                  useChatStore.getState().openSettings('models')
+                }}
+                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                去添加 Provider
+              </button>
             </div>
           ) : (
             <>

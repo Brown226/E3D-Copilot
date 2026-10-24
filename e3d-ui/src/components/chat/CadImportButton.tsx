@@ -78,8 +78,16 @@ export function CadImportButton() {
         const message = `导入 CAD 文件：${result.path}，墙高${state.wallHeight}mm，墙厚${state.wallThickness}mm`
         sendMessage(bridge.sendUserMessage.bind(bridge), [], message)
       }
-    } catch {
-      // 对话框取消或后端不可用
+    } catch (err) {
+      // 用户取消是正常路径，不打扰；但后端不可用/超时必须告诉用户，
+      // 否则点了「选择文件」看起来什么都没发生。
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/cancel|取消|abort/i.test(msg)) {
+        console.warn('[CadImport] 打开文件对话框失败', err);
+        import('@/store/useToastStore').then(({ useToastStore }) => {
+          useToastStore.getState().addToast('error', `无法打开文件对话框：${msg}`);
+        });
+      }
     }
   }, [sendMessage, togglePanel, state.wallHeight, state.wallThickness])
 
