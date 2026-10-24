@@ -238,7 +238,7 @@ namespace E3DCopilot.Tests
             Assert.AreEqual("system", config.Ui.Theme);
             Assert.AreEqual(16, config.Ui.FontSize);
             Assert.AreEqual("act", config.Ui.DefaultMode);
-            Assert.AreEqual(10, config.Safety.ConfirmBatchThreshold);
+            Assert.AreEqual(5, config.Safety.ConfirmBatchThreshold);
             Assert.AreEqual("info", config.Logging.Level);
         }
 

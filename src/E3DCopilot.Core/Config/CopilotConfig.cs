@@ -146,8 +146,12 @@ namespace E3DCopilot.Core.Config
             /// <summary>
             /// 批量判定阈值：单个数组参数超过该元素数即视为批量操作，强制走审批。
             /// 由 CommandPermissionController 消费。
+            ///
+            /// 注意 isBatch 会绕过策略档位强制审批（「完全访问」也拦），
+            /// 所以这是安全下限，不宜调高。原值 10 是无人读取的死配置，
+            /// 实际代码一直按 5 判定；接通配置后默认值取回 5，行为保持不变。
             /// </summary>
-            public int ConfirmBatchThreshold { get; set; } = 10;
+            public int ConfirmBatchThreshold { get; set; } = 5;
         }
 
         public class MemoryConfig
