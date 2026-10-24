@@ -1,13 +1,10 @@
 /**
- * HistoryPanel — 对话历史管理（v2 重设计）
+ * HistoryPanel — 对话历史管理（v3 紧凑版）
  *
- * 改进：
- * 1. 卡片化会话项 + 左侧彩色竖条（按日期分组着色）
- * 2. 当前活跃会话显示蓝色圆点 + "当前" 标签
- * 3. 消息数/时间戳用 pill 徽章样式
- * 4. 删除操作简化为单击确认
- * 5. 搜索栏增加快捷键提示
- * 6. 面板宽度收窄为 max-w-sm
+ * 设计约束（大王要求）：
+ * 1. 每行只保留标题，不再显示预览 / 时间 / 消息数徽章 —— 原来的卡片太占空间
+ * 2. 支持批量删除：勾选多条后一次删掉
+ * 3. 删除必须真的生效（内存状态先改，持久化失败不阻断）
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
@@ -20,6 +17,8 @@ import {
   Plus,
   Loader2,
   AlertCircle,
+  CheckSquare,
+  Square,
 } from 'lucide-react'
 import { useChatStore, type SessionMeta } from '@/store/useChatStore'
 import bridge from '@/services/bridgeService'
@@ -42,13 +41,6 @@ function dayLabel(ts: number): string {
   return `${d.getFullYear()}年${month}月${day}日`
 }
 
-function formatTime(ts: number): string {
-  const d = new Date(ts)
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${hh}:${mm}`
-}
-
 // 按日期分组着色
 const GROUP_COLORS: Record<string, string> = {
   '今天': 'bg-blue-500',
@@ -67,13 +59,16 @@ export function HistoryPanel() {
   const showHistory = useChatStore((s) => s.showHistory)
   const toggleHistory = useChatStore((s) => s.toggleHistory)
   const loadSession = useChatStore((s) => s.loadSession)
-  const deleteSession = useChatStore((s) => s.deleteSession)
+  const deleteSessions = useChatStore((s) => s.deleteSessions)
   const sessionId = useChatStore((s) => s.sessionId)
 
   const [query, setQuery] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 批量选择：进入多选后才显示勾选框
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // 从后端加载会话列表（合并去重，后端为权威数据源）
   const loadSessionsFromBackend = useCallback(async () => {
@@ -113,6 +108,8 @@ export function HistoryPanel() {
       setQuery('')
       setDeleteConfirm(null)
       setError(null)
+      setSelectMode(false)
+      setSelected(new Set())
       loadSessionsFromBackend()
     }
   }, [showHistory, loadSessionsFromBackend])
@@ -146,31 +143,51 @@ export function HistoryPanel() {
     loadSession(session.id)
   }, [loadSession])
 
-  // 删除：本地与后端各删一次，两边都尝试，避免只删掉一半导致「删了又回来」
-  const handleDelete = useCallback(async (sid: string) => {
-    const target = useChatStore.getState().sessions.find((s) => s.id === sid)
-    // 先同步删除本地（立即响应 UI）
-    deleteSession(sid)
+  /**
+   * 删除（单条或批量）。
+   *
+   * 两个要点：
+   * 1. 先删内存再删后端 —— 若只依赖后端，后端没这条 id 时前端毫无变化，看起来就是「删不掉」。
+   * 2. 同名同条数的本地/后端重复条目一并清掉，否则下次打开面板又从后端刷回来。
+   */
+  const handleDeleteMany = useCallback(async (sidList: string[]) => {
+    if (sidList.length === 0) return
+
+    // 归一化（同标题同条数视为同一段对话）由 store 负责，它返回实际删掉的全部 id
+    const removedIds = deleteSessions(sidList)
     setDeleteConfirm(null)
+    setSelected(new Set())
+    setSelectMode(false)
 
     if (!bridge.isAvailable()) return
-    try {
-      // 同名的本地缓存条目可能同时存在于后端（tab 会话），一并清掉，
-      // 否则下次刷新列表又会从后端把这条刷出来。
-      const keys = new Set<string>()
-      if (target) keys.add(`${target.title}|${target.messageCount}`)
-      const duplicates = useChatStore.getState().sessions.filter(
-        (s) => s.id === sid || (target && s.title === target.title && s.messageCount === target.messageCount),
-      )
-      const ids = new Set([sid, ...duplicates.map((d) => d.id)])
-      for (const id of ids) {
-        await bridge.deleteSession(id).catch(() => { /* 后端没有该 id 时忽略 */ })
+    for (const id of removedIds) {
+      try {
+        await bridge.deleteSession(id)
+      } catch {
+        // 后端没有该 id 属于正常情况（纯本地会话），忽略
       }
-    } catch (err) {
-      console.warn('[HistoryPanel] 后端删除会话失败', err)
-      setError('后端删除失败，该条目可能仍存在')
     }
-  }, [deleteSession])
+  }, [deleteSessions])
+
+  const toggleSelect = useCallback((sid: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(sid)) next.delete(sid)
+      else next.add(sid)
+      return next
+    })
+  }, [])
+
+  const allVisibleSelected = filteredSessions.length > 0
+    && filteredSessions.every((s) => selected.has(s.id))
+
+  const toggleSelectAll = useCallback(() => {
+    setSelected((prev) => (
+      filteredSessions.length > 0 && filteredSessions.every((s) => prev.has(s.id))
+        ? new Set()
+        : new Set(filteredSessions.map((s) => s.id))
+    ))
+  }, [filteredSessions])
 
   // 新建对话（纯前端，不发 new_session）
   const handleNewSession = useCallback(() => {
@@ -200,6 +217,18 @@ export function HistoryPanel() {
             </span>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); setDeleteConfirm(null) }}
+              className={`flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                selectMode
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title="批量选择"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              {selectMode ? '取消' : '多选'}
+            </button>
             <button
               onClick={handleNewSession}
               className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
@@ -270,94 +299,92 @@ export function HistoryPanel() {
               )}
             </div>
           ) : (
-            <div className="py-2 px-2 space-y-3">
+            <div className="py-1 px-2">
               {groups.map((group) => (
                 <div key={group.label}>
                   {/* 日期标题 */}
-                  <div className="px-2 py-1">
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  <div className="px-2 pt-2 pb-1 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
                       {group.label}
                     </span>
+                    {selectMode && (
+                      <button
+                        onClick={toggleSelectAll}
+                        className="text-[11px] text-blue-500 hover:text-blue-600 transition-colors"
+                      >
+                        {allVisibleSelected ? '取消全选' : '全选'}
+                      </button>
+                    )}
                   </div>
 
-                  {/* 会话卡片 */}
-                  <div className="space-y-1">
+                  {/* 会话行 — 只保留标题，不显示预览/时间/条数 */}
+                  <div className="space-y-0.5">
                     {group.items.map((session) => {
                       const isConfirming = deleteConfirm === session.id
                       const isCurrent = session.id === sessionId
+                      const isChecked = selected.has(session.id)
                       return (
                         <div
                           key={session.id}
-                          className={`group relative flex items-stretch rounded-lg overflow-hidden transition-all cursor-pointer ${
+                          className={`group flex items-center gap-2 h-9 px-2 rounded-md transition-colors cursor-pointer ${
                             isCurrent
-                              ? 'bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-200 dark:ring-blue-800'
-                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                              ? 'bg-blue-50 dark:bg-blue-900/20'
+                              : isChecked
+                                ? 'bg-slate-100 dark:bg-slate-800'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
                           }`}
-                          onClick={() => handleResume(session)}
+                          onClick={() => (selectMode ? toggleSelect(session.id) : handleResume(session))}
+                          title={session.title}
                         >
-                          {/* 左侧彩色竖条 */}
-                          <div className={`w-1 shrink-0 ${groupColor(group.label)} ${isCurrent ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'} transition-opacity`} />
+                          {selectMode ? (
+                            isChecked
+                              ? <CheckSquare className="w-3.5 h-3.5 shrink-0 text-blue-500" />
+                              : <Square className="w-3.5 h-3.5 shrink-0 text-slate-300 dark:text-slate-600" />
+                          ) : (
+                            <div className={`w-0.5 h-4 shrink-0 rounded-full ${groupColor(group.label)} ${isCurrent ? 'opacity-100' : 'opacity-50'}`} />
+                          )}
 
-                          {/* 内容区 */}
-                          <div className="flex-1 min-w-0 px-3 py-2.5">
-                            <div className="flex items-center gap-1.5">
-                              {isCurrent && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 animate-pulse" />
-                              )}
-                              <p className={`text-[13px] font-medium truncate ${
-                                isCurrent ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-slate-100'
-                              }`}>
-                                {session.title}
-                              </p>
-                              {isCurrent && (
-                                <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-semibold rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
-                                  当前
-                                </span>
+                          <p className={`flex-1 min-w-0 text-[13px] truncate ${
+                            isCurrent
+                              ? 'font-medium text-blue-700 dark:text-blue-300'
+                              : 'text-slate-700 dark:text-slate-200'
+                          }`}>
+                            {session.title}
+                          </p>
+
+                          {isCurrent && !selectMode && (
+                            <span className="shrink-0 text-[10px] text-blue-500">当前</span>
+                          )}
+
+                          {/* 单条删除（多选模式下隐藏，用底部批量删除） */}
+                          {!selectMode && (
+                            <div className="shrink-0 flex items-center">
+                              {isConfirming ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteMany([session.id]) }}
+                                    className="px-2 py-0.5 text-[11px] font-semibold rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
+                                  >
+                                    删除
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null) }}
+                                    className="px-2 py-0.5 text-[11px] rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-100 transition-colors"
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setDeleteConfirm(session.id) }}
+                                  className="p-1 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 rounded opacity-0 group-hover:opacity-100 transition-all"
+                                  title="删除"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                               )}
                             </div>
-                            {session.preview && (
-                              <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5 leading-relaxed">
-                                {session.preview}
-                              </p>
-                            )}
-                            {/* Pill 徽章：时间 + 消息数 */}
-                            <div className="flex items-center gap-1.5 mt-1.5">
-                              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                                {formatTime(session.lastActivityAt)}
-                              </span>
-                              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                                {session.messageCount} 条
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* 删除按钮 */}
-                          <div className="flex items-center pr-2 shrink-0">
-                            {isConfirming ? (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(session.id) }}
-                                  className="px-2 py-1 text-[10px] font-semibold rounded-md bg-red-500 text-white hover:bg-red-600 transition-colors"
-                                >
-                                  删除
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null) }}
-                                  className="px-2 py-1 text-[10px] font-medium rounded-md bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
-                                >
-                                  取消
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm(session.id) }}
-                                className="p-1.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 rounded-md opacity-0 group-hover:opacity-100 transition-all"
-                                title="删除"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
                       )
                     })}
@@ -368,14 +395,34 @@ export function HistoryPanel() {
           )}
         </div>
 
-        {/* 底部统计 */}
+        {/* 底部：多选模式下显示批量删除，否则显示统计 */}
         {sessions.length > 0 && (
-          <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800">
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
-              共 {sessions.length} 个对话
-              {query && filteredSessions.length !== sessions.length &&
-                ` · 显示 ${filteredSessions.length} 个`}
-            </p>
+          <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800">
+            {selectMode ? (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  已选 {selected.size} 项
+                </span>
+                <button
+                  onClick={() => handleDeleteMany([...selected])}
+                  disabled={selected.size === 0}
+                  className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                    selected.size === 0
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                      : 'bg-red-500 text-white hover:bg-red-600'
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  删除选中
+                </button>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                共 {sessions.length} 个对话
+                {query && filteredSessions.length !== sessions.length &&
+                  ` · 显示 ${filteredSessions.length} 个`}
+              </p>
+            )}
           </div>
         )}
       </div>

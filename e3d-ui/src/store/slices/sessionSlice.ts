@@ -39,9 +39,18 @@ const LOCAL_SESSION_PREFIX = 'session_'
  * 于是同一段对话在列表里出现两份：后端一份、本地缓存一份。
  * 用户删掉本地那份，后端那份仍在，重开面板又刷出来 —— 表现为「删不掉」。
  */
-function saveSessionsToStorage(sessions: SessionMeta[]) {
+function saveSessionsToStorage(sessions: SessionMeta[]): boolean {
   const localOnly = sessions.filter((s) => s.id.startsWith(LOCAL_SESSION_PREFIX))
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(localOnly.slice(0, MAX_SESSIONS)))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(localOnly.slice(0, MAX_SESSIONS)))
+    return true
+  } catch (err) {
+    // 配额写满时 setItem 会抛 QuotaExceededError。
+    // 这里必须吞掉：调用方（deleteSession / setSessions）已经把内存状态改好了，
+    // 让异常冒出去会让「删除」在更新 UI 之前中断，表现为点了删除毫无反应。
+    console.warn('[session] 会话列表持久化失败（localStorage 可能已满）', err)
+    return false
+  }
 }
 
 function saveMessagesToStorage(sessionId: string, messages: Message[]) {
@@ -77,6 +86,9 @@ export interface SessionSlice {
   saveSession: () => void;
   loadSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => void;
+  /** 批量删除。删除后会给挂载这些会话的 Tab 换新 id，避免下一轮保存复活条目。 */
+  /** 批量删除，返回实际删除的所有 id（含同名重复条目），供调用方同步后端 */
+  deleteSessions: (sessionIds: string[]) => string[];
   loadSessionList: () => void;
   setSessions: (sessions: SessionMeta[]) => void;
   newSession: (bridgeNewSession: () => void) => void;
@@ -116,9 +128,9 @@ export const createSessionSlice: StateCreator<ChatStore, [], [], SessionSlice> =
       ? sessions.map((s, i) => (i === exists ? meta : s))
       : [meta, ...sessions]
 
-    saveSessionsToStorage(nextSessions)
-    // 同步全局 sessionId，保持 loadSession / deleteSession 的比较语义一致
+    // 先更新内存再持久化：存储写满时不能让会话列表更新也一起失败
     set({ sessions: nextSessions, sessionId: tabSessionId })
+    saveSessionsToStorage(nextSessions)
   },
 
   loadSession: (sessionId) => {
@@ -153,15 +165,61 @@ export const createSessionSlice: StateCreator<ChatStore, [], [], SessionSlice> =
   },
 
   deleteSession: (sessionId) => {
-    const { sessions } = get()
-    const nextSessions = sessions.filter((s) => s.id !== sessionId)
-    saveSessionsToStorage(nextSessions)
-    deleteMessagesFromStorage(sessionId)
-    // 若删的是当前会话，清空 store 里的 sessionId，避免后续 saveSession()
-    // 继续以已删除的 id 写入，把条目又「复活」出来。
-    const patch: { sessions: SessionMeta[]; sessionId?: string } = { sessions: nextSessions }
-    if (get().sessionId === sessionId) patch.sessionId = generateSessionId()
+    get().deleteSessions([sessionId])
+  },
+
+
+  deleteSessions: (ids) => {
+    const { sessions, tabs, activeTabId } = get()
+    const drop = new Set(ids)
+    if (drop.size === 0) return []
+
+    // 同一段对话可能有两份：后端 tab 会话（GUID）与前端本地缓存（session_），
+    // 两边 id 永不相等，只按 id 删会留下一份，重开面板又刷出来。
+    //
+    // 但只在「一个本地、一个后端」之间认定副本：两条都是本地会话时，
+    // 即使标题和条数相同也是两段独立对话（例如两次都叫「工具测试。」），不能互相牵连误删。
+    const isLocal = (id: string) => id.startsWith(LOCAL_SESSION_PREFIX)
+    for (const t of sessions) {
+      if (!drop.has(t.id)) continue
+      for (const s of sessions) {
+        if (isLocal(s.id) === isLocal(t.id)) continue
+        if (s.title === t.title && s.messageCount === t.messageCount) drop.add(s.id)
+      }
+    }
+
+    const nextSessions = sessions.filter((s) => !drop.has(s.id))
+    // 先改内存状态，再做持久化：即使 localStorage 写失败，UI 也必须真的删掉。
+    const patch: { sessions: SessionMeta[]; sessionId?: string; tabs?: typeof tabs } = {
+      sessions: nextSessions,
+    }
+
+    // 被删的会话若仍挂在某个 Tab 上，必须给那个 Tab 换新 id。
+    // 否则下一轮 TurnDone 的 saveSession() 会以旧 id 再写一条，条目「复活」。
+    let nextTabs = tabs
+    const activeTabBefore = tabs.find((t) => t.id === activeTabId)
+    for (const t of tabs) {
+      if (t.sessionId && drop.has(t.sessionId)) {
+        nextTabs = nextTabs.map((x) => (x.id === t.id ? { ...x, sessionId: generateSessionId() } : x))
+      }
+    }
+    if (get().sessionId && drop.has(get().sessionId)) {
+      patch.sessionId = generateSessionId()
+    }
+    // 当前 Tab 换了 id 时，全局 sessionId 跟随它，保持 loadSession/deleteSession 的比较语义一致
+    const activeTabAfter = nextTabs.find((t) => t.id === activeTabId)
+    if (activeTabBefore && activeTabAfter && activeTabBefore.sessionId !== activeTabAfter.sessionId) {
+      patch.sessionId = activeTabAfter.sessionId
+    }
+    if (nextTabs !== tabs) patch.tabs = nextTabs
+
     set(patch)
+
+    // 持久化（失败不阻断删除）
+    saveSessionsToStorage(nextSessions)
+    for (const id of drop) deleteMessagesFromStorage(id)
+
+    return [...drop]
   },
 
   loadSessionList: () => {
@@ -169,8 +227,9 @@ export const createSessionSlice: StateCreator<ChatStore, [], [], SessionSlice> =
   },
 
   setSessions: (sessions) => {
-    saveSessionsToStorage(sessions)
+    // 先改内存状态，再做持久化：存储写满时不能让列表更新也一起失败。
     set({ sessions })
+    saveSessionsToStorage(sessions)
   },
 
   newSession: (bridgeNewSession) => {

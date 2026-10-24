@@ -169,6 +169,9 @@ export interface ChatStore {
   saveSession: () => void;
   loadSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => void;
+  /** 批量删除。删除后会给挂载这些会话的 Tab 换新 id，避免下一轮保存复活条目。 */
+  /** 批量删除，返回实际删除的所有 id（含同名重复条目），供调用方同步后端 */
+  deleteSessions: (sessionIds: string[]) => string[];
   loadSessionList: () => void;
   setSessions: (sessions: SessionMeta[]) => void;
   newSession: (bridgeNewSession: () => void) => void;

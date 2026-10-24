@@ -116,3 +116,128 @@ describe('会话持久化与删除', () => {
     expect(titles).toContain('B 的问题')
   })
 })
+
+describe('删除必须真的生效（三个根因的回归）', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    useChatStore.setState({
+      sessions: [],
+      sessionId: 'session_local_1',
+      tabs: [{
+        id: 'test_tab', title: '新对话', messages: [],
+        isStreaming: false, currentAssistantMsgId: null, currentThinkingMsgId: null,
+        pendingApproval: null, pendingQuestion: null, sessionId: 'session_local_1',
+      } as never],
+      activeTabId: 'test_tab',
+    })
+  })
+
+  it('localStorage 写满时，删除仍要改内存状态（不能抛错也不能不删）', () => {
+    useChatStore.setState({ sessions: [meta('session_local_1'), meta('session_local_2')] })
+    const orig = localStorage.setItem.bind(localStorage)
+    localStorage.setItem = () => {
+      const e = new Error('QuotaExceededError')
+      e.name = 'QuotaExceededError'
+      throw e
+    }
+    let threw: unknown = null
+    try {
+      useChatStore.getState().deleteSession('session_local_2')
+    } catch (e) { threw = e }
+    localStorage.setItem = orig
+
+    // 修复前：setItem 抛错 → deleteSession 在 set() 之前中断 → 条目还在
+    expect(threw).toBe(null)
+    expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['session_local_1'])
+  })
+
+  it('删除当前 Tab 的会话后，Tab 必须换新 sessionId，否则下一轮 saveSession 会复活', () => {
+    useChatStore.setState({
+      sessions: [meta('session_local_1'), meta('session_local_2')],
+      tabs: [{
+        id: 'test_tab', title: '新对话', messages: [],
+        isStreaming: false, currentAssistantMsgId: null, currentThinkingMsgId: null,
+        pendingApproval: null, pendingQuestion: null, sessionId: 'session_local_1',
+      } as never],
+      activeTabId: 'test_tab',
+    })
+
+    useChatStore.getState().deleteSession('session_local_1')
+
+    const tab = useChatStore.getState().tabs.find((t) => t.id === 'test_tab')!
+    expect(tab.sessionId).not.toBe('session_local_1')
+
+    // 关键：下一轮保存不能把被删的 id 写回去
+    useChatStore.setState({
+      tabs: useChatStore.getState().tabs.map((t) => (
+        t.id === 'test_tab' ? { ...t, messages: [{ id: 'm1', role: 'user', content: '新问题' } as never] } : t
+      )),
+    })
+    useChatStore.getState().saveSession()
+    const ids = useChatStore.getState().sessions.map((s) => s.id)
+    expect(ids).not.toContain('session_local_1')
+    // 被删的那条也不能出现在持久化里
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!) as SessionMeta[]
+    expect(stored.map((s) => s.id)).not.toContain('session_local_1')
+  })
+
+  it('批量删除：一次删多条', () => {
+    useChatStore.setState({
+      sessions: [
+        meta('session_a', '标题A', 5),
+        meta('session_b', '标题B', 3),
+        meta('session_c', '标题C', 2),
+      ],
+    })
+
+    const removed = useChatStore.getState().deleteSessions(['session_a', 'session_b'])
+
+    expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['session_c'])
+    // 返回值要包含所有实际删掉的 id，调用方靠它同步后端
+    expect(removed.sort()).toEqual(['session_a', 'session_b'])
+  })
+
+  it('删除本地会话时，同名同条数的后端副本一并清掉（否则重开会刷回来）', () => {
+    useChatStore.setState({
+      sessions: [
+        meta('session_a', '同一标题', 5),
+        meta('3f2a9c8e7b1d4a5f9c0e8d7a6b5c4d3e', '同一标题', 5),  // 后端 GUID 副本
+        meta('session_c', '其他', 2),
+      ],
+    })
+
+    useChatStore.getState().deleteSessions(['session_a'])
+
+    const ids = useChatStore.getState().sessions.map((s) => s.id)
+    expect(ids).toEqual(['session_c'])
+    expect(ids).not.toContain('3f2a9c8e7b1d4a5f9c0e8d7a6b5c4d3e')
+  })
+
+  it('两条独立的本地会话即使同名同条数，也不能被互相牵连误删', () => {
+    // 截图里就有两条都叫「工具测试。」的独立对话，删一条不能带走另一条
+    useChatStore.setState({
+      sessions: [
+        meta('session_a', '工具测试。', 29),
+        meta('session_b', '工具测试。', 29),
+        meta('session_c', '其他', 2),
+      ],
+    })
+
+    useChatStore.getState().deleteSessions(['session_a'])
+
+    expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['session_b', 'session_c'])
+  })
+
+  it('批量删除不误删标题或条数不同的其他会话', () => {
+    useChatStore.setState({
+      sessions: [
+        meta('session_a', '标题A', 5),
+        meta('session_b', '标题A', 6),   // 条数不同 → 不是同一段对话
+        meta('session_c', '标题B', 5),
+      ],
+    })
+
+    useChatStore.getState().deleteSessions(['session_a'])
+    expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['session_b', 'session_c'])
+  })
+})
