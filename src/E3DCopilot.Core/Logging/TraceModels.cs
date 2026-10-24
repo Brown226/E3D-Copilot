@@ -107,6 +107,45 @@ namespace E3DCopilot.Core.Logging
         /// <summary>本步骤的请求上下文规模（诊断"越跑越慢"用）</summary>
         [JsonProperty("context", NullValueHandling = NullValueHandling.Ignore)]
         public TraceContextSize Context { get; set; }
+
+        /// <summary>流式输出节奏（诊断"卡顿/结巴"用；无流式增量时为 null）</summary>
+        [JsonProperty("stream", NullValueHandling = NullValueHandling.Ignore)]
+        public TraceStreamStats Stream { get; set; }
+    }
+
+    /// <summary>
+    /// 流式输出节奏统计。
+    ///
+    /// 为什么需要它：总耗时和 llmMs 只能说明"这一步花了多久"，
+    /// 无法区分"模型慢慢吐"和"模型吐得很快、但界面一顿一顿"。
+    /// 后者是前端/UI 线程问题，前者是端点问题，两者修法完全不同。
+    /// 这里记录增量之间的实际间隔，用最大间隔和"卡顿次数"直接量化抖动。
+    /// </summary>
+    public class TraceStreamStats
+    {
+        /// <summary>本次流式收到的增量块数</summary>
+        [JsonProperty("chunks")]
+        public int Chunks { get; set; }
+
+        /// <summary>从首个增量到最后一个增量的跨度（毫秒）</summary>
+        [JsonProperty("spanMs")]
+        public long SpanMs { get; set; }
+
+        /// <summary>相邻增量间隔的中位数（毫秒）</summary>
+        [JsonProperty("medianGapMs")]
+        public long MedianGapMs { get; set; }
+
+        /// <summary>相邻增量间隔的最大值（毫秒）—— 界面上"卡住"的最长一次</summary>
+        [JsonProperty("maxGapMs")]
+        public long MaxGapMs { get; set; }
+
+        /// <summary>间隔超过 300ms 的次数（正常流畅输出应接近 0）</summary>
+        [JsonProperty("stalls")]
+        public int Stalls { get; set; }
+
+        /// <summary>平均输出速率（字符/秒），用于区分"模型慢"与"界面卡"</summary>
+        [JsonProperty("charsPerSec")]
+        public double CharsPerSec { get; set; }
     }
 
     /// <summary>

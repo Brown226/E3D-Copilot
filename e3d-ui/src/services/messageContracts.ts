@@ -91,6 +91,11 @@ export const MessageTypes = {
   LlmUsage: 'llm:usage',                  // Token 用量
   LlmRetry: 'llm:retry',                  // 重试事件
   ToolProgress: 'tool:progress',           // 工具执行进度
+
+  // === 执行轨迹（诊断卡顿用；后端 Bridge.Trace.cs 已实现，前端原先未接入） ===
+  TraceLatest: 'trace:latest',             // 最近一轮 trace 内容
+  TraceList: 'trace:list',                 // 列举历史 trace 文件
+  TraceRead: 'trace:read',                 // 按路径读取指定 trace
 } as const;
 
 export type MessageType = typeof MessageTypes[keyof typeof MessageTypes];

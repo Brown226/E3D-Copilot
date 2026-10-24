@@ -796,6 +796,7 @@ namespace E3DCopilot.Core
                         case ChunkType.Reasoning:
                             reasoningText += chunk.Content;
                             _tracer?.MarkFirstToken();
+                            _tracer?.RecordStreamChunk((chunk.Content ?? "").Length);
                             _tracer?.RecordReasoning(chunk.Content);
                             _sink.Emit(CopilotEvent.Reasoning(chunk.Content));
                             break;
@@ -804,6 +805,7 @@ namespace E3DCopilot.Core
                             var safeText = SecretRedactor.Redact(chunk.Content);
                             text += safeText;
                             _tracer?.MarkFirstToken();
+                            _tracer?.RecordStreamChunk((safeText ?? "").Length);
                             _tracer?.RecordText(safeText);
                             _sink.Emit(CopilotEvent.TextEvent(safeText));
                             break;

@@ -2066,3 +2066,274 @@ body.composer-resizing * {
   font-family: var(--mono);
   opacity: 0.85;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   执行诊断面板（TracePanel）
+   目的：不用导出文件，直接在界面里看清上一轮慢在哪一步。
+   ═══════════════════════════════════════════════════════════ */
+
+.trace-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.trace-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 92vw);
+  max-height: 82vh;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+
+.trace-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle, transparent);
+}
+
+.trace-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.trace-panel__time {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-faint);
+}
+
+.trace-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trace-panel__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted, var(--fg-faint));
+  cursor: pointer;
+}
+
+.trace-panel__icon:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, 0.12));
+  color: var(--fg);
+}
+
+.trace-spin {
+  animation: trace-spin 0.9s linear infinite;
+}
+
+@keyframes trace-spin {
+  to { transform: rotate(360deg); }
+}
+
+.trace-panel__body {
+  padding: 12px 14px 16px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.trace-empty {
+  padding: 28px 8px;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+.trace-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.trace-meta__k {
+  margin-right: 6px;
+  color: var(--fg-faint);
+}
+
+.trace-meta__v {
+  font-family: var(--mono);
+  color: var(--fg);
+}
+
+.trace-input {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle, rgba(127, 127, 127, 0.06));
+  color: var(--fg-muted, var(--fg-faint));
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+/* ── 耗时归因 ── */
+.trace-attr {
+  margin: 12px 0 14px;
+}
+
+.trace-attr__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--fg-faint);
+}
+
+.trace-attr__row strong {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--fg);
+}
+
+.trace-attr__bar {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--bg-subtle, rgba(127, 127, 127, 0.14));
+}
+
+.trace-attr__seg--llm { background: var(--accent, #4a9eff); }
+.trace-attr__seg--tool { background: #e2a03f; }
+.trace-attr__seg--appr { background: #d05f5f; }
+
+.trace-attr__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.trace-attr__legend .dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.dot--llm { background: var(--accent, #4a9eff); }
+.dot--tool { background: #e2a03f; }
+.dot--appr { background: #d05f5f; }
+
+/* ── 分步明细 ── */
+.trace-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trace-step {
+  padding: 9px 11px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle, rgba(127, 127, 127, 0.04));
+}
+
+.trace-step__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.trace-step__no {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.trace-step__dur {
+  font-family: var(--mono);
+  color: var(--fg);
+}
+
+.trace-step__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.trace-warn {
+  color: #d05f5f;
+  font-weight: 600;
+}
+
+.trace-step__tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.trace-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-muted, var(--fg-faint));
+}
+
+.trace-tool--fail { color: #d05f5f; }
+
+.trace-tool__name {
+  min-width: 110px;
+  color: var(--fg);
+}
+
+.trace-tool__badge {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(208, 95, 95, 0.16);
+  font-size: 10px;
+}
+
+.trace-path {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-faint);
+  word-break: break-all;
+}

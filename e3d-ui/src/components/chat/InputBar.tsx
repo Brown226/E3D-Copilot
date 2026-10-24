@@ -15,6 +15,7 @@ import { useChatStore, useActiveTab } from '@/store/useChatStore'
 import { ModelSwitcher } from '@/components/chat/ModelSwitcher'
 import { SlashMenu } from '@/components/chat/SlashMenu'
 import { CadImportButton } from '@/components/chat/CadImportButton'
+import { TracePanel } from '@/components/chat/TracePanel'
 import { useComposerResize, composerMaxHeight } from './composer/useComposerResize'
 import { useInputHistory } from './composer/useInputHistory'
 import { useAttachments, shouldFoldPaste, fileToBase64 } from './composer/useAttachments'
@@ -338,6 +339,11 @@ export function InputBar() {
               {/* CAD 导入按钮 */}
               <div className="composer-meta__control relative">
                 <CadImportButton />
+              </div>
+
+              {/* 执行诊断（查看上一轮耗时归因） */}
+              <div className="composer-meta__control">
+                <TracePanel />
               </div>
 
               {/* 自动执行开关 */}

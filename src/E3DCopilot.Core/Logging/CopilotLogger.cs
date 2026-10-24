@@ -65,19 +65,29 @@ namespace E3DCopilot.Core.Logging
 
         private static void Write(LogLevel level, string format, params object[] args)
         {
-            if (level < MinimumLevel) return;
-
-            string line = string.Format("{0:yyyy-MM-dd HH:mm:ss.fff} [{1}] {2}",
-                DateTime.Now, level, string.Format(format, args));
-
-            lock (LockObj)
+            // 日志系统自身绝不能成为异常源：
+            // 原先只有 Error() 有 try/catch，Info/Warn/Debug 在磁盘满、文件被占用、
+            // 路径无权限时会直接抛到业务代码里，把一次正常的工具调用变成崩溃。
+            try
             {
-                string file = Path.Combine(LogDir,
-                    "e3dcopilot." + DateTime.Now.ToString("yyyy-MM-dd") + ".log");
-                File.AppendAllText(file, line + Environment.NewLine);
-            }
+                if (level < MinimumLevel) return;
 
-            System.Diagnostics.Debug.WriteLine(line);
+                string line = string.Format("{0:yyyy-MM-dd HH:mm:ss.fff} [{1}] {2}",
+                    DateTime.Now, level, string.Format(format, args));
+
+                lock (LockObj)
+                {
+                    string file = Path.Combine(LogDir,
+                        "e3dcopilot." + DateTime.Now.ToString("yyyy-MM-dd") + ".log");
+                    File.AppendAllText(file, line + Environment.NewLine);
+                }
+
+                System.Diagnostics.Debug.WriteLine(line);
+            }
+            catch
+            {
+                // 写日志失败一律忽略，不影响主流程
+            }
         }
     }
 }

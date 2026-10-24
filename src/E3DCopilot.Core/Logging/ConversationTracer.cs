@@ -39,6 +39,19 @@ namespace E3DCopilot.Core.Logging
         private const int MaxToolResultChars = 2000;
         private const int MaxArgumentsChars = 2000;
 
+        // ── 流式节奏统计（当前步骤累计） ──
+        /// <summary>相邻增量间隔超过此值即计为一次"卡顿"</summary>
+        private const long StallThresholdMs = 300;
+        /// <summary>单次间隔统计上限，防止挂起/断流把统计拉爆</summary>
+        private const long MaxStreamGapForStats = 60000;
+
+        private int _chunkCount;
+        private int _streamChars;
+        private long _firstChunkAt;
+        private long _lastChunkAt;
+        private int _stallCount;
+        private readonly List<long> _chunkGaps = new List<long>();
+
         /// <summary>
         /// 创建轨迹记录器
         /// </summary>
@@ -206,6 +219,7 @@ namespace E3DCopilot.Core.Logging
             {
                 _llmWatch = Stopwatch.StartNew();
                 if (_currentStep.TtftMs < 0) _currentStep.TtftMs = -1;
+                ResetStreamStatsNoLock();   // 每次 LLM 调用都重新统计流式节奏
             }
         }
 
@@ -222,6 +236,7 @@ namespace E3DCopilot.Core.Logging
                 {
                     _llmWatch.Stop();
                     _currentStep.LlmMs += _llmWatch.ElapsedMilliseconds;
+                    FlushStreamStatsNoLock();   // 必须在清空 _llmWatch 之前结算流式节奏
                     _llmWatch = null;
                 }
             }
@@ -240,6 +255,90 @@ namespace E3DCopilot.Core.Logging
                 if (_currentStep.TtftMs >= 0) return;
                 _currentStep.TtftMs = _llmWatch != null ? _llmWatch.ElapsedMilliseconds : 0;
             }
+        }
+
+        /// <summary>
+        /// 记录一个流式增量，用于统计输出节奏（诊断"卡顿/结巴"）。
+        /// 与 MarkFirstToken 分开：那个只记首帧，这里要逐块统计间隔分布。
+        /// </summary>
+        /// <param name="chars">本块字符数（用于算输出速率）</param>
+        public void RecordStreamChunk(int chars)
+        {
+            if (!_enabled || _currentStep == null) return;
+
+            lock (_lock)
+            {
+                var clock = _llmWatch;
+                long now = clock != null ? clock.ElapsedMilliseconds : 0;
+
+                if (_chunkCount == 0)
+                {
+                    _firstChunkAt = now;
+                }
+                else
+                {
+                    long gap = now - _lastChunkAt;
+                    if (gap < 0) gap = 0;
+                    if (gap > MaxStreamGapForStats) gap = MaxStreamGapForStats;  // 防异常值撑爆统计
+                    _chunkGaps.Add(gap);
+                    if (gap >= StallThresholdMs) _stallCount++;
+                }
+
+                _chunkCount++;
+                _lastChunkAt = now;
+                _streamChars += chars;
+            }
+        }
+
+        /// <summary>把累计的流式统计写进当前步骤（在 EndStep 时自动调用）</summary>
+        private void FlushStreamStatsNoLock()
+        {
+            if (_currentStep == null || _chunkCount == 0) return;
+
+            long span = _lastChunkAt - _firstChunkAt;
+            if (span < 0) span = 0;
+
+            long median = 0;
+            long maxGap = 0;
+            if (_chunkGaps.Count > 0)
+            {
+                var sorted = new List<long>(_chunkGaps);
+                sorted.Sort();
+                median = sorted[sorted.Count / 2];
+                maxGap = sorted[sorted.Count - 1];
+            }
+
+            // 速率：span 为 0 表示所有增量落在同一毫秒刻度内（高频输出或计时精度不足）。
+            // 此时不能用 span 做分母，否则会把"极快"误算成 0 字符/秒，
+            // 让诊断结论把健康的输出判成"模型很慢"。改用块数占比估算下限。
+            double cps;
+            if (span > 0)
+                cps = _streamChars * 1000.0 / span;
+            else if (_chunkCount > 1)
+                cps = _streamChars * 1000.0;   // 至少 1ms 内完成的量，取保守下限
+            else
+                cps = 0;
+
+            _currentStep.Stream = new TraceStreamStats
+            {
+                Chunks = _chunkCount,
+                SpanMs = span,
+                MedianGapMs = median,
+                MaxGapMs = maxGap,
+                Stalls = _stallCount,
+                CharsPerSec = Math.Round(cps, 1)
+            };
+        }
+
+        /// <summary>清空流式统计（每步开始时调用）</summary>
+        private void ResetStreamStatsNoLock()
+        {
+            _chunkCount = 0;
+            _streamChars = 0;
+            _firstChunkAt = 0;
+            _lastChunkAt = 0;
+            _stallCount = 0;
+            _chunkGaps.Clear();
         }
 
         /// <summary>

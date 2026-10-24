@@ -184,10 +184,20 @@ LLM 耗时、首 token 延迟(TTFT)、审批等待时长、上下文规模(token
                     ? $" | 上下文 {ctx["messages"]}条消息 / {ctx["tools"]}工具 / 工具schema {ctx["toolSchemaChars"]}字符 / 消息 {ctx["messageChars"]}字符"
                     : "";
 
+                var st = s["stream"];
+                string streamInfo = "";
+                if (st != null && ((int?)st["chunks"] ?? 0) > 0)
+                {
+                    streamInfo = $" | 流式 {st["chunks"]}块 中位间隔 {st["medianGapMs"]}ms"
+                        + $" 最长 {st["maxGapMs"]}ms 卡顿 {st["stalls"]}次"
+                        + $" 速率 {st["charsPerSec"]}字符/秒";
+                }
+
                 perStep.Add($"  步骤 {s["step"]}: 总 {dur}ms = LLM {derivedLlm}ms"
                     + (sAppr > 0 ? $" + 审批 {sAppr}ms" : "")
                     + $" + 工具 {sTool}ms | {tools.Count} 个工具"
                     + (ttft >= 0 ? $" | 首token {ttft}ms" : "")
+                    + streamInfo
                     + ctxInfo);
             }
 
@@ -252,6 +262,67 @@ LLM 耗时、首 token 延迟(TTFT)、审批等待时长、上下文规模(token
                 }
                 if (worstMs >= 10000)
                     findings.Add($"单次工具 {worstName} 耗时 {worstMs / 1000.0:F1}s —— 存在无边界遍历或缺少超时，检查该工具的搜索范围");
+            }
+
+            // ── 流式节奏：区分「模型慢」和「界面卡」 ──
+            // 总耗时高 + 输出速率也高 + 但卡顿多 => 模型不慢，是转发/渲染被阻塞
+            {
+                var streamSteps = new List<JToken>();
+                foreach (var s in steps)
+                {
+                    var st = s["stream"];
+                    if (st != null && ((int?)st["chunks"] ?? 0) > 0) streamSteps.Add(st);
+                }
+
+                if (streamSteps.Count > 0)
+                {
+                    int totalStalls = 0;
+                    long worstGap = 0;
+                    double totalCps = 0;
+                    int cpsCount = 0;
+
+                    foreach (var st in streamSteps)
+                    {
+                        totalStalls += (int?)st["stalls"] ?? 0;
+                        long g = (long?)st["maxGapMs"] ?? 0;
+                        if (g > worstGap) worstGap = g;
+                        double cps = (double?)st["charsPerSec"] ?? 0;
+                        if (cps > 0) { totalCps += cps; cpsCount++; }
+                    }
+
+                    double avgCps = cpsCount > 0 ? totalCps / cpsCount : 0;
+
+                    if (worstGap >= 2000)
+                        findings.Add($"流式输出最长中断 {worstGap / 1000.0:F1}s —— 输出中途卡住，不是模型产不出，而是转发/渲染被阻塞");
+                    else if (totalStalls >= 5)
+                        findings.Add($"流式输出卡顿 {totalStalls} 次（间隔>300ms），最长 {worstGap}ms —— 界面存在逐块阻塞，检查事件封送与渲染路径");
+
+                    if (avgCps >= 20 && totalStalls >= 5)
+                        findings.Add($"平均输出速率 {avgCps:F0} 字符/秒并不慢，但伴随 {totalStalls} 次卡顿 —— 端点是健康的，问题在 UI 线程封送");
+                    else if (avgCps > 0 && avgCps < 5 && totalStalls < 5)
+                        findings.Add($"平均输出速率仅 {avgCps:F1} 字符/秒且无明显卡顿 —— 瓶颈确实是模型端点生成速度");
+
+                    // 假流式检测：所有增量集中在极短时间内到达，而前面有很长的静默期。
+                    // 这是"点了发送后界面长时间没反应、然后整段文字瞬间出现"的典型特征。
+                    // 此时优化前端或 UI 封送都无济于事——首个字什么时候出现完全由端点决定。
+                    var firstStream = streamSteps[0];
+                    long spanMs0 = (long?)firstStream["spanMs"] ?? 0;
+                    int chunks0 = (int?)firstStream["chunks"] ?? 0;
+                    long firstTtft = 0;
+                    foreach (var s in steps)
+                    {
+                        long tt = (long?)s["ttftMs"] ?? -1;
+                        if (tt > 0) { firstTtft = tt; break; }
+                    }
+
+                    if (chunks0 >= 50 && spanMs0 <= 100 && firstTtft >= 3000)
+                    {
+                        findings.Add(
+                            $"假流式：{chunks0} 个增量全部在 {spanMs0}ms 内到达，但首块延迟 {firstTtft}ms —— " +
+                            "服务端先整体生成再一次性推流。界面会先静默数秒、然后整段文字瞬间出现；" +
+                            "此现象与前端/UI 封送无关，只能换真正逐字输出的端点");
+                    }
+                }
             }
 
             var outcome = (string)root["outcome"];
