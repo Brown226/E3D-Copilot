@@ -46,6 +46,26 @@ function runTool(name: string, args: string, result: string, meta?: unknown): Me
   return msg
 }
 
+/**
+ * 运行态快照：卡片默认展开的唯一条件是「工具还在运行」。
+ * 任务完成后卡片会收起（与思考块行为一致），所以断言可见性
+ * 必须用未 finalize 的消息来测。
+ */
+function runToolRunning(name: string, args: string): Message {
+  const store = useChatStore.getState()
+  store.appendMessage(
+    { role: 'tool_call', content: `正在调用 ${name}...`, toolId: 'id1', toolName: name, toolArgs: args },
+    TAB,
+  )
+  // 不调用 handleToolResult → finalized 保持 undefined → isRunning = true
+  return useChatStore.getState().tabs.find((t) => t.id === TAB)!.messages[0]
+}
+
+/** 把运行态消息补上结果，但仍标记为运行中（用于验证卡片内容渲染） */
+function withMeta(msg: Message, meta: unknown): Message {
+  return { ...msg, toolMeta: meta as never, finalized: false }
+}
+
 describe('演示卡片集成', () => {
   beforeEach(reset)
 
@@ -62,9 +82,15 @@ describe('演示卡片集成', () => {
     expect(msg.role).toBe('tool_result')
     expect(msg.toolMeta).toEqual(meta)
 
-    // 卡片应默认展开（演示主角不能藏在折叠里）
-    const { getByText } = render(<ToolCard msg={msg} />)
+    // 运行中：卡片展开可见
+    const running = withMeta(msg, meta)
+    const { getByText, unmount } = render(<ToolCard msg={running} />)
     expect(getByText('🏗 设计全流程')).toBeTruthy()
+    unmount()
+
+    // 已完成：收起（与思考块一致），卡片内容不再直接可见
+    const { queryByText } = render(<ToolCard msg={msg} />)
+    expect(queryByText('🏗 设计全流程')).toBeNull()
   })
 
   it('dwg_diff 结果经 store 后渲染差异卡片', () => {
@@ -82,7 +108,7 @@ describe('演示卡片集成', () => {
     }
     const msg = runTool('dwg_diff', '{"file_a":"a.dwg","file_b":"b.dwg"}', '差异报告', meta)
 
-    const { getByText } = render(<ToolCard msg={msg} />)
+    const { getByText } = render(<ToolCard msg={withMeta(msg, meta)} />)
     expect(getByText('🔀 A/B 版本差异')).toBeTruthy()
   })
 
@@ -96,7 +122,7 @@ describe('演示卡片集成', () => {
     })
     const msg = runTool(name, '{"kind":"all"}', payload)
 
-    const { getByText } = render(<ToolCard msg={msg} />)
+    const { getByText } = render(<ToolCard msg={withMeta(msg, undefined)} />)
     expect(getByText('平台记录')).toBeTruthy()
     expect(getByText('图纸台账')).toBeTruthy()
   })
@@ -105,7 +131,7 @@ describe('演示卡片集成', () => {
     const name = 'mcp__e3d-data-platform__record_drawing'
     const msg = runTool(name, '{"drawingNo":"JG-2026-001"}', JSON.stringify({ ok: true, id: 'DWG-0001' }))
 
-    const { getByText } = render(<ToolCard msg={msg} />)
+    const { getByText } = render(<ToolCard msg={withMeta(msg, undefined)} />)
     expect(getByText('图纸台账已登记')).toBeTruthy()
     expect(getByText('✓ 平台已记录')).toBeTruthy()
   })
@@ -116,7 +142,11 @@ describe('演示卡片集成', () => {
       '{}',
       JSON.stringify({ ok: false, error: '磁盘写入失败' }),
     )
-    const { getByText } = render(<ToolCard msg={msg} />)
+    // 平台返回 ok:false 属于需要用户看见的失败：保持运行态展开断言内容，
+    // 另用 toolError 验证「出错必然展开」这条策略。
+    const { getByText } = render(
+      <ToolCard msg={{ ...withMeta(msg, undefined), toolError: '磁盘写入失败' }} />,
+    )
     expect(getByText('✗ 写入失败')).toBeTruthy()
   })
 

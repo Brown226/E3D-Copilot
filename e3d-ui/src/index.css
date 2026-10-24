@@ -1062,14 +1062,6 @@ body {
   white-space: nowrap;
 }
 
-/* ── Turn Collapse (compact fold) ── */
-.turn-collapse {
-  margin: 6px auto;
-}
-.turn-collapse__body {
-  overflow: hidden;
-}
-
 /* ── Code block ── */
 .code-viewer {
   position: relative;

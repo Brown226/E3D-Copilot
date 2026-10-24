@@ -140,17 +140,14 @@ export const ToolCard = memo(function ToolCard({ msg, subcalls = [] }: ToolCardP
   const isError = !!msg.toolError
   const hasSubcalls = subcalls.length > 0
 
-  // 智能默认：修改类工具+出错+运行中 自动展开（对齐 E小智 真实工具名）
-  const AUTO_EXPAND_TOOLS = new Set([
-    'modify', 'design', 'piping', 'batch', 'structure_drawing',
-    'generate_iso_drawing', 'write_file', 'cad_import', 'autocad', 'undo_redo',
-    // 演示主角：流程编排与 AB 差异的结果卡片必须一眼可见，不能藏在折叠里
-    'design_workflow', 'dwg_diff',
-  ])
-  const name = msg.toolName || ''
-  // MCP 平台工具（query_history / record_*）同样默认展开
-  const shouldAutoExpand = isError || isRunning || AUTO_EXPAND_TOOLS.has(name) ||
-    name.startsWith('mcp__')
+  // 展开策略（与 ReasoningBlock 保持一致）：
+  //   运行中 → 展开（用户要看当前进度）
+  //   出错   → 展开（错误必须一眼看见，不能被折叠藏起来）
+  //   已完成 → 折叠（任务结束后消息流要清爽）
+  //
+  // 此前用 AUTO_EXPAND_TOOLS 白名单让 design_workflow / dwg_diff / mcp__* 永久展开，
+  // 结果是任务完成后这些卡片依然铺满整个消息流，且与思考块的折叠行为不一致。
+  const shouldAutoExpand = isError || isRunning
   const open = userOpen ?? shouldAutoExpand
   const toggleOpen = () => setUserOpen((prev) => prev === null ? !shouldAutoExpand : !prev)
 

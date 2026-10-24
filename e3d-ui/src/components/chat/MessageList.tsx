@@ -32,7 +32,6 @@ const WARM_PAGE_SIZE = 5
 type DisplayItem =
   | { kind: 'message'; msg: Message }
   | { kind: 'group'; groupKind: ToolGroupKind; messages: Message[] }
-  | { kind: 'folded'; messages: Message[]; toolCount: number; durationMs: number }
 
 /**
  * 计算给定消息序列中"最终 assistant 消息"的 id 集合。
@@ -93,141 +92,49 @@ function buildTurnGroups(messages: Message[]): TurnGroup[] {
   return groups
 }
 
-// ── 将消息转换为 DisplayItem，含 Compact 折叠 ──
+// ── 将消息转换为 DisplayItem ──
+// 每个 tool_call / tool_result 保持独立一行。
+// 折叠由 ToolCard 自己负责（运行中展开、完成后收起），与思考块交互一致。
+// 这里不再把连续工具合并成「已处理 · N 步」——那样用户只能看到一个汇总数字，
+// 看不到到底执行了哪几个工具。
 function buildDisplayItems(
   messages: Message[],
   _subcallMap: Map<string, Message[]>,
   isStreaming: boolean,
 ): DisplayItem[] {
-  // 先用 groupConsecutiveTools 分组
   const grouped = groupConsecutiveTools(messages)
-
-  // 预扫描：找到最后一个"锚点"消息（user/thinking/assistant有内容/error）的索引
-  // 流式中，此索引之后的工具保持全量渲染（用户需要看到当前进度）
-  let lastAnchorIdx = -1
-  for (let i = grouped.length - 1; i >= 0; i--) {
-    const item = grouped[i]
-    if (item.kind === 'message') {
-      const msg = item.msg
-      if (msg.role === 'user' || msg.role === 'thinking' ||
-          (msg.role === 'assistant' && msg.content.trim()) || msg.role === 'error') {
-        lastAnchorIdx = i
-        break
-      }
-    }
-  }
-
-  // 判断工具项是否已完成且无错误（可折叠）
-  const isCompletedClean = (item: typeof grouped[number]): boolean => {
-    if (item.kind === 'message') {
-      const msg = item.msg
-      if (msg.role === 'tool_result') return !msg.toolError
-      if (msg.role === 'tool_call') return msg.finalized === true
-      return false
-    }
-    // ToolGroup：所有 tool_call 已 finalized 且所有 tool_result 无错误
-    return item.messages.every(m =>
-      (m.role === 'tool_call' && m.finalized === true) ||
-      (m.role === 'tool_result' && !m.toolError)
-    )
-  }
-
-  // 合并连续的已完成工具组/消息为 folded
   const result: DisplayItem[] = []
-  let foldedMessages: Message[] = []
-  let foldedToolCount = 0
-  let foldedDuration = 0
 
-  const flushFolded = () => {
-    if (foldedToolCount > 0) {
-      result.push({
-        kind: 'folded',
-        messages: foldedMessages,
-        toolCount: foldedToolCount,
-        durationMs: foldedDuration,
-      })
-    }
-    foldedMessages = []
-    foldedToolCount = 0
-    foldedDuration = 0
-  }
-
-  for (let idx = 0; idx < grouped.length; idx++) {
-    const item = grouped[idx]
-
+  for (const item of grouped) {
     if (item.kind === 'message') {
       const msg = item.msg
 
-      // user 消息：始终全量渲染
+      // user：始终全量渲染
       if (msg.role === 'user') {
-        flushFolded()
         result.push(item)
         continue
       }
 
-      // thinking 消息：始终独立渲染 ReasoningBlock（Reasonix 风格）
+      // thinking：独立渲染 ReasoningBlock，流式中展开、完成后折叠
       if (msg.role === 'thinking') {
-        flushFolded()
-        // 流式中保持展开，完成后折叠
-        const displayMsg = isStreaming
-          ? msg
-          : { ...msg, finalized: true }
+        const displayMsg = isStreaming ? msg : { ...msg, finalized: true }
         result.push({ kind: 'message', msg: displayMsg })
         continue
       }
 
-      // assistant 消息：有实质内容则全量渲染，空内容跳过
+      // assistant：有实质内容才渲染，空内容跳过
       if (msg.role === 'assistant') {
-        flushFolded()
-        if (msg.content.trim()) {
-          result.push(item)
-        }
+        if (msg.content.trim()) result.push(item)
         continue
       }
 
-      // error 消息：全量渲染
-      if (msg.role === 'error') {
-        flushFolded()
-        result.push(item)
-        continue
-      }
-
-      // tool_call / tool_result
-      // 流式中且位于最后一个锚点消息之后：全量渲染（保持当前进度可见）
-      if (isStreaming && idx > lastAnchorIdx) {
-        flushFolded()
-        result.push(item)
-      } else if (!isCompletedClean(item)) {
-        // 未完成或有错误：全量渲染
-        flushFolded()
-        result.push(item)
-      } else {
-        // 可折叠：加入 folded 桶
-        foldedMessages.push(msg)
-        if (msg.role === 'tool_call') foldedToolCount++
-        if (msg.role === 'tool_result' && msg.durationMs) foldedDuration += msg.durationMs
-      }
+      // error / tool_call / tool_result：全量渲染（工具自身的折叠由 ToolCard 处理）
+      result.push(item)
     } else {
-      // ToolGroup
-      // 流式中且位于最后一个锚点消息之后：全量渲染
-      if (isStreaming && idx > lastAnchorIdx) {
-        flushFolded()
-        result.push(item)
-      } else if (!isCompletedClean(item)) {
-        // 组内有未完成或出错的工具：全量渲染
-        flushFolded()
-        result.push(item)
-      } else {
-        // 可折叠：整组加入 folded 桶
-        foldedMessages.push(...item.messages)
-        foldedToolCount += item.messages.filter(m => m.role === 'tool_call').length
-        for (const m of item.messages) {
-          if (m.role === 'tool_result' && m.durationMs) foldedDuration += m.durationMs
-        }
-      }
+      // ToolGroup：保持独立渲染
+      result.push(item)
     }
   }
-  flushFolded()
 
   return result
 }
@@ -396,9 +303,6 @@ export function MessageList() {
 
   // 渲染单个 DisplayItem
   const renderItem = (item: DisplayItem, key: string, finalIds: Set<string> = finalAssistantIds) => {
-    if (item.kind === 'folded') {
-      return <FoldedStep key={key} messages={item.messages} toolCount={item.toolCount} durationMs={item.durationMs} subcalls={subcallMap} />
-    }
     if (item.kind === 'group') {
       return <ToolGroup key={key} kind={item.groupKind} messages={item.messages} subcalls={subcallMap} />
     }
@@ -506,69 +410,6 @@ export function MessageList() {
           <ChevronDown className="w-5 h-5" />
         </button>
       )}
-    </div>
-  )
-}
-
-// ── 折叠步骤组件 ──
-function FoldedStep({
-  messages,
-  toolCount,
-  durationMs,
-  subcalls,
-}: {
-  messages: Message[]
-  toolCount: number
-  durationMs: number
-  subcalls: Map<string, Message[]>
-}) {
-  const [open, setOpen] = useState(false)
-  const seconds = Math.round(durationMs / 1000)
-  const label = seconds > 0 ? `已处理 · ${toolCount} 步 · ${seconds}s` : `已处理 · ${toolCount} 步`
-
-  if (open) {
-    const displayItems = buildDisplayItems(messages, subcalls, false)
-    const finalIds = computeFinalAssistantIds(messages)
-    return (
-      <div className="turn-collapse turn-collapse--open">
-        <button
-          onClick={() => setOpen(false)}
-          className="reasoning__head"
-          aria-expanded={true}
-        >
-          <ChevronRight size={12} className="reasoning__chevron reasoning__chevron--open" />
-          <span>{label}</span>
-        </button>
-        <div className="turn-collapse__body">
-          {displayItems.map((item, i) => {
-            if (item.kind === 'folded') {
-              return (
-                <FoldedStep key={`fs-${i}`} messages={item.messages} toolCount={item.toolCount} durationMs={item.durationMs} subcalls={subcalls} />
-              )
-            }
-            if (item.kind === 'group') {
-              return <ToolGroup key={`fg-${i}`} kind={item.groupKind} messages={item.messages} subcalls={subcalls} />
-            }
-            const msg = item.msg
-            const toolId = msg.toolId || msg.id
-            const isFinal = msg.role === 'assistant' ? finalIds.has(msg.id) : undefined
-            return <MessageRow key={`fm-${i}`} msg={msg} subcalls={subcalls.get(toolId)} isFinal={isFinal} isStreaming={false} />
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="turn-collapse">
-      <button
-        onClick={() => setOpen(true)}
-        className="reasoning__head"
-        aria-expanded={false}
-      >
-        <ChevronRight size={12} className="reasoning__chevron" />
-        <span>{label}</span>
-      </button>
     </div>
   )
 }
