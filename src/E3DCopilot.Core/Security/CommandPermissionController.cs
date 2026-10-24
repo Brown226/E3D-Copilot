@@ -19,6 +19,9 @@ namespace E3DCopilot.Core.Security
     /// </remarks>
     public class CommandPermissionController
     {
+        /// <summary>批量判定阈值：单个数组参数超过该元素数即视为批量操作，需确认</summary>
+        private readonly int _batchThreshold;
+
         private readonly List<PermissionRule> _rules;
         private readonly HashSet<string> _writeTools;
 
@@ -43,8 +46,13 @@ namespace E3DCopilot.Core.Security
             public bool IsRegex { get; set; }             // 是否为正则
         }
 
-        public CommandPermissionController()
+        /// <param name="batchThreshold">
+        /// 批量判定阈值，来自 config.Safety.ConfirmBatchThreshold。
+        /// 此前该配置项从未被读取，代码里写死 &gt;5，而配置默认值是 10 —— 两处矛盾。
+        /// </param>
+        public CommandPermissionController(int batchThreshold = 5)
         {
+            _batchThreshold = batchThreshold > 0 ? batchThreshold : 5;
             _rules = new List<PermissionRule>();
             _writeTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -107,7 +115,7 @@ namespace E3DCopilot.Core.Security
                 // 检查是否有 array 参数
                 foreach (var prop in json.Properties())
                 {
-                    if (prop.Value is JArray array && array.Count > 5)
+                    if (prop.Value is JArray array && array.Count > _batchThreshold)
                         return true;
 
                     if (prop.Value is JObject obj)
@@ -115,7 +123,7 @@ namespace E3DCopilot.Core.Security
                         // 嵌套检查
                         foreach (var nested in obj.Properties())
                         {
-                            if (nested.Value is JArray nestedArray && nestedArray.Count > 5)
+                            if (nested.Value is JArray nestedArray && nestedArray.Count > _batchThreshold)
                                 return true;
                         }
                     }
@@ -147,9 +155,10 @@ namespace E3DCopilot.Core.Security
         /// <summary>
         /// 创建默认权限配置
         /// </summary>
-        public static CommandPermissionController CreateDefault()
+        /// <param name="batchThreshold">批量判定阈值，传 0 使用默认 5；生产入口应传入配置值</param>
+        public static CommandPermissionController CreateDefault(int batchThreshold = 5)
         {
-            var ctrl = new CommandPermissionController();
+            var ctrl = new CommandPermissionController(batchThreshold);
 
             // 只读工具 —— 自动批准（Allow）
             ctrl.AddRule("query",          AccessMode.Allow, "查询数据库");

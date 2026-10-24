@@ -136,16 +136,18 @@ namespace E3DCopilot.Core.Config
             public string AboutUrl { get; set; } = "";
         }
 
+        /// <summary>
+        /// 安全配置。
+        /// 只保留真正驱动行为的项：工具审批由输入栏四档权限（ToolApprovalMode）决定，
+        /// 不再从配置文件里读"是否自动批准"。
+        /// </summary>
         public class SafetyConfig
         {
-            public bool AutoApproveReadonly { get; set; } = true;
+            /// <summary>
+            /// 批量判定阈值：单个数组参数超过该元素数即视为批量操作，强制走审批。
+            /// 由 CommandPermissionController 消费。
+            /// </summary>
             public int ConfirmBatchThreshold { get; set; } = 10;
-            public bool ConfirmDelete { get; set; } = true;
-            public bool LogAllActions { get; set; } = true;
-            /// <summary>自动批准工具调用</summary>
-            public bool AutoApproveTools { get; set; } = false;
-            /// <summary>自动批准文件编辑</summary>
-            public bool AutoApproveEdits { get; set; } = false;
         }
 
         public class MemoryConfig

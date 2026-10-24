@@ -374,7 +374,9 @@ namespace E3DCopilot.Core
             });
 
             var executor = ToolExecutor.CreateDefault(dispatcher, realSink, router);
-            var permission = CommandPermissionController.CreateDefault();
+            // 批量阈值来自配置（Safety.ConfirmBatchThreshold），不再走写死 >5 的默认值
+            var permission = CommandPermissionController.CreateDefault(
+                config?.Safety != null ? config.Safety.ConfirmBatchThreshold : 5);
 
             controller = new CopilotController(provider, executor, permission, config, realSink);
 

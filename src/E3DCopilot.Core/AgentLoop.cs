@@ -81,9 +81,12 @@ namespace E3DCopilot.Core
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
             _sink = sink;
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
-            _permission = permission ?? CommandPermissionController.CreateDefault();
-            _toolPolicy = toolPolicy ?? BuildToolPolicy(controller?.ToolApprovalMode ?? "auto");
             _config = config ?? CopilotConfig.Load();
+            // 批量阈值取自配置，此前代码里写死 >5 而配置默认是 10，两处矛盾。
+            // 显式注入 permission 时以调用方为准（测试常用）。
+            _permission = permission ?? new CommandPermissionController(
+                _config.Safety != null ? _config.Safety.ConfirmBatchThreshold : 5);
+            _toolPolicy = toolPolicy ?? BuildToolPolicy(controller?.ToolApprovalMode ?? "auto");
             _controller = controller;
             _skillManager = skillManager;
             _tracer = tracer;
