@@ -227,6 +227,8 @@ export interface ConfigSyncPayload {
   baseUrl: string;
   apiKey: string;
   mode: string;
+  /** 工具审批模式（plan / ask / auto / yolo），以后端为准 */
+  toolApprovalMode?: string;
   /** 当前选中的 Provider 名称 */
   currentProvider: string;
   /** 当前选中的 Model 名称 */

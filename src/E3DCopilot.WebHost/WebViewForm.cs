@@ -173,6 +173,9 @@ namespace E3DCopilot.WebHost
                                 baseUrl = prov?.BaseUrl ?? "",
                                 apiKey = string.IsNullOrEmpty(prov?.ApiKey) ? "" : "sk-****",
                                 mode = _controller.IsPlanMode ? "plan" : "act",
+                                // 审批模式以后端为准：前端初始值是写死的 'ask'，若不同步，
+                                // 界面显示与实际执行会错位（显示「变更前确认」但实际在跑 auto）。
+                                toolApprovalMode = _controller.ToolApprovalMode,
                                 currentProvider = prov?.Name ?? "",
                                 currentModel = model ?? "",
                                 providers = providersList.Providers,

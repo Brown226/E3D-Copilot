@@ -76,6 +76,32 @@ namespace E3DCopilot.Tests
         }
 
         [Test]
+        public void Ask_ExecutePml_Asks()
+        {
+            // 回归点：execute_pml 是唯一能直接改 E3D 数据库的工具，
+            // 「变更前确认」档必须真的询问，不能因为是"脚本"就放行。
+            // 历史缺陷：ask 档曾把它设为 Auto，等于最高危的写操作完全不拦截。
+            var policy = AgentLoop.BuildToolPolicy("ask");
+            Assert.AreEqual(ApprovalMode.Ask, policy.GetMode("execute_pml"));
+        }
+
+        [Test]
+        public void Auto_ExecutePml_Asks()
+        {
+            // 自主模式的语义是「只读自动、写操作先问」，execute_pml 属于写操作
+            var policy = AgentLoop.BuildToolPolicy("auto");
+            Assert.AreEqual(ApprovalMode.Ask, policy.GetMode("execute_pml"));
+        }
+
+        [Test]
+        public void Yolo_ExecutePml_IsAuto()
+        {
+            // 完全访问档下不再打断，这是用户显式选择
+            var policy = AgentLoop.BuildToolPolicy("yolo");
+            Assert.AreEqual(ApprovalMode.Auto, policy.GetMode("execute_pml"));
+        }
+
+        [Test]
         public void Ask_ReadTools_AlsoAsk()
         {
             var policy = AgentLoop.BuildToolPolicy("ask");

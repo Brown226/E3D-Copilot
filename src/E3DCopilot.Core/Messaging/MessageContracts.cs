@@ -320,6 +320,10 @@ namespace E3DCopilot.Core.Messaging
         [JsonProperty("mode")]
         public string Mode { get; set; } = "";
 
+        /// <summary>工具审批模式（plan / ask / auto / yolo），以后端为准。</summary>
+        [JsonProperty("toolApprovalMode")]
+        public string ToolApprovalMode { get; set; } = "";
+
         // === 多 provider 模式（参考 Reasonix） ===
         [JsonProperty("currentProvider")]
         public string CurrentProvider { get; set; } = "";

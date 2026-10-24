@@ -173,7 +173,10 @@ namespace E3DCopilot.Core
                 policy.Set("write_file", ApprovalMode.Ask);
                 policy.Set("run_skill", ApprovalMode.Ask);
                 policy.Set("modify", ApprovalMode.Ask);
-                policy.Set("execute_pml", ApprovalMode.Auto);
+                // execute_pml 是唯一能直接改 E3D 数据库的工具（建墙/删元素/改属性），
+                // 属于写操作。PmlValidator 只拦 PURGE / DELETE DB 两条正则，
+                // 其余写操作都会放行，所以 ask 与 auto 两档都必须真的询问用户。
+                policy.Set("execute_pml", ApprovalMode.Ask);
                 policy.Set("design", ApprovalMode.Ask);
                 policy.Set("piping", ApprovalMode.Ask);
                 policy.Set("undo_redo", ApprovalMode.Auto);
@@ -217,7 +220,10 @@ namespace E3DCopilot.Core
                 policy.Set("hierarchy", ApprovalMode.Auto);
                 policy.Set("write_file", ApprovalMode.Ask);
                 policy.Set("modify", ApprovalMode.Ask);
-                policy.Set("execute_pml", ApprovalMode.Auto);
+                // execute_pml 是唯一能直接改 E3D 数据库的工具（建墙/删元素/改属性），
+                // 属于写操作。PmlValidator 只拦 PURGE / DELETE DB 两条正则，
+                // 其余写操作都会放行，所以 ask 与 auto 两档都必须真的询问用户。
+                policy.Set("execute_pml", ApprovalMode.Ask);
                 policy.Set("design", ApprovalMode.Ask);
                 policy.Set("piping", ApprovalMode.Ask);
                 policy.Set("batch", ApprovalMode.Auto);

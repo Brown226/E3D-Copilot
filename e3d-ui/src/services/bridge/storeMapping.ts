@@ -18,6 +18,9 @@ import type {
 import { MessageTypes } from '../messageContracts';
 import type { Bridge } from './BridgeCore';
 
+/** 审批模式本地持久化键（与 uiSlice 共用） */
+export const STORAGE_KEY_APPROVAL_MODE = 'e3d-approval-mode';
+
 // ============================================
 // 流式 delta 批量合并缓冲（60fps 节流）
 // ============================================
@@ -71,6 +74,16 @@ export function registerStoreMappings(bridgeInstance: Bridge): void {
         // 同步 plan mode
         if (p.mode) {
           s.setPlanMode(p.mode === 'plan');
+        }
+        // 同步审批模式（以后端为准）。
+        // 注意：这里直接 setState 而不是调用 setToolApprovalMode，
+        // 否则会把刚从后端拿到的值又原样发回后端，形成无意义的回环。
+        if (p.toolApprovalMode) {
+          const m = p.toolApprovalMode as ToolApprovalMode;
+          if (m === 'plan' || m === 'ask' || m === 'auto' || m === 'yolo') {
+            useChatStore.setState({ toolApprovalMode: m });
+            localStorage.setItem(STORAGE_KEY_APPROVAL_MODE, m);
+          }
         }
         // 同步 UI 设置到 localStorage
         if (p.ui) {

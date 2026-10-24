@@ -53,7 +53,15 @@ export interface UISlice {
 export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get) => ({
   inputValue: '',
   isPlanMode: false,
-  toolApprovalMode: 'ask' as ToolApprovalMode,
+  // 初始值优先取本地持久化，避免每次重启都回到默认档。
+  // 真正的权威值仍是后端：HostReady 后的 config:sync 会覆盖这里。
+  toolApprovalMode: ((): ToolApprovalMode => {
+    try {
+      const saved = localStorage.getItem('e3d-approval-mode');
+      if (saved === 'plan' || saved === 'ask' || saved === 'auto' || saved === 'yolo') return saved;
+    } catch { /* localStorage 不可用时忽略 */ }
+    return 'ask';
+  })(),
   showSettings: false,
   showHistory: false,
   showCommandPalette: false,
@@ -134,6 +142,7 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
 
   setToolApprovalMode: (mode) => {
     set({ toolApprovalMode: mode })
+    try { localStorage.setItem('e3d-approval-mode', mode) } catch { /* 忽略 */ }
     // 通知后端
     import('@/services/bridgeService').then(({ default: bridge }) => {
       bridge.send(MessageTypes.UserSetApprovalMode, { mode })
