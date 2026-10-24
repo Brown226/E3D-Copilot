@@ -17,7 +17,11 @@ interface AssistantBubbleProps {
 
 /** 内联 reasoning 折叠块 — Reasonix 风格 */
 export const ReasoningBlock = memo(function ReasoningBlock({ msg }: { msg: Message }) {
-  const [open, setOpen] = useState(!msg.finalized) // 流式时默认展开，完成后折叠
+  // null = 未手动操作过，跟随 finalized 自动折叠；true/false = 用户已手动展开/收起
+  // 不能用 useState(!msg.finalized)：那样初值只在挂载时取一次，
+  // 任务完成后 finalized 变 true 也不会收起（本文件最大的历史缺陷）。
+  const [manual, setManual] = useState<boolean | null>(null)
+  const open = manual === null ? !msg.finalized : manual
   const bodyRef = useRef<HTMLDivElement>(null)
 
   // 流式时自动滚动 reasoning 到底
@@ -31,7 +35,7 @@ export const ReasoningBlock = memo(function ReasoningBlock({ msg }: { msg: Messa
     <div className="reasoning">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setManual((v) => !(v === null ? !msg.finalized : v))}
         className="reasoning__head"
         data-running={!msg.finalized ? '' : undefined}
         aria-expanded={open}

@@ -1,72 +1,33 @@
 /**
  * GeneralSection — 通用设置
- * 1. 默认模式（Plan/Act）
- * 2. 自动审批设置
- * 3. 通知设置
+ *
+ * 这里曾经有 5 个开关（默认模式 Plan/Act、自动批准工具调用、自动批准文件编辑、
+ * 桌面通知、提示音），已全部移除，原因都是同一个：**改了不生效**。
+ *
+ *   defaultMode        → 写入 config.Ui.DefaultMode，全项目无任何读取方
+ *   autoApproveTools   → 写入 config.Safety.AutoApproveTools，无任何读取方
+ *   autoApproveEdits   → 写入 config.Safety.AutoApproveEdits，无任何读取方
+ *   notifications      → 写入 config.Ui.Notifications，前端无 Notification 调用
+ *   soundEnabled       → 写入 config.Ui.SoundEnabled，前端无 Audio 调用
+ *
+ * 而且前三个与输入栏的四档权限选择器（计划/变更前确认/自主/完全访问）语义重叠，
+ * 两处都能改会让人不知道该信哪一个。权限只在输入栏那一处维护。
  */
 
-import { useState } from 'react'
 import { useChatStore } from '@/store/useChatStore'
+import type { ToolApprovalMode } from '@/store/types'
 
-interface SettingToggleProps {
-  label: string
-  description?: string
-  checked: boolean
-  onChange: (v: boolean) => void
-  disabled?: boolean
-}
-
-function SettingToggle({ label, description, checked, onChange, disabled }: SettingToggleProps) {
-  return (
-    <div className="flex items-start justify-between py-3">
-      <div className="flex-1 min-w-0 mr-4">
-        <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{label}</p>
-        {description && (
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{description}</p>
-        )}
-      </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-          checked ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
-        }`}
-      >
-        <span
-          className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition duration-200 ease-in-out ${
-            checked ? 'translate-x-5' : 'translate-x-0'
-          }`}
-        />
-      </button>
-    </div>
-  )
+const MODE_LABELS: Record<ToolApprovalMode, string> = {
+  plan: '计划模式',
+  ask: '变更前确认',
+  auto: '自主模式',
+  yolo: '完全访问',
 }
 
 export default function GeneralSection() {
   const currentModel = useChatStore((s) => s.currentModel)
   const bridgeConnected = useChatStore((s) => s.bridgeConnected)
-
-  // 设置状态（从 store 或 bridge 读取）
-  const [defaultMode, setDefaultMode] = useState<'plan' | 'act'>('act')
-  const [autoApproveTools, setAutoApproveTools] = useState(false)
-  const [autoApproveEdits, setAutoApproveEdits] = useState(false)
-  const [notifications, setNotifications] = useState(true)
-  const [soundEnabled, setSoundEnabled] = useState(false)
-
-  const handleSaveSetting = async (key: string, value: string | boolean | number) => {
-    try {
-      const { default: bridge } = await import('@/services/bridgeService')
-      if (bridge.isAvailable()) {
-        await bridge.saveSetting(key, String(value))
-      } else {
-        localStorage.setItem(`e3d-setting-${key}`, JSON.stringify(value))
-      }
-    } catch {
-      localStorage.setItem(`e3d-setting-${key}`, JSON.stringify(value))
-    }
-  }
+  const toolApprovalMode = useChatStore((s) => s.toolApprovalMode)
 
   return (
     <div className="space-y-6">
@@ -85,81 +46,18 @@ export default function GeneralSection() {
         </div>
       </div>
 
-      {/* 默认模式 */}
+      {/* 当前权限（只读展示，切换入口在输入栏） */}
       <div>
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">默认模式</h3>
-        <div className="space-y-1">
-          <div className="flex gap-2">
-            {(['act', 'plan'] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => {
-                  setDefaultMode(mode)
-                  handleSaveSetting('defaultMode', mode)
-                }}
-                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  defaultMode === mode
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                {mode === 'act' ? '⚡ Act 模式' : '📋 Plan 模式'}
-              </button>
-            ))}
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">当前权限</h3>
+        <div className="flex items-center justify-between py-3">
+          <div className="flex-1 min-w-0 mr-4">
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+              {MODE_LABELS[toolApprovalMode]}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              在输入栏的权限按钮里切换（计划模式 / 变更前确认 / 自主模式 / 完全访问）
+            </p>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-            Act 模式：直接执行操作 · Plan 模式：先规划再执行
-          </p>
-        </div>
-      </div>
-
-      {/* 自动审批 */}
-      <div>
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">自动审批</h3>
-        <div className="divide-y divide-slate-200 dark:divide-slate-700">
-          <SettingToggle
-            label="自动批准工具调用"
-            description="跳过工具执行确认，直接允许 AI 使用工具"
-            checked={autoApproveTools}
-            onChange={(v) => {
-              setAutoApproveTools(v)
-              handleSaveSetting('autoApproveTools', v)
-            }}
-          />
-          <SettingToggle
-            label="自动批准文件编辑"
-            description="跳过文件修改确认，允许 AI 直接修改文件"
-            checked={autoApproveEdits}
-            onChange={(v) => {
-              setAutoApproveEdits(v)
-              handleSaveSetting('autoApproveEdits', v)
-            }}
-          />
-        </div>
-      </div>
-
-      {/* 通知 */}
-      <div>
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">通知</h3>
-        <div className="divide-y divide-slate-200 dark:divide-slate-700">
-          <SettingToggle
-            label="桌面通知"
-            description="任务完成或需要确认时显示系统通知"
-            checked={notifications}
-            onChange={(v) => {
-              setNotifications(v)
-              handleSaveSetting('notifications', v)
-            }}
-          />
-          <SettingToggle
-            label="提示音"
-            description="任务完成时播放提示音"
-            checked={soundEnabled}
-            onChange={(v) => {
-              setSoundEnabled(v)
-              handleSaveSetting('soundEnabled', v)
-            }}
-          />
         </div>
       </div>
     </div>

@@ -48,26 +48,10 @@ namespace E3DCopilot.WebHost
                     case "font":
                         config.Ui.FontFamily = value ?? "default";
                         break;
-                    case "defaultMode":
-                        config.Ui.DefaultMode = value ?? "act";
-                        break;
-                    case "notifications":
-                        if (bool.TryParse(value, out var notifications))
-                            config.Ui.Notifications = notifications;
-                        break;
-                    case "soundEnabled":
-                        if (bool.TryParse(value, out var soundEnabled))
-                            config.Ui.SoundEnabled = soundEnabled;
-                        break;
-                    // === 安全设置 ===
-                    case "autoApproveTools":
-                        if (bool.TryParse(value, out var autoTools))
-                            config.Safety.AutoApproveTools = autoTools;
-                        break;
-                    case "autoApproveEdits":
-                        if (bool.TryParse(value, out var autoEdits))
-                            config.Safety.AutoApproveEdits = autoEdits;
-                        break;
+                    // defaultMode / notifications / soundEnabled / autoApproveTools /
+                    // autoApproveEdits 五个键已移除：它们只被写入配置，全项目无任何读取方
+                    // （前端既没有 Notification 也没有 Audio 调用；两个自动批准开关
+                    // 与输入栏四档权限语义重叠）。保留 case 会让人误以为设置生效。
                     // === 模型参数 ===
                     case "temperature":
                         if (double.TryParse(value, out var temp))

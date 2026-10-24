@@ -3,7 +3,7 @@
  * 右对齐 + 边框气泡 + 时间/复制/编辑 meta
  */
 
-import { useState, memo } from 'react'
+import { useState, memo, useRef, useLayoutEffect } from 'react'
 import { Copy, Check, Pencil } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
 import type { Message } from '@/types'
@@ -30,6 +30,15 @@ export const UserBubble = memo(function UserBubble({ msg }: UserBubbleProps) {
   const [editing, setEditing] = useState(false)
   const [draftText, setDraftText] = useState(msg.content)
   const editUserMessage = useChatStore((s) => s.editUserMessage)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // 高度随内容自然增长（上限 8 行后滚动），避免固定 rows 造成的大片空白或挤压
+  useLayoutEffect(() => {
+    const el = inputRef.current
+    if (!el || !editing) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`
+  }, [draftText, editing])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msg.content).then(() => {
@@ -59,11 +68,12 @@ export const UserBubble = memo(function UserBubble({ msg }: UserBubbleProps) {
   const hasAttachments = msg.attachments && msg.attachments.length > 0
 
   return (
-    <div className="msg msg--user" data-turn={msg.id}>
+    <div className={`msg msg--user${editing ? ' msg--editing' : ''}`} data-turn={msg.id}>
       <div className={`msg__body${editing ? ' msg__body--editing' : ''}`}>
         {editing ? (
           <form className="msg-edit" onSubmit={(e) => { e.preventDefault(); handleSubmitEdit() }}>
             <textarea
+              ref={inputRef}
               autoFocus
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
@@ -71,10 +81,11 @@ export const UserBubble = memo(function UserBubble({ msg }: UserBubbleProps) {
                 if (e.key === 'Escape') { e.preventDefault(); handleCancelEdit() }
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSubmitEdit() }
               }}
-              rows={Math.max(2, Math.min(8, draftText.split('\n').length))}
               className="msg-edit__input"
+              aria-label="编辑消息"
             />
             <div className="msg-edit__actions">
+              <span className="msg-edit__hint">Ctrl/⌘ + Enter 发送 · Esc 取消</span>
               <button className="msg-edit__btn" type="button" onClick={handleCancelEdit}>取消</button>
               <button className="msg-edit__btn msg-edit__btn--primary" type="submit" disabled={!draftText.trim()}>发送</button>
             </div>
