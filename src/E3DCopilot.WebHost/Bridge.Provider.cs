@@ -158,7 +158,7 @@ namespace E3DCopilot.WebHost
             if (prov == null) return _controller.Provider;
             if (prov.Kind == "anthropic")
                 throw new NotSupportedException("Anthropic Provider not yet implemented");
-            return new VllmProvider(prov.BaseUrl, modelName, prov.ApiKey);
+            return new VllmProvider(prov.BaseUrl, modelName, prov.ApiKey, prov);
         }
     }
 }

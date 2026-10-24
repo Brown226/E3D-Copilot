@@ -311,7 +311,7 @@ namespace E3DCopilot.Core
             catch (InvalidOperationException ex)
             {
                 CopilotLogger.Warn("Provider 创建失败，降级为 OpenAI 兼容模式: " + ex.Message);
-                provider = new VllmProvider(providerConfig.BaseUrl, modelName, ProviderRegistry.ResolveApiKey(providerConfig));
+                provider = new VllmProvider(providerConfig.BaseUrl, modelName, ProviderRegistry.ResolveApiKey(providerConfig), providerConfig);
             }
             
             // ── 关键修复：提前创建 BridgeEventSink ──

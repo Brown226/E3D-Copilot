@@ -373,7 +373,8 @@ namespace E3DCopilot.Addin
                 var newProvider = new VllmProvider(
                     providerConfig.BaseUrl,
                     modelName,
-                    providerConfig.ApiKey
+                    providerConfig.ApiKey,
+                    providerConfig
                 );
 
                 // 切换

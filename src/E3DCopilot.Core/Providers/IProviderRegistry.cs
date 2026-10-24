@@ -46,8 +46,10 @@ namespace E3DCopilot.Core.Providers
         private void RegisterBuiltIns()
         {
             // OpenAI 兼容实现（vLLM / Qwen / DeepSeek / MiniMax / 中间层均走此路径）
+            // 传入完整 cfg：VllmProvider 依据其中的 Effort / ReasoningProtocol 决定请求参数，
+            // 不传则这两个配置项永远不生效（此前一直固定用 "high" / "deepseek"）。
             Func<ProviderConfig, string, ICopilotProvider> openAiFactory =
-                (cfg, model) => new VllmProvider(cfg.BaseUrl, model, ResolveApiKey(cfg));
+                (cfg, model) => new VllmProvider(cfg.BaseUrl, model, ResolveApiKey(cfg), cfg);
 
             foreach (var kind in new[] { "openai", "openai-compatible", "vllm", "qwen", "deepseek", "minimax" })
             {

@@ -39,11 +39,15 @@ namespace E3DCopilot.Core.Providers
 
         public VllmProvider(string baseUrl = "http://localhost:8000/v1",
             string model = "Qwen3.5-32B",
-            string apiKey = "")
+            string apiKey = "",
+            CopilotConfig.ProviderConfig configProvider = null)
         {
             _baseUrl = baseUrl.TrimEnd('/');
             _model = model;
             _apiKey = apiKey ?? "";
+            // 该字段此前从未被赋值（编译器一直报 CS0649），导致 config.json 里的
+            // Effort / ReasoningProtocol 永远不生效，请求固定用硬编码的 "high" / "deepseek"。
+            _configProvider = configProvider;
             
             // 强制启用 TLS 1.2（.NET 4.8 在某些系统上默认不包含，导致 HTTPS 连接失败）
             System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
