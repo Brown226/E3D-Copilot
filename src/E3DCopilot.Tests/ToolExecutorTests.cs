@@ -69,12 +69,20 @@ namespace E3DCopilot.Tests
         public void GetAllHandlers_ReturnsExpectedHandlers()
         {
             var handlers = _executor.GetAllHandlers();
-            Assert.AreEqual(28, handlers.Count);
+
+            // 只校验关键工具存在 + 数量下限，不锁定具体总数：
+            // 此前硬编码 AreEqual(28) 导致每新增一个工具就要改测试，
+            // 且断言早在工具增至 30 个时就已失效。
+            Assert.GreaterOrEqual(handlers.Count, 28, "注册的工具数不应少于 28 个");
             Assert.IsTrue(handlers.Any(h => h.Name == "design"));
             Assert.IsTrue(handlers.Any(h => h.Name == "piping"));
             Assert.IsTrue(handlers.Any(h => h.Name == "geometry"));
             Assert.IsTrue(handlers.Any(h => h.Name == "cad_import"));
             Assert.IsTrue(handlers.Any(h => h.Name == "autocad"));
+
+            // 演示链路依赖的两个工具，缺任一则整条流程不可用
+            Assert.IsTrue(handlers.Any(h => h.Name == "dwg_diff"), "缺少 dwg_diff（A/B 版差异比对）");
+            Assert.IsTrue(handlers.Any(h => h.Name == "design_workflow"), "缺少 design_workflow（全流程编排）");
         }
     }
 }
