@@ -35,7 +35,7 @@ export function SubagentPanel({ agentName, messages, subcalls }: SubagentPanelPr
           {isRunning ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: 'var(--accent)' }} />
           ) : (
-            <Bot className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
+            <Bot className="w-3.5 h-3.5" style={{ color: 'var(--fg-faint)' }} />
           )}
           <span style={{ fontWeight: 600, color: 'var(--accent)', fontSize: 12 }}>
             🤖 {agentName}
@@ -78,7 +78,7 @@ export function SubagentPanel({ agentName, messages, subcalls }: SubagentPanelPr
           {isRunning && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0' }}>
               <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--accent)' }} />{' '}
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{agentName} 正在工作...</span>
+              <span style={{ fontSize: 12, color: 'var(--fg-faint)' }}>{agentName} 正在工作...</span>
             </div>
           )}
         </div>

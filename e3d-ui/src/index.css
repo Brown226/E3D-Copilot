@@ -303,8 +303,10 @@ body {
   padding: 11px 15px;
   border-radius: 8px;
   background: var(--fg);
-  color: var(--bg);
-  box-shadow: var(--shadow-1);
+  /* 用户气泡底色就是前景色，文字取其反色；--bg 与 --shadow-1 在项目里从未定义，
+     之前等于无效声明（文字透明、无阴影）。改用真实存在的变量。 */
+  color: var(--bg-elev);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   position: relative;
 }
 .msg--user .msg__body--editing {
@@ -575,7 +577,7 @@ body {
   contain-intrinsic-size: 1px 36px;
   border-left: 3px solid var(--accent);
   border-radius: 4px;
-  background: var(--bg-secondary, rgba(128,128,128,0.06));
+  background: var(--bg-soft);
 }
 /* 错误状态红色边框 */
 .tool[data-error] {
@@ -783,7 +785,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 3px 8px;
-  background: var(--bg);
+  background: var(--bg-soft);
   font-size: 11px;
 }
 .dark .tool__stats-row {
@@ -1010,7 +1012,7 @@ body {
   text-align: left;
 }
 .tool__output-md th {
-  background: var(--bg);
+  background: var(--bg-soft);
   font-weight: 600;
 }
 
@@ -1218,7 +1220,9 @@ body.composer-resizing * {
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 .composer-card--resized {
-  height: var(--composer-height);
+  /* --composer-height 由 JS 在拖拽调整高度时写入根节点；
+     给一个兜底值，避免变量未设置时整条 height 声明失效。 */
+  height: var(--composer-height, auto);
   display: flex;
   flex-direction: column;
 }
@@ -1663,13 +1667,13 @@ body.composer-resizing * {
   top: 0;
   z-index: 20;
   padding: 6px 12px;
-  background: var(--bg-primary, #fff);
-  border-bottom: 1px solid var(--border-primary, #e2e8f0);
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 .dark .search-overlay {
-  background: var(--bg-primary, #1e293b);
-  border-bottom-color: var(--border-primary, #334155);
+  background: var(--bg-elev);
+  border-bottom-color: var(--border);
 }
 .search-overlay__inner {
   display: flex;
@@ -1687,10 +1691,10 @@ body.composer-resizing * {
   min-width: 0;
   padding: 4px 8px;
   font-size: 13px;
-  border: 1px solid var(--border-primary, #e2e8f0);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg-secondary, #f8fafc);
-  color: var(--fg-primary, #1e293b);
+  background: var(--bg-soft);
+  color: var(--fg);
   outline: none;
 }
 .search-overlay__input:focus {
@@ -1712,11 +1716,11 @@ body.composer-resizing * {
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: var(--fg-secondary, #64748b);
+  color: var(--fg-dim);
   cursor: pointer;
 }
 .search-overlay__btn:hover:not(:disabled) {
-  background: var(--bg-hover, #f1f5f9);
+  background: var(--bg-elev-2);
 }
 .search-overlay__btn:disabled {
   opacity: 0.3;

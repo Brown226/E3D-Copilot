@@ -158,6 +158,23 @@ describe('useChatStore', () => {
     })
   })
 
+  describe('setToolApprovalMode 持久化', () => {
+    beforeEach(() => localStorage.clear())
+
+    it('设置后写入 localStorage，重启不用重选', () => {
+      useChatStore.getState().setToolApprovalMode('yolo')
+      expect(useChatStore.getState().toolApprovalMode).toBe('yolo')
+      expect(localStorage.getItem('e3d-approval-mode')).toBe('yolo')
+    })
+
+    it('四档都能正确持久化', () => {
+      for (const mode of ['plan', 'ask', 'auto', 'yolo'] as const) {
+        useChatStore.getState().setToolApprovalMode(mode)
+        expect(localStorage.getItem('e3d-approval-mode')).toBe(mode)
+      }
+    })
+  })
+
   describe('setPlanMode', () => {
     it('should enable plan mode', () => {
       useChatStore.getState().setPlanMode(true)
