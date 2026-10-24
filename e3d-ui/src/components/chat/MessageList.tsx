@@ -371,11 +371,11 @@ export function MessageList() {
     setShowScrollBtn(false)
   }
 
-  // 审批响应
-  const handleApproval = useCallback((allow: boolean, _session: boolean) => {
+  // 审批响应。session = 用户点了「本次允许」，后端据此在本轮对话内放行该工具。
+  const handleApproval = useCallback((allow: boolean, session: boolean) => {
     if (!pendingApproval) return
     import('@/services/bridgeService').then(({ default: bridge }) => {
-      bridge.sendApproval(pendingApproval.toolId, allow)
+      bridge.sendApproval(pendingApproval.toolId, allow, session)
     })
     useChatStore.getState().setPendingApproval(null)
   }, [pendingApproval])

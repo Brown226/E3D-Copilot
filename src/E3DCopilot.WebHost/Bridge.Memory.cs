@@ -48,7 +48,10 @@ namespace E3DCopilot.WebHost
                 }
 
                 var saved = _controller.Memory.Save(entry);
-                SendToFrontend(MessageTypes.MemorySave, new { memory = saved }, requestId);
+                // 前端按 success 判断是否提示「已保存」，此前只返回 memory，
+                // 导致保存成功也永远静默（不弹提示、不清空表单、不刷新列表）。
+                SendToFrontend(MessageTypes.MemorySave,
+                    new { success = saved != null, memory = saved }, requestId);
             }
             catch (Exception ex)
             {

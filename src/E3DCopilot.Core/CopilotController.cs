@@ -33,6 +33,13 @@ namespace E3DCopilot.Core
         // ── 多 Tab 会话管理 ──
         private readonly ConcurrentDictionary<string, CopilotSession> _tabSessions
             = new ConcurrentDictionary<string, CopilotSession>();
+
+        // 会话时间戳（CopilotSession 本身没有时间字段，供历史面板展示）
+        private readonly ConcurrentDictionary<string, long> _tabCreatedAt
+            = new ConcurrentDictionary<string, long>();
+        private readonly ConcurrentDictionary<string, long> _tabLastActive
+            = new ConcurrentDictionary<string, long>();
+
         private string _activeTabId = "";
 
         /// <summary>
@@ -42,7 +49,18 @@ namespace E3DCopilot.Core
         {
             if (string.IsNullOrEmpty(tabId))
                 return _session;
-            return _tabSessions.GetOrAdd(tabId, _ => new CopilotSession());
+            var created = _tabSessions.GetOrAdd(tabId, _ => new CopilotSession());
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            _tabCreatedAt.TryAdd(tabId, now);
+            _tabLastActive[tabId] = now;
+            return created;
+        }
+
+        /// <summary>记录 tab 的最近活动时间（每次收发消息时调用）</summary>
+        public void TouchTab(string tabId)
+        {
+            if (string.IsNullOrEmpty(tabId)) return;
+            _tabLastActive[tabId] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         }
 
         /// <summary>
@@ -62,6 +80,9 @@ namespace E3DCopilot.Core
         public void RemoveTabSession(string tabId)
         {
             _tabSessions.TryRemove(tabId, out _);
+            long ignoredTs;
+            _tabCreatedAt.TryRemove(tabId, out ignoredTs);
+            _tabLastActive.TryRemove(tabId, out ignoredTs);
         }
 
         /// <summary>
@@ -72,12 +93,37 @@ namespace E3DCopilot.Core
             var list = new List<TabSessionInfo>();
             foreach (var kvp in _tabSessions)
             {
+                var msgs = kvp.Value.Messages;
+                // CopilotSession / ChatMessage 都没有时间字段，时间戳由 Controller 维护。
+                // 前端历史面板需要 createdAt / lastActivityAt，缺了会显示 NaN。
+                long createdAt = 0, lastActivityAt = 0;
+                _tabCreatedAt.TryGetValue(kvp.Key, out createdAt);
+                _tabLastActive.TryGetValue(kvp.Key, out lastActivityAt);
+
+                // 预览取最后一条有文本的消息，截断到 60 字
+                string preview = "";
+                if (msgs != null)
+                {
+                    for (int i = msgs.Count - 1; i >= 0; i--)
+                    {
+                        var t = msgs[i].Content;
+                        if (!string.IsNullOrWhiteSpace(t))
+                        {
+                            preview = t.Length > 60 ? t.Substring(0, 60) : t;
+                            break;
+                        }
+                    }
+                }
+
                 list.Add(new TabSessionInfo
                 {
                     TabId = kvp.Key,
                     SessionId = kvp.Value.SessionId,
-                    MessageCount = kvp.Value.Messages?.Count ?? 0,
-                    IsPlanMode = kvp.Value.IsPlanMode
+                    MessageCount = msgs?.Count ?? 0,
+                    IsPlanMode = kvp.Value.IsPlanMode,
+                    CreatedAt = createdAt,
+                    LastActivityAt = lastActivityAt,
+                    Preview = preview
                 });
             }
             return list;
@@ -783,5 +829,11 @@ namespace E3DCopilot.Core
         public string SessionId { get; set; }
         public int MessageCount { get; set; }
         public bool IsPlanMode { get; set; }
+        /// <summary>首条消息时间（毫秒）</summary>
+        public long CreatedAt { get; set; }
+        /// <summary>末条消息时间（毫秒）</summary>
+        public long LastActivityAt { get; set; }
+        /// <summary>最后一条有文本消息的摘要，最多 60 字</summary>
+        public string Preview { get; set; }
     }
 }

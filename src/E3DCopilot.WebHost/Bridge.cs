@@ -331,9 +331,13 @@ namespace E3DCopilot.WebHost
                 ? idProp.GetString() : null;
             var allow = payload.Value.TryGetProperty("allow", out var allowProp)
                 && allowProp.GetBoolean();
+            // 「本次允许」= 会话内放行。前端按钮一直存在，但此前没人读这个字段，
+            // 导致「允许」与「本次允许」行为完全相同。
+            var session = payload.Value.TryGetProperty("session", out var sessionProp)
+                && sessionProp.ValueKind == JsonValueKind.True;
 
             if (!string.IsNullOrEmpty(toolId))
-                _controller.Approve(toolId, allow);
+                _controller.Approve(toolId, allow, session);
         }
 
         /// <summary>
@@ -572,12 +576,20 @@ namespace E3DCopilot.WebHost
                         if (approvalArgs == null && evt.Data != null)
                             approvalArgs = JsonSerializer.Serialize(evt.Data, JsonOpts);
 
+                        // 真实描述在 Data.Description（AgentLoop 拼的 "工具名(参数) [batch]"）。
+                        // 原来 name 和 description 都取 evt.Text（= 工具名），
+                        // 审批卡只会显示 "execute_pml / execute_pml"，看不到关键参数上下文。
+                        string approvalDesc = null;
+                        var descProp = dataType?.GetProperty("Description");
+                        if (descProp != null)
+                            approvalDesc = descProp.GetValue(evt.Data) as string;
+
                         SendToFrontend(MessageTypes.ToolApproval, new
                         {
                             id = evt.ToolId,
                             name = evt.Text,
                             args = approvalArgs,
-                            description = evt.Text,
+                            description = approvalDesc ?? evt.Text,
                             tabId
                         });
                         break;

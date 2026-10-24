@@ -87,6 +87,20 @@ namespace E3DCopilot.WebHost
                         if (int.TryParse(value, out var maxSteps))
                             config.Ui.MaxSteps = maxSteps;
                         break;
+                    // 推理强度 / 推理协议：前端「模型设置」有对应按钮，
+                    // 此前没有 case，落到 default 被静默丢弃（按钮高亮变了但后端不生效）。
+                    case "effort":
+                        {
+                            var (prov, _) = config.ResolveModel(config.DefaultModel);
+                            if (prov != null) prov.Effort = value ?? "";
+                        }
+                        break;
+                    case "reasoningProtocol":
+                        {
+                            var (prov, _) = config.ResolveModel(config.DefaultModel);
+                            if (prov != null) prov.ReasoningProtocol = value ?? "auto";
+                        }
+                        break;
                     case "version":
                         config.Ui.Version = value ?? "2.0.0";
                         break;

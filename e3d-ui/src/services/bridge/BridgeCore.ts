@@ -148,8 +148,8 @@ export class Bridge {
     this.send(MessageTypes.UserMessage, { text, images, files, tabId } as UserMessagePayload);
   }
 
-  sendApproval(toolId: string, allow: boolean): void {
-    this.send(MessageTypes.UserApprove, { id: toolId, allow } as ApprovalPayload);
+  sendApproval(toolId: string, allow: boolean, session: boolean = false): void {
+    this.send(MessageTypes.UserApprove, { id: toolId, allow, session } as ApprovalPayload);
   }
 
   /**

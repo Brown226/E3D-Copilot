@@ -114,6 +114,8 @@ export interface UserMessagePayload {
 export interface ApprovalPayload {
   id: string;
   allow: boolean;
+  /** 「本次允许」：该工具在本次会话内不再询问 */
+  session?: boolean;
 }
 
 export interface AskResponsePayload {

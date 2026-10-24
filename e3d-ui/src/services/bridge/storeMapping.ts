@@ -119,8 +119,11 @@ export function registerStoreMappings(bridgeInstance: Bridge): void {
 
       case MessageTypes.LlmTurnStarted: {
         s.startStreaming(tabId);
-        s.setTurnStart(Date.now());
+        // 顺序不能反：resetTurnStats 会把 turnStartAt 置为 null，
+        // 若放在 setTurnStart 之后，本轮的起始时间立刻被清掉，
+        // StreamingStatusBar 的 `!turnStartAt` 判断恒成立 → 状态栏永不显示。
         s.resetTurnStats();
+        s.setTurnStart(Date.now());
         s.setRetrying(false);
         break;
       }

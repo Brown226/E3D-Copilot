@@ -65,6 +65,12 @@ namespace E3DCopilot.Core
         /// <summary>子代理嵌套深度（由 SubagentRunner 注入，防无限递归）</summary>
         public int SubagentDepth { get; set; } = 0;
 
+        /// <summary>
+        /// 本次会话内已被「本次允许」放行的工具名。
+        /// AgentLoop 每轮新建，所以作用域恰好是一轮对话，与按钮文案一致。
+        /// </summary>
+        private HashSet<string> _sessionApprovedTools;
+
         public AgentLoop(ICopilotProvider provider, IEventSink sink,
             ToolExecutor executor, CommandPermissionController permission,
             CopilotConfig config, CopilotController controller = null,
@@ -652,7 +658,13 @@ namespace E3DCopilot.Core
                 return (denyMsg, "blocked by policy: deny");
             }
 
-            bool needsApproval = policyMode == ApprovalMode.Ask || isBatch;
+            // 「本次允许」的语义：用户对该工具在本次会话内一次性放行，不再逐个询问。
+            // 此前前端 UI 有「本次允许」按钮，但 session 标志既没发出去、后端也没人消费
+            // （PermissionGate.SessionPersist 只在测试里被断言过），两个按钮实际完全等价。
+            bool sessionAllowed = _sessionApprovedTools != null
+                && _sessionApprovedTools.Contains(call.Name);
+
+            bool needsApproval = (policyMode == ApprovalMode.Ask || isBatch) && !sessionAllowed;
 
             // ── 4.1 通知前端工具开始（审批前就发射，让 ToolCard 先显示）──
             _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
@@ -698,6 +710,14 @@ namespace E3DCopilot.Core
                     _sink?.Emit(CopilotEvent.ToolFail(call.Id, msg));
                     _tracer?.RecordToolEnd(call.Id, null, false, 0, msg);
                     return (msg, reason);
+                }
+
+                // 用户选了「本次允许」→ 记住该工具，本次会话后续调用不再询问
+                if (approvalResult.SessionPersist && !approvalResult.TimedOut)
+                {
+                    if (_sessionApprovedTools == null)
+                        _sessionApprovedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    _sessionApprovedTools.Add(call.Name);
                 }
             }
 
@@ -888,7 +908,15 @@ namespace E3DCopilot.Core
                             _sink.Emit(new CopilotEvent
                             {
                                 Kind = EventKind.Usage,
-                                Text = $"Token: {chunk.UsageData.TotalTokens}"
+                                Text = $"Token: {chunk.UsageData.TotalTokens}",
+                                // 必须带结构化 Data：前端按 total_tokens 读数，
+                                // 此前只填 Text、Data 为 null，导致 token 统计恒为 0。
+                                Data = new
+                                {
+                                    total_tokens = chunk.UsageData.TotalTokens,
+                                    prompt_tokens = chunk.UsageData.PromptTokens,
+                                    completion_tokens = chunk.UsageData.CompletionTokens
+                                }
                             });
                             break;
                     }

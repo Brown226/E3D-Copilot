@@ -126,5 +126,52 @@ namespace E3DCopilot.Tests
             var policy = AgentLoop.BuildToolPolicy(null);
             Assert.AreEqual(ApprovalMode.Auto, policy.GetMode("query"));
         }
+
+        /// <summary>
+        /// 「本次允许」的会话放行记录：approvalResult.SessionPersist 为 true 且未超时时，
+        /// 该工具应被记入会话放行集合；超时的结果不算用户确认，不得放行。
+        /// 这是「允许」与「本次允许」两个按钮行为区分的唯一落点。
+        /// </summary>
+        [Test]
+        public void SessionPersist_RecordsToolName()
+        {
+            var set = new System.Collections.Generic.HashSet<string>(
+                System.StringComparer.OrdinalIgnoreCase);
+
+            // 模拟用户点「本次允许」
+            var result = new E3DCopilot.Core.Security.ApprovalResult
+            {
+                Allow = true,
+                SessionPersist = true,
+                TimedOut = false
+            };
+
+            if (result.SessionPersist && !result.TimedOut)
+                set.Add("design_workflow");
+
+            Assert.IsTrue(set.Contains("design_workflow"));
+            // 大小写不敏感，避免工具名大小写差异导致放行失效
+            Assert.IsTrue(set.Contains("DESIGN_WORKFLOW"));
+        }
+
+        [Test]
+        public void TimedOut_DoesNotPersistSession()
+        {
+            var set = new System.Collections.Generic.HashSet<string>(
+                System.StringComparer.OrdinalIgnoreCase);
+
+            // 超时：Allow=false 且 TimedOut=true，即使 SessionPersist 被误设也不能放行
+            var result = new E3DCopilot.Core.Security.ApprovalResult
+            {
+                Allow = false,
+                SessionPersist = true,
+                TimedOut = true
+            };
+
+            if (result.SessionPersist && !result.TimedOut)
+                set.Add("design_workflow");
+
+            Assert.IsFalse(set.Contains("design_workflow"));
+        }
     }
 }

@@ -130,7 +130,14 @@ namespace E3DCopilot.Core.Tools.Handlers
 
                         try
                         {
-                            await _dispatcher.ExecuteAsync("modify", modifyArgs);
+                            // dispatcher 的约定是：失败时返回 {"success":false,...} 而不是抛异常。
+                            // 原来只 catch 异常、不看返回值，导致 modify 全部失败也被算成成功。
+                            var raw = await _dispatcher.ExecuteAsync("modify", modifyArgs);
+                            if (!IsSuccess(raw))
+                            {
+                                allOk = false;
+                                errors.Add($"{name}.{attr.Key}: {ExtractError(raw)}");
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -169,6 +176,41 @@ namespace E3DCopilot.Core.Tools.Handlers
             catch (Exception ex)
             {
                 return ToolResult.Fail($"Batch failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 判断 dispatcher 返回的 JSON 是否表示成功。
+        /// dispatcher 的失败约定是返回 success:false 而非抛异常，所以必须显式检查。
+        /// 解析不出来时按成功处理，避免因为格式差异把正常结果误判为失败。
+        /// </summary>
+        private static bool IsSuccess(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return true;
+            try
+            {
+                var obj = JObject.Parse(raw);
+                var token = obj["success"];
+                return token == null || token.Type != JTokenType.Boolean || token.Value<bool>();
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        /// <summary>从失败 JSON 中取出 error 文本，取不到则回退为原始返回。</summary>
+        private static string ExtractError(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return "未知错误";
+            try
+            {
+                var obj = JObject.Parse(raw);
+                return obj["error"]?.ToString() ?? raw;
+            }
+            catch
+            {
+                return raw;
             }
         }
     }
