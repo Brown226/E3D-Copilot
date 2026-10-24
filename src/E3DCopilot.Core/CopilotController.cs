@@ -514,14 +514,19 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
-        /// Set tool approval mode: "ask" (all tools need approval),
-        /// "auto" (read-only auto, write needs approval), "yolo" (all auto)
+        /// Set tool approval mode. Four modes (mirrors a plan / confirm / auto / full-access selector):
+        ///   "plan"  — Plan mode: read-only tools auto, every write tool is blocked
+        ///   "ask"   — Ask before every tool call
+        ///   "auto"  — Autonomous: read-only auto, writes ask (default)
+        ///   "yolo"  — Full access: everything auto, including unlisted tools
+        /// Legacy "confirm" is accepted as an alias of "auto".
         /// </summary>
         public void SetApprovalMode(string mode)
         {
             if (string.IsNullOrEmpty(mode)) return;
             mode = mode.ToLowerInvariant();
-            if (mode != "ask" && mode != "auto" && mode != "yolo") return;
+            if (mode == "confirm") mode = "auto";
+            if (mode != "plan" && mode != "ask" && mode != "auto" && mode != "yolo") return;
 
             ToolApprovalMode = mode;
             _sink.Emit(CopilotEvent.Notice($"工具审批模式: {mode}"));

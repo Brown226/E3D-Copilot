@@ -200,10 +200,20 @@ export function registerStoreMappings(bridgeInstance: Bridge): void {
 
       case MessageTypes.ToolApproval: {
         const p = msg.payload as ApprovalRequestPayload;
+        // args 解析失败绝不能让整条审批链中断：以前 JSON.parse 直接抛异常，
+        // 导致 setPendingApproval 不执行，审批卡片永远不显示。
+        let parsedArgs: unknown
+        if (p.args) {
+          try {
+            parsedArgs = JSON.parse(p.args)
+          } catch {
+            parsedArgs = p.args
+          }
+        }
         s.setPendingApproval({
           toolId: p.id,
           toolName: p.name,
-          args: p.args ? JSON.parse(p.args) as unknown : undefined,
+          args: parsedArgs,
           description: p.description,
           agentName: p.agentName,
         }, tabId);

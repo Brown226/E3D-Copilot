@@ -76,7 +76,7 @@ namespace E3DCopilot.Core
             _sink = sink;
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
             _permission = permission ?? CommandPermissionController.CreateDefault();
-            _toolPolicy = toolPolicy ?? CreateDefaultToolPolicy();
+            _toolPolicy = toolPolicy ?? BuildToolPolicy(controller?.ToolApprovalMode ?? "auto");
             _config = config ?? CopilotConfig.Load();
             _controller = controller;
             _skillManager = skillManager;
@@ -87,12 +87,53 @@ namespace E3DCopilot.Core
             _progressGuard = new Agents.ProgressGuard(_sink);
         }
 
-        private ToolPolicy CreateDefaultToolPolicy()
+        /// <summary>
+        /// 按当前审批模式构建工具策略。internal 供测试直接验证四种模式的映射，
+        /// 避免测试为了拿 policy 而构造整个 AgentLoop。
+        /// </summary>
+        internal static ToolPolicy BuildToolPolicy(string mode)
         {
+            mode = mode ?? "auto";
             var policy = new ToolPolicy();
-            string mode = _controller?.ToolApprovalMode ?? "auto";
 
-            if (mode == "yolo")
+            if (mode == "plan")
+            {
+                // 计划模式：只读自动，所有写操作拒绝执行（ApprovalMode.Deny → IsAllowed 返回 false）。
+                // 模型只做规划与查询，不会真正落笔改 E3D 数据。
+                policy.ApplyPreset(ToolPreset.Observe);
+                policy.Set("query", ApprovalMode.Auto);
+                policy.Set("get_attributes", ApprovalMode.Auto);
+                policy.Set("check", ApprovalMode.Auto);
+                policy.Set("calculate", ApprovalMode.Auto);
+                policy.Set("hierarchy", ApprovalMode.Auto);
+                policy.Set("report", ApprovalMode.Auto);
+                policy.Set("compare", ApprovalMode.Auto);
+                policy.Set("grep", ApprovalMode.Auto);
+                policy.Set("glob", ApprovalMode.Auto);
+                policy.Set("read_file", ApprovalMode.Auto);
+                policy.Set("todo_write", ApprovalMode.Auto);
+                policy.Set("complete_step", ApprovalMode.Auto);
+                policy.Set("memory", ApprovalMode.Auto);
+                policy.Set("ask", ApprovalMode.Auto);
+                policy.Set("query_material", ApprovalMode.Auto);
+                policy.Set("get_pipe_info", ApprovalMode.Auto);
+                // 写操作一律拒绝
+                policy.Set("write_file", ApprovalMode.Deny);
+                policy.Set("modify", ApprovalMode.Deny);
+                policy.Set("execute_pml", ApprovalMode.Deny);
+                policy.Set("design", ApprovalMode.Deny);
+                policy.Set("piping", ApprovalMode.Deny);
+                policy.Set("batch", ApprovalMode.Deny);
+                policy.Set("cad_import", ApprovalMode.Deny);
+                policy.Set("autocad", ApprovalMode.Deny);
+                policy.Set("autocad_control", ApprovalMode.Deny);
+                policy.Set("e3d_to_cad_export", ApprovalMode.Deny);
+                policy.Set("design_workflow", ApprovalMode.Deny);
+                policy.Set("generate_iso_drawing", ApprovalMode.Deny);
+                policy.Set("structure_drawing", ApprovalMode.Deny);
+                policy.FallbackMode = ApprovalMode.Deny;
+            }
+            else if (mode == "yolo")
             {
                 policy.ApplyPreset(ToolPreset.Auto);
                 policy.Set("ask", ApprovalMode.Auto);
@@ -109,6 +150,12 @@ namespace E3DCopilot.Core
                 policy.Set("memory", ApprovalMode.Auto);
                 policy.Set("grep", ApprovalMode.Auto);
                 policy.Set("glob", ApprovalMode.Auto);
+                policy.Set("design_workflow", ApprovalMode.Auto);
+                policy.Set("dwg_diff", ApprovalMode.Auto);
+                // 关键：yolo（完全访问）必须对「未显式列出的工具」也默认放行。
+                // 否则 design_workflow / dwg_diff / MCP 平台工具会落到 FallbackMode=Ask，
+                // 用户即使选了完全访问，每次仍会卡在 2 分钟审批超时。
+                policy.FallbackMode = ApprovalMode.Auto;
             }
             else if (mode == "ask")
             {
@@ -585,7 +632,21 @@ namespace E3DCopilot.Core
             //   - execute_pml 有 PmlValidator 预检（PURGE/DELETE DB 等高危命令直接阻止）
             //   - 写工具默认 ApprovalMode.Ask（用户审批）
             //   - 批量操作需用户确认
-            bool needsApproval = _toolPolicy.GetMode(call.Name) == ApprovalMode.Ask || isBatch;
+            // Deny 必须在审批之前拦截：以前只判断 == Ask，导致 ApprovalMode.Deny
+            // 形同虚设 —— 计划模式下写操作会直接执行，不做任何拦截。
+            var policyMode = _toolPolicy.GetMode(call.Name);
+            if (policyMode == ApprovalMode.Deny)
+            {
+                string denyMsg = $"[已阻止] {call.Name} 在当前模式（{_controller?.ToolApprovalMode ?? "auto"}）下不允许执行。"
+                    + "如需真正修改数据，请把权限切换到「变更前确认」「自主模式」或「完全访问」。";
+                _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));
+                _tracer?.RecordToolStart(call.Id, call.Name, call.Arguments);
+                _sink?.Emit(CopilotEvent.ToolFail(call.Id, denyMsg));
+                _tracer?.RecordToolEnd(call.Id, null, false, 0, denyMsg);
+                return (denyMsg, "blocked by policy: deny");
+            }
+
+            bool needsApproval = policyMode == ApprovalMode.Ask || isBatch;
 
             // ── 4.1 通知前端工具开始（审批前就发射，让 ToolCard 先显示）──
             _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name, call.Arguments));

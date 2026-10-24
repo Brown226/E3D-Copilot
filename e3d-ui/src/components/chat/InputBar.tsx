@@ -10,12 +10,13 @@
  */
 
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type CSSProperties } from 'react'
-import { Paperclip, ArrowUp, Square, Shield, ShieldCheck, List } from 'lucide-react'
+import { Paperclip, ArrowUp, Square } from 'lucide-react'
 import { useChatStore, useActiveTab } from '@/store/useChatStore'
 import { ModelSwitcher } from '@/components/chat/ModelSwitcher'
 import { SlashMenu } from '@/components/chat/SlashMenu'
 import { CadImportButton } from '@/components/chat/CadImportButton'
 import { TracePanel } from '@/components/chat/TracePanel'
+import { ApprovalModeSwitcher } from '@/components/chat/ApprovalModeSwitcher'
 import { useComposerResize, composerMaxHeight } from './composer/useComposerResize'
 import { useInputHistory } from './composer/useInputHistory'
 import { useAttachments, shouldFoldPaste, fileToBase64 } from './composer/useAttachments'
@@ -29,10 +30,6 @@ export function InputBar() {
   const inputValue = useChatStore((s) => s.inputValue)
   const { isStreaming } = useActiveTab()
   const bridgeConnected = useChatStore((s) => s.bridgeConnected)
-  const toolApprovalMode = useChatStore((s) => s.toolApprovalMode)
-  const setToolApprovalMode = useChatStore((s) => s.setToolApprovalMode)
-  const isPlanMode = useChatStore((s) => s.isPlanMode)
-  const togglePlanMode = useChatStore((s) => s.togglePlanMode)
   const turnStartAt = useChatStore((s) => s.turnStartAt)
   const turnTokens = useChatStore((s) => s.turnTokens)
   const setInputValue = useChatStore((s) => s.setInputValue)
@@ -207,9 +204,6 @@ export function InputBar() {
 
   const canSend = (inputValue.trim() || attachments.length > 0) && !isStreaming && bridgeConnected
 
-  // ── 自动执行开关状态 ──
-  const isAutoMode = toolApprovalMode !== 'ask'
-
   return (
     <footer
       className={`composer-footer${dragOver ? ' composer-footer--dragover' : ''}`}
@@ -322,20 +316,6 @@ export function InputBar() {
                 />
               </div>
 
-              {/* 规划模式开关 */}
-              <div className="composer-meta__control">
-                <button
-                  type="button"
-                  className={`composer-auto-toggle${isPlanMode ? ' composer-auto-toggle--plan' : ''}`}
-                  onClick={togglePlanMode}
-                  disabled={!bridgeConnected}
-                  title={isPlanMode ? '当前：先规划再执行，点击切换为直接执行' : '当前：直接执行，点击开启规划模式'}
-                >
-                  <List size={15} />
-                  <span>规划</span>
-                </button>
-              </div>
-
               {/* CAD 导入按钮 */}
               <div className="composer-meta__control relative">
                 <CadImportButton />
@@ -346,18 +326,9 @@ export function InputBar() {
                 <TracePanel />
               </div>
 
-              {/* 自动执行开关 */}
+              {/* 权限模式选择器（四档） */}
               <div className="composer-meta__control">
-                <button
-                  type="button"
-                  className={`composer-auto-toggle${isAutoMode ? ' composer-auto-toggle--on' : ''}`}
-                  onClick={() => setToolApprovalMode(isAutoMode ? 'ask' : 'auto')}
-                  disabled={!bridgeConnected}
-                  title={isAutoMode ? '当前：只读操作自动执行，点击切换为每次询问' : '当前：每次工具调用前询问确认，点击开启自动执行'}
-                >
-                  {isAutoMode ? <ShieldCheck size={15} /> : <Shield size={15} />}
-                  <span>{isAutoMode ? '自动' : '询问'}</span>
-                </button>
+                <ApprovalModeSwitcher />
               </div>
             </div>
 

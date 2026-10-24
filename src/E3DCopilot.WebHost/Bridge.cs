@@ -550,8 +550,38 @@ namespace E3DCopilot.WebHost
                     break;
 
                 case EventKind.ApprovalRequest:
-                    SendToFrontend(MessageTypes.ToolApproval, new { id = evt.ToolId, name = evt.Text, args = evt.Data?.ToString(), description = evt.Text, tabId });
-                    break;
+                    {
+                        // evt.Data 来自 CopilotController.RegisterApproval 的匿名对象
+                        // { ToolName, Args, Description }。直接 ToString() 会得到
+                        // "{ ToolName = x, Args = {} }" 这种非 JSON 文本，前端 JSON.parse
+                        // 抛异常后整个 setPendingApproval 不执行 —— 审批卡片永远不显示，
+                        // 后台一直等到 2 分钟超时。必须先转成 JSON 再下发。
+                        string approvalArgs = null;
+                        var dataType = evt.Data?.GetType();
+                        var argsProp = dataType?.GetProperty("Args");
+                        if (argsProp != null)
+                        {
+                            approvalArgs = argsProp.GetValue(evt.Data) as string;
+                        }
+                        else if (evt.Data is string s)
+                        {
+                            approvalArgs = s;
+                        }
+
+                        // 兜底：Args 拿不到时用整个 Data 序列化，保证前端一定能 parse
+                        if (approvalArgs == null && evt.Data != null)
+                            approvalArgs = JsonSerializer.Serialize(evt.Data, JsonOpts);
+
+                        SendToFrontend(MessageTypes.ToolApproval, new
+                        {
+                            id = evt.ToolId,
+                            name = evt.Text,
+                            args = approvalArgs,
+                            description = evt.Text,
+                            tabId
+                        });
+                        break;
+                    }
 
                 case EventKind.AskRequest:
                     {

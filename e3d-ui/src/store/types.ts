@@ -66,8 +66,8 @@ export interface PendingQuestion {
   };
 }
 
-/** 工具审批模式 */
-export type ToolApprovalMode = 'ask' | 'auto' | 'yolo';
+/** 工具审批模式（四档，对齐 计划模式 / 变更前确认 / 自主模式 / 完全访问） */
+export type ToolApprovalMode = 'plan' | 'ask' | 'auto' | 'yolo';
 
 // ============================================
 // Store 接口

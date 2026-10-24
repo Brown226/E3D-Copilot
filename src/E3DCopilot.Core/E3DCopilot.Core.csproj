@@ -78,6 +78,10 @@
     <Compile Include="..\SharedAssemblyInfo.cs" />
   </ItemGroup>
 
+  <!-- 测试项目需要访问 internal 成员（如 AgentLoop.BuildToolPolicy 的四种模式映射）。
+       注意：本工程 GenerateAssemblyInfo=false，AssemblyAttribute 项不会生成，
+       因此 InternalsVisibleTo 写在 Properties/AssemblyInfo.cs 里。 -->
+
   <!-- 内置 skills 目录：仅复制 SKILL.md 到输出目录，供 SkillManager 扫描 -->
   <!-- 注意：Windows 文件系统不区分大小写，skills\** 会同时匹配 Skills\ 下的 .cs 文件，
        因此用精确的 SKILL.md 文件名匹配，避免把源代码复制到输出目录 -->
