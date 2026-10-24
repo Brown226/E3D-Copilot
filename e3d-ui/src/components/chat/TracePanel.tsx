@@ -125,12 +125,26 @@ export function TracePanel() {
 
   const steps = trace?.steps || []
   const totalMs = steps.reduce((s, x) => s + (x.durationMs || 0), 0)
-  const llmMs = steps.reduce((s, x) => s + (x.llmMs || 0), 0)
   const toolMs = steps.reduce(
     (s, x) => s + (x.toolCalls || []).reduce((a, t) => a + (t.durationMs || 0), 0),
     0,
   )
   const approvalMs = steps.reduce((s, x) => s + (x.approvalMs || 0), 0)
+
+  // 旧版 trace 没有 llmMs 字段。此时不能把 0 当成「真的没花时间」显示，
+  // 否则会出现「总耗时 125.9s 但 LLM 0ms (0%)」这种自相矛盾的读数。
+  // 用 duration - 工具 - 审批 推算，并明确标注是推算值。
+  const hasLlmField = steps.some((x) => x.llmMs != null)
+  const llmMs = hasLlmField
+    ? steps.reduce((s, x) => s + (x.llmMs || 0), 0)
+    : Math.max(0, totalMs - toolMs - approvalMs)
+  const otherMs = Math.max(0, totalMs - llmMs - toolMs - approvalMs)
+
+  const stepLlmMs = (x: TraceStep): number => {
+    if (x.llmMs != null) return x.llmMs
+    const st = (x.toolCalls || []).reduce((a, t) => a + (t.durationMs || 0), 0)
+    return Math.max(0, (x.durationMs || 0) - st - (x.approvalMs || 0))
+  }
 
   return (
     <>
@@ -199,28 +213,78 @@ export function TracePanel() {
                       <span>总耗时</span>
                       <strong>{fmtMs(totalMs)}</strong>
                     </div>
+
+                    {!hasLlmField && (
+                      <div className="trace-legacy-note">
+                        这条记录由旧版本生成，缺少分段耗时字段，下列数值按「总时长 − 工具 − 审批」推算。
+                      </div>
+                    )}
+
                     <div className="trace-attr__bar">
-                      <div
-                        className="trace-attr__seg trace-attr__seg--llm"
-                        style={{ width: `${pct(llmMs, totalMs)}%` }}
-                        title={`LLM ${fmtMs(llmMs)}`}
-                      />
-                      <div
-                        className="trace-attr__seg trace-attr__seg--tool"
-                        style={{ width: `${pct(toolMs, totalMs)}%` }}
-                        title={`工具 ${fmtMs(toolMs)}`}
-                      />
-                      <div
-                        className="trace-attr__seg trace-attr__seg--appr"
-                        style={{ width: `${pct(approvalMs, totalMs)}%` }}
-                        title={`审批 ${fmtMs(approvalMs)}`}
-                      />
-                    </div>
-                    <div className="trace-attr__legend">
-                      <span><i className="dot dot--llm" />LLM {fmtMs(llmMs)} ({pct(llmMs, totalMs)}%)</span>
-                      <span><i className="dot dot--tool" />工具 {fmtMs(toolMs)} ({pct(toolMs, totalMs)}%)</span>
+                      {llmMs > 0 && (
+                        <div
+                          // 旧记录的 llmMs 是推算值，用斜纹区分「实测」与「推算」，
+                          // 避免让人以为这就是精确归因
+                          className={
+                            'trace-attr__seg trace-attr__seg--llm' +
+                            (hasLlmField ? '' : ' trace-attr__seg--derived')
+                          }
+                          style={{ width: `${pct(llmMs, totalMs)}%` }}
+                          title={hasLlmField ? `LLM ${fmtMs(llmMs)}` : `LLM（推算）${fmtMs(llmMs)}`}
+                        />
+                      )}
+                      {toolMs > 0 && (
+                        <div
+                          className="trace-attr__seg trace-attr__seg--tool"
+                          style={{ width: `${pct(toolMs, totalMs)}%` }}
+                          title={`工具 ${fmtMs(toolMs)}`}
+                        />
+                      )}
                       {approvalMs > 0 && (
-                        <span><i className="dot dot--appr" />审批 {fmtMs(approvalMs)} ({pct(approvalMs, totalMs)}%)</span>
+                        <div
+                          className="trace-attr__seg trace-attr__seg--appr"
+                          style={{ width: `${pct(approvalMs, totalMs)}%` }}
+                          title={`审批 ${fmtMs(approvalMs)}`}
+                        />
+                      )}
+                      {otherMs > 0 && (
+                        <div
+                          className="trace-attr__seg trace-attr__seg--other"
+                          style={{ width: `${pct(otherMs, totalMs)}%` }}
+                          title={`其它（等待/调度/渲染）${fmtMs(otherMs)}`}
+                        />
+                      )}
+                    </div>
+
+                    <div className="trace-attr__grid">
+                      <div>
+                        <i className="dot dot--llm" />
+                        <span>LLM</span>
+                        <strong>{fmtMs(llmMs)}</strong>
+                        <em>{pct(llmMs, totalMs)}%</em>
+                      </div>
+                      <div>
+                        <i className="dot dot--tool" />
+                        <span>工具</span>
+                        {/* 没有工具调用时显示 — 而不是 0ms，避免被读成"工具没花时间" */}
+                        <strong>{toolMs > 0 ? fmtMs(toolMs) : '—'}</strong>
+                        <em>{toolMs > 0 ? `${pct(toolMs, totalMs)}%` : '无调用'}</em>
+                      </div>
+                      {approvalMs > 0 && (
+                        <div>
+                          <i className="dot dot--appr" />
+                          <span>审批</span>
+                          <strong>{fmtMs(approvalMs)}</strong>
+                          <em>{pct(approvalMs, totalMs)}%</em>
+                        </div>
+                      )}
+                      {otherMs > 0 && (
+                        <div>
+                          <i className="dot dot--other" />
+                          <span>其它</span>
+                          <strong>{fmtMs(otherMs)}</strong>
+                          <em>{pct(otherMs, totalMs)}%</em>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -237,8 +301,10 @@ export function TracePanel() {
                             <span className="trace-step__dur">{fmtMs(s.durationMs)}</span>
                           </div>
                           <div className="trace-step__facts">
-                            <span>LLM {fmtMs(s.llmMs)}</span>
-                            <span>首字 {fmtMs(s.ttftMs)}</span>
+                            <span>LLM {fmtMs(stepLlmMs(s))}</span>
+                            {s.ttftMs != null && s.ttftMs >= 0 && (
+                              <span>首字 {fmtMs(s.ttftMs)}</span>
+                            )}
                             {st && (
                               <>
                                 <span>{st.chunks || 0} 块</span>

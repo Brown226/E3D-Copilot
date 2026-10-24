@@ -112,8 +112,40 @@ describe('TracePanel 执行诊断面板', () => {
     await waitFor(() => expect(screen.getByText(/步骤 1/)).toBeTruthy())
     // 两步都在
     expect(screen.getByText(/步骤 2/)).toBeTruthy()
-    // LLM 占绝对大头（118s / 129s）
-    expect(screen.getByText(/LLM 123\.4s/)).toBeTruthy()
+    // 归因格里 LLM 耗时 = 118000 + 5400 = 123.4s
+    expect(screen.getByText('123.4s')).toBeTruthy()
+    // 总耗时 = 123792 + 5428 = 129.2s
+    expect(screen.getByText('129.2s')).toBeTruthy()
+  })
+
+  it('旧版 trace 缺 llmMs 时不显示 0ms，而是推算并给出说明', async () => {
+    // 老记录只有 durationMs 和 toolCalls，没有 llmMs —— 这正是截图里
+    // 「总耗时 125.9s 但 LLM 0ms (0%)」自相矛盾的来源
+    const legacy = {
+      sessionId: 'legacy',
+      startTime: '2026-10-24 17:23:51.869',
+      model: 'qoder-local/group/never-stuck',
+      outcome: 'cancelled',
+      totalSteps: 2,
+      steps: [
+        {
+          step: 1,
+          durationMs: 7600,
+          toolCalls: [{ name: 'glob', durationMs: 6000, success: false }],
+        },
+        { step: 2, durationMs: 118300, toolCalls: [] },
+      ],
+    }
+    mockSendAndWait.mockResolvedValue({ enabled: true, content: JSON.stringify(legacy) })
+
+    render(<TracePanel />)
+    await userEvent.click(screen.getByTitle(/查看上一轮执行的耗时归因/))
+
+    await waitFor(() => expect(screen.getByText(/步骤 1/)).toBeTruthy())
+    // 必须提示是推算值
+    expect(screen.getByText(/旧版本生成，缺少分段耗时字段/)).toBeTruthy()
+    // LLM 推算 = (7600-6000) + 118300 = 119900 => 119.9s，不能是 0
+    expect(screen.getByText('119.9s')).toBeTruthy()
   })
 
   it('失败的工具有明确标记', async () => {
