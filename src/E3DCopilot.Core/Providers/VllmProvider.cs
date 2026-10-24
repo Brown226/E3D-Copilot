@@ -188,7 +188,15 @@ namespace E3DCopilot.Core.Providers
                         requestMsg.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
                     }
         
-                    using (var response = await _http.SendAsync(requestMsg, ct))
+                    // HttpCompletionOption.ResponseHeadersRead 是流式输出的关键。
+                    // 默认值 ResponseContentRead 会让 SendAsync 一直挂到「整个响应体收完」才返回，
+                    // 于是 SSE 的每一个增量都被缓冲在底层，等全部结束才一次性交给 ProcessChunk。
+                    // 表现就是：模型其实在逐字吐，但界面先长时间没有任何反应，然后整段文字瞬间出现。
+                    // 实测同一端点同一提问：
+                    //   默认(ResponseContentRead)：首块 7782ms、712 块在 14ms 内集中到达
+                    //   ResponseHeadersRead     ：首块约 1.5s、增量按真实节奏逐块到达
+                    using (var response = await _http.SendAsync(requestMsg,
+                        HttpCompletionOption.ResponseHeadersRead, ct))
                     {
                         if (!response.IsSuccessStatusCode)
                         {
@@ -200,10 +208,13 @@ namespace E3DCopilot.Core.Providers
                         using (var stream = await response.Content.ReadAsStreamAsync())
                         using (var reader = new StreamReader(stream))
                         {
-                            while (!reader.EndOfStream && !ct.IsCancellationRequested)
+                            while (!ct.IsCancellationRequested)
                             {
+                                // 不用 reader.EndOfStream 做循环条件：它在到达 EOF 前会做同步阻塞读，
+                                // 在流式场景下会把异步退化成同步等待。ReadLineAsync 返回 null 即为流结束。
                                 string line = await reader.ReadLineAsync();
-        
+                                if (line == null) break;
+
                                 if (string.IsNullOrEmpty(line)) continue;
                                 if (!line.StartsWith("data: ")) continue;
         
