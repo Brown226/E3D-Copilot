@@ -237,6 +237,12 @@ export function MessageList() {
     return turnGroups.slice(start, warmTurnCount)
   }, [turnGroups, warmTurnCount, shownWarmCount])
 
+  // 「粘底」状态：内容高度变化时是否继续跟随到底部。
+  // 与 autoScrollRef 的区别：autoScrollRef 表示「用户当前是否在底部」，
+  // stickToBottomRef 表示「是否允许自动跟随」——首次进入/切换会话后短暂为 true，
+  // 用来自动跨过 Markdown/KaTeX/Mermaid 的异步渲染撑高。
+  const stickToBottomRef = useRef(true)
+
   // 检测用户是否手动上滚
   const handleScroll = useCallback(() => {
     const el = parentRef.current
@@ -244,6 +250,8 @@ export function MessageList() {
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
     autoScrollRef.current = atBottom
     setShowScrollBtn(!atBottom)
+    // 用户主动离开底部后立刻停止跟随，避免和用户抢滚动条
+    if (!atBottom) stickToBottomRef.current = false
   }, [])
 
   // 流式时追踪最后一条消息的 content 变化（messages.length 不变但 content 增长）
@@ -252,25 +260,73 @@ export function MessageList() {
     return last ? (last.content?.length ?? 0) : 0
   }, [messages])
 
-  // 新消息到达、content 增长、或审批/提问卡片出现时自动滚动
+  // 消息「指纹」：切换会话时即使条数恰好相同，也能识别出内容已换。
+  // 只依赖 messages.length 会导致「进入另一个同等长度的会话」时完全不滚动。
+  const messagesKey = useMemo(() => {
+    const first = messages[0]
+    const last = messages[messages.length - 1]
+    return `${messages.length}:${first?.id ?? ''}:${last?.id ?? ''}`
+  }, [messages])
+
+  // 会话级 key：当前 Tab 的 sessionId，用于在切换会话时强制重建子树。
+  // 单独选 s.sessionId 作兜底，避免在 selector 里做字符串拼接导致快照不稳定（React #185）。
+  const tabSessionId = useChatStore((s) => s.tabs.find((x) => x.id === s.activeTabId)?.sessionId)
+  const globalSessionId = useChatStore((s) => s.sessionId)
+  const sessionIdForKey = tabSessionId || globalSessionId
+
+  // 会话切换 / 首次挂载：无论用户之前滚到哪里，都应贴底。
+  // 同时用 ResizeObserver 跟随异步内容撑高，直到内容稳定或用户上滚。
   useEffect(() => {
-    if (!autoScrollRef.current || messages.length === 0) return
-    // 审批/提问卡片出现时使用 smooth 滚动，其他情况使用 auto
-    const hasCard = pendingApproval != null || pendingQuestion != null
-    parentRef.current?.scrollTo({
-      top: parentRef.current.scrollHeight,
-      behavior: hasCard ? 'smooth' : 'auto',
+    const el = parentRef.current
+    if (!el) return
+    if (messages.length === 0) {
+      stickToBottomRef.current = false
+      return
+    }
+    stickToBottomRef.current = true
+    autoScrollRef.current = true
+
+    const pin = () => {
+      if (!stickToBottomRef.current) return
+      el.scrollTop = el.scrollHeight
+    }
+    pin()
+
+    const ro = new ResizeObserver(() => {
+      pin()
     })
+    // 观察内层内容容器：它的高度变化代表渲染完成度的推进
+    const inner = el.firstElementChild
+    if (inner) ro.observe(inner)
+
+    // 兜底：异步内容通常在 1.2s 内稳定，之后不再强拉
+    const timer = window.setTimeout(() => { stickToBottomRef.current = false }, 1200)
+
+    return () => {
+      ro.disconnect()
+      window.clearTimeout(timer)
+    }
+    // sessionIdForKey 变化会重建 transcript 容器（key），必须重新贴底
+  }, [messagesKey, messages.length, sessionIdForKey])
+
+  // 同一会话内的增量滚动：新消息、content 增长、审批/提问卡片出现
+  // 尊重用户是否在底部（autoScrollRef），不强行拉回。
+  useEffect(() => {
+    const el = parentRef.current
+    if (!el || messages.length === 0) return
+    if (!autoScrollRef.current && !stickToBottomRef.current) return
+    const hasCard = pendingApproval != null || pendingQuestion != null
+    el.scrollTo({ top: el.scrollHeight, behavior: hasCard ? 'smooth' : 'auto' })
   }, [messages.length, lastMsgContentLen, pendingApproval, pendingQuestion])
 
+  // Warm zone 展开态与分页按「消息下标」存储，切换会话必须重置，
+  // 否则新会话里相同下标的另一轮历史会莫名其妙处于展开/已加载状态。
   useEffect(() => {
-    if (messages.length === 0) {
-      autoScrollRef.current = true
-      setShowScrollBtn(false)
-      setExpandedWarmTurns(new Set())
-      setColdPage(0)
-    }
-  }, [messages.length])
+    autoScrollRef.current = true
+    setShowScrollBtn(false)
+    setExpandedWarmTurns(new Set())
+    setColdPage(0)
+  }, [sessionIdForKey])
 
   const scrollToBottom = () => {
     parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: 'smooth' })
@@ -315,7 +371,9 @@ export function MessageList() {
   return (
     <div className="transcript-shell" style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, height: '100%' }}>
       <SearchOverlay />
-      <div ref={parentRef} onScroll={handleScroll} className="transcript">
+      {/* key 用会话指纹：切换会话时强制重建内部消息组件，
+          避免 UserBubble 的编辑态、ToolCard 的展开态等交互状态串到另一个会话 */}
+      <div ref={parentRef} onScroll={handleScroll} className="transcript" key={`transcript-${sessionIdForKey}`}>
         <div>
           {/* ═══════ Cold zone：加载更多 ═══════ */}
           {coldTurnCount > 0 && (
@@ -393,10 +451,24 @@ export function MessageList() {
           ))}
 
           {/* ═══════ 审批卡片 ═══════ */}
-          {pendingApproval && <ApprovalCard approval={pendingApproval} onAnswer={handleApproval} />}
+          {/* key 用 toolId：连续出现不同审批时强制重建，避免选中态与闭包串到上一条 */}
+          {pendingApproval && (
+            <ApprovalCard
+              key={pendingApproval.toolId}
+              approval={pendingApproval}
+              onAnswer={handleApproval}
+            />
+          )}
 
           {/* ═══════ AI 提问卡片 ═══════ */}
-          {pendingQuestion && <AskUserCard question={pendingQuestion} onAskAnswer={handleAskAnswer} />}
+          {/* key 用 askId：questions 只按挂载时的 props 初始化答案数组，换题必须重建 */}
+          {pendingQuestion && (
+            <AskUserCard
+              key={pendingQuestion.askData?.askId || pendingQuestion.questionId}
+              question={pendingQuestion}
+              onAskAnswer={handleAskAnswer}
+            />
+          )}
         </div>
       </div>
 

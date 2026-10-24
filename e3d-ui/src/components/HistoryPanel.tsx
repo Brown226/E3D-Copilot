@@ -85,8 +85,15 @@ export function HistoryPanel() {
       if (result?.sessions) {
         const localSessions = useChatStore.getState().sessions
         const backendIds = new Set(result.sessions.map(s => s.id))
-        // 后端会话优先，保留仅存在于本地的会话（取并集，后端数据覆盖本地）
-        const localOnly = localSessions.filter(s => !backendIds.has(s.id))
+        // 本地会话若后端已有同 title+messageCount 的条目，视为同一段对话，不重复列出。
+        // 后端 tab 会话的 id 是 GUID、本地是 session_xxx，两边 id 永远不相等，
+        // 只按 id 去重会让同一段对话出现两份，删掉一份另一份还在。
+        const backendKeys = new Set(
+          result.sessions.map(s => `${s.title}|${s.messageCount}`),
+        )
+        const localOnly = localSessions.filter(
+          s => !backendIds.has(s.id) && !backendKeys.has(`${s.title}|${s.messageCount}`),
+        )
         const merged = [...result.sessions, ...localOnly]
         useChatStore.getState().setSessions(merged)
       }
@@ -101,6 +108,11 @@ export function HistoryPanel() {
 
   useEffect(() => {
     if (showHistory) {
+      // 每次打开都重置搜索与删除确认态：组件常驻（只是渲染 null），
+      // 否则再次打开时列表仍被上次的搜索词过滤，甚至停在某条的删除确认态。
+      setQuery('')
+      setDeleteConfirm(null)
+      setError(null)
       loadSessionsFromBackend()
     }
   }, [showHistory, loadSessionsFromBackend])
@@ -134,18 +146,29 @@ export function HistoryPanel() {
     loadSession(session.id)
   }, [loadSession])
 
-  // 删除
-  const handleDelete = useCallback(async (sessionId: string) => {
+  // 删除：本地与后端各删一次，两边都尝试，避免只删掉一半导致「删了又回来」
+  const handleDelete = useCallback(async (sid: string) => {
+    const target = useChatStore.getState().sessions.find((s) => s.id === sid)
     // 先同步删除本地（立即响应 UI）
-    deleteSession(sessionId)
+    deleteSession(sid)
     setDeleteConfirm(null)
-    // 异步通知后端删除
-    if (bridge.isAvailable()) {
-      try {
-        await bridge.deleteSession(sessionId)
-      } catch (err) {
-        console.warn('[HistoryPanel] 后端删除会话失败', err)
+
+    if (!bridge.isAvailable()) return
+    try {
+      // 同名的本地缓存条目可能同时存在于后端（tab 会话），一并清掉，
+      // 否则下次刷新列表又会从后端把这条刷出来。
+      const keys = new Set<string>()
+      if (target) keys.add(`${target.title}|${target.messageCount}`)
+      const duplicates = useChatStore.getState().sessions.filter(
+        (s) => s.id === sid || (target && s.title === target.title && s.messageCount === target.messageCount),
+      )
+      const ids = new Set([sid, ...duplicates.map((d) => d.id)])
+      for (const id of ids) {
+        await bridge.deleteSession(id).catch(() => { /* 后端没有该 id 时忽略 */ })
       }
+    } catch (err) {
+      console.warn('[HistoryPanel] 后端删除会话失败', err)
+      setError('后端删除失败，该条目可能仍存在')
     }
   }, [deleteSession])
 

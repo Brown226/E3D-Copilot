@@ -14,7 +14,7 @@ export function generateTabId(): string {
   return `tab_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
 }
 
-export function createTab(title = '新对话'): Tab {
+export function createTab(title = '新对话', sessionId?: string): Tab {
   return {
     id: generateTabId(),
     title,
@@ -24,7 +24,14 @@ export function createTab(title = '新对话'): Tab {
     currentThinkingMsgId: null,
     pendingApproval: null,
     pendingQuestion: null,
+    // 每个 Tab 各自持有一个会话 id，避免多个 Tab 写同一份会话记录互相覆盖
+    sessionId: sessionId ?? generateTabSessionId(),
   }
+}
+
+/** 生成 Tab 级会话 id（与 sessionSlice 的本地会话前缀保持一致） */
+export function generateTabSessionId(): string {
+  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
 /** 更新指定 tab 的状态（不可变） */

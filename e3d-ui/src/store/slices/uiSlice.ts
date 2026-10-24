@@ -37,7 +37,13 @@ export interface UISlice {
 
   // 动作
   setInputValue: (v: string) => void;
-  sendMessage: (bridgeSend: (text: string, images?: string[], files?: string[], tabId?: string) => void, attachments?: Attachment[], overrideText?: string) => void;
+  sendMessage: (
+    bridgeSend: (text: string, images?: string[], files?: string[], tabId?: string) => void,
+    attachments?: Attachment[],
+    overrideText?: string,
+    /** 锁定目标 Tab（异步发送期间用户可能切换 Tab） */
+    targetTabId?: string,
+  ) => void;
   clearSession: (bridgeNewSession: () => void) => void;
   toggleSettings: () => void;
   /** 打开设置并直达指定分页（如未配置模型时直达 models） */
@@ -90,8 +96,12 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
 
   setInputValue: (v: string) => set({ inputValue: v }),
 
-  sendMessage: (bridgeSend, attachments, overrideText) => {
-    const { inputValue, activeTabId } = get()
+  sendMessage: (bridgeSend, attachments, overrideText, targetTabId) => {
+    const state = get()
+    // 允许调用方锁定目标 Tab：附件转 base64 是异步的，期间用户可能切换 Tab，
+    // 若在此处重新 get() activeTabId，消息会落到切换后的会话里。
+    const activeTabId = targetTabId ?? state.activeTabId
+    const { inputValue } = state
     const text = overrideText ?? inputValue;
     const trimmed = text.trim();
     if (!trimmed && (!attachments || attachments.length === 0)) return;

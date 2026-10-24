@@ -93,11 +93,32 @@ export function InputBar() {
       return result
     }
 
-    convertAttachments().then((globalAttachments) => {
-      import('@/services/bridgeService').then(({ default: bridge }) => {
-        sendMessage(bridge.sendUserMessage.bind(bridge), globalAttachments, fullText)
+    // 记住点击发送这一刻的 Tab：附件转 base64 是异步的，
+    // 期间若切换 Tab，sendMessage 内部重新 get() 会把消息发到切换后的会话。
+    const originTabId = useChatStore.getState().activeTabId
+
+    convertAttachments()
+      .then((globalAttachments) => {
+        import('@/services/bridgeService').then(({ default: bridge }) => {
+          sendMessage(
+            bridge.sendUserMessage.bind(bridge),
+            globalAttachments,
+            fullText,
+            originTabId,
+          )
+        })
       })
-    })
+      .catch((err) => {
+        // 转换失败（FileReader 报错 / 权限异常）时不能静默：
+        // 输入框与附件已在下方被清空，必须明确告知用户内容没发出去。
+        console.warn('[InputBar] 附件转换失败', err)
+        import('../../store/useToastStore').then(({ useToastStore }) => {
+          useToastStore.getState().addToast('error', `附件处理失败：${err instanceof Error ? err.message : String(err)}`)
+        })
+        // 把文字放回输入框，避免用户重打
+        useChatStore.getState().setInputValue(fullText)
+        return
+      })
 
     setInputValue('')
     clearAttachments()

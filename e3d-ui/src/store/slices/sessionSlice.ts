@@ -29,8 +29,19 @@ function loadSessionsFromStorage(): SessionMeta[] {
   }
 }
 
+/** 本地会话 id 前缀（由 generateSessionId 生成）。后端 tab 会话用 GUID，可据此区分。 */
+const LOCAL_SESSION_PREFIX = 'session_'
+
+/**
+ * 只持久化「本地产生的」会话。
+ *
+ * 原实现把合并后的完整列表（含后端 GUID 条目）整份写入 localStorage，
+ * 于是同一段对话在列表里出现两份：后端一份、本地缓存一份。
+ * 用户删掉本地那份，后端那份仍在，重开面板又刷出来 —— 表现为「删不掉」。
+ */
 function saveSessionsToStorage(sessions: SessionMeta[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS)))
+  const localOnly = sessions.filter((s) => s.id.startsWith(LOCAL_SESSION_PREFIX))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(localOnly.slice(0, MAX_SESSIONS)))
 }
 
 function saveMessagesToStorage(sessionId: string, messages: Message[]) {
@@ -80,29 +91,34 @@ export const createSessionSlice: StateCreator<ChatStore, [], [], SessionSlice> =
     const activeTab = tabs.find((t) => t.id === activeTabId)
     if (!activeTab || activeTab.messages.length === 0) return
 
+    // 用 Tab 自己的 sessionId，而不是全局那个：
+    // 多个 Tab 共用全局 id 会写同一份存储，后结束的一轮覆盖前一个 Tab。
+    const tabSessionId = activeTab.sessionId || sessionId
+
     const firstUserMsg = activeTab.messages.find((m) => m.role === 'user')
     const title = firstUserMsg?.content.slice(0, 50) || '新对话'
     const preview = firstUserMsg?.content.slice(0, 100) || ''
 
     const meta: SessionMeta = {
-      id: sessionId,
+      id: tabSessionId,
       title,
       preview,
       messageCount: activeTab.messages.length,
-      createdAt: sessions.find((s) => s.id === sessionId)?.createdAt || Date.now(),
+      createdAt: sessions.find((s) => s.id === tabSessionId)?.createdAt || Date.now(),
       lastActivityAt: Date.now(),
     }
 
     // 持久化消息内容
-    saveMessagesToStorage(sessionId, activeTab.messages)
+    saveMessagesToStorage(tabSessionId, activeTab.messages)
 
-    const exists = sessions.findIndex((s) => s.id === sessionId)
+    const exists = sessions.findIndex((s) => s.id === tabSessionId)
     const nextSessions = exists >= 0
       ? sessions.map((s, i) => (i === exists ? meta : s))
       : [meta, ...sessions]
 
     saveSessionsToStorage(nextSessions)
-    set({ sessions: nextSessions })
+    // 同步全局 sessionId，保持 loadSession / deleteSession 的比较语义一致
+    set({ sessions: nextSessions, sessionId: tabSessionId })
   },
 
   loadSession: (sessionId) => {
@@ -110,11 +126,10 @@ export const createSessionSlice: StateCreator<ChatStore, [], [], SessionSlice> =
     const session = sessions.find((s) => s.id === sessionId)
     if (!session) return
 
-    // 先保存当前会话的消息
+    // 先保存当前会话的消息（写回它自己的 id，不能写到全局 id 上）
     const currentTab = tabs.find((t) => t.id === activeTabId)
-    const { sessionId: currentSessionId } = get()
     if (currentTab && currentTab.messages.length > 0) {
-      saveMessagesToStorage(currentSessionId, currentTab.messages)
+      saveMessagesToStorage(currentTab.sessionId || get().sessionId, currentTab.messages)
     }
 
     // 恢复目标会话的消息
@@ -122,8 +137,11 @@ export const createSessionSlice: StateCreator<ChatStore, [], [], SessionSlice> =
     set((s) => ({
       sessionId,
       showHistory: false,
+      // 清空输入框与残留交互态，避免把上一个会话的草稿带进历史会话
+      inputValue: '',
       tabs: updateTab(s.tabs, s.activeTabId, () => ({
         messages: savedMessages,
+        sessionId,
         isStreaming: false,
         currentAssistantMsgId: null,
         currentThinkingMsgId: null,
@@ -139,7 +157,11 @@ export const createSessionSlice: StateCreator<ChatStore, [], [], SessionSlice> =
     const nextSessions = sessions.filter((s) => s.id !== sessionId)
     saveSessionsToStorage(nextSessions)
     deleteMessagesFromStorage(sessionId)
-    set({ sessions: nextSessions })
+    // 若删的是当前会话，清空 store 里的 sessionId，避免后续 saveSession()
+    // 继续以已删除的 id 写入，把条目又「复活」出来。
+    const patch: { sessions: SessionMeta[]; sessionId?: string } = { sessions: nextSessions }
+    if (get().sessionId === sessionId) patch.sessionId = generateSessionId()
+    set(patch)
   },
 
   loadSessionList: () => {
@@ -154,10 +176,13 @@ export const createSessionSlice: StateCreator<ChatStore, [], [], SessionSlice> =
   newSession: (bridgeNewSession) => {
     get().saveSession()
     const { activeTabId } = get()
+    const nextSessionId = generateSessionId()
     set((s) => ({
-      sessionId: generateSessionId(),
+      sessionId: nextSessionId,
+      inputValue: '',
       tabs: updateTab(s.tabs, activeTabId, () => ({
         messages: [],
+        sessionId: nextSessionId,
         isStreaming: false,
         currentAssistantMsgId: null,
         currentThinkingMsgId: null,

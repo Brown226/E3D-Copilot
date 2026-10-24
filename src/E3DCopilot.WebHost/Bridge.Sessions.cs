@@ -75,8 +75,9 @@ namespace E3DCopilot.WebHost
 
                 if (!string.IsNullOrEmpty(tabId))
                     _controller.RemoveTabSession(tabId);
-                else
-                    _controller.NewSession();   // 找不到对应 tab（例如当前会话）时才回退
+                // 找不到对应 tab（例如只存在于前端 localStorage 的缓存条目）：
+                // 幂等返回成功即可。原实现在这里回退 NewSession()，会把用户
+                // 当前正在进行的会话整个清空——删一条无关历史却丢了正在聊的内容。
                 SendToFrontend(MessageTypes.SessionsDelete, new { id, deleted = true }, requestId);
             }
             catch (Exception ex)

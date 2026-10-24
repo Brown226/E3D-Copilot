@@ -17,6 +17,10 @@ export interface SessionMeta {
   messageCount: number
   createdAt: number
   lastActivityAt: number
+  /** 后端 tab 会话才有；由 localStorage 持久化的本地会话没有这个字段 */
+  tabId?: string
+  /** 后端标记：该条目是否为当前活跃 tab 的会话 */
+  isActive?: boolean
 }
 
 // ============================================
@@ -32,6 +36,14 @@ export interface Tab {
   currentThinkingMsgId: string | null
   pendingApproval: PendingApproval | null
   pendingQuestion: PendingQuestion | null
+  /**
+   * 该 Tab 对应的会话 id。
+   *
+   * 原实现全局只有一个 sessionId，新建 Tab 不生成新的，于是两个 Tab
+   * 往同一个 localStorage 键和同一条 meta 里写：后结束的那轮覆盖前一个，
+   * 历史面板只出现一条，另一个 Tab 的消息直接丢失。
+   */
+  sessionId?: string
 }
 
 // ============================================
@@ -132,7 +144,13 @@ export interface ChatStore {
 
   // === 全局动作 ===
   setInputValue: (v: string) => void;
-  sendMessage: (bridgeSend: (text: string, images?: string[], files?: string[], tabId?: string) => void, attachments?: Attachment[], overrideText?: string) => void;
+  sendMessage: (
+    bridgeSend: (text: string, images?: string[], files?: string[], tabId?: string) => void,
+    attachments?: Attachment[],
+    overrideText?: string,
+    /** 锁定目标 Tab（异步发送期间用户可能切换 Tab） */
+    targetTabId?: string,
+  ) => void;
   clearSession: (bridgeNewSession: () => void) => void;
   toggleSettings: () => void;
   /** 打开设置并直达指定分页 */

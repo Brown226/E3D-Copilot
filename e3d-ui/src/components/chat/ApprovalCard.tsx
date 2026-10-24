@@ -38,7 +38,9 @@ export function ApprovalCard({ approval, onAnswer }: ApprovalCardProps) {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [selectedIndex])
+    // onAnswer 必须进依赖：它由 MessageList 用 pendingApproval 做闭包生成，
+    // 审批对象被替换而本 effect 不重跑时，按 1/2/3 会回复上一条审批的 toolId。
+  }, [selectedIndex, onAnswer])
 
   const handleAllow = (session: boolean) => onAnswer(true, session)
   const handleDeny = () => onAnswer(false, false)
