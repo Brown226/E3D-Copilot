@@ -28,6 +28,7 @@ namespace E3DCopilot.Core.Tools.Handlers
 
         public string Description => @"直接控制运行中的 AutoCAD — 发命令、创建实体、管理图层、标注、保存图纸。
 前置条件：AutoCAD 已启动并打开了目标图纸（工具内部自动连接）。
+注意：仅用于操作 AutoCAD 本身。解析/建模已有 DWG 文件请用 design_workflow 或 cad_import，无需 AutoCAD。
 
 操作类型：
 - send_command: 发送 AutoCAD 命令行字符串（如 '_LINE 100,100 200,200 '）

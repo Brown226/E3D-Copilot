@@ -52,6 +52,20 @@ namespace E3DCopilot.Core
 "- E3D hierarchy: Project → Zone → SubZone → Element. Always scope queries to the current zone.\n" +
 "- PML knowledge search: `grep(knowledge=true, pattern=\"...\")` — covers PML syntax, object methods, golden patterns, and error codes.\n\n" +
 
+"## Drawing Workflow (IMPORTANT)\n" +
+"DWG drawings are parsed OFFLINE from a file path — no AutoCAD required, and never pass images.\n" +
+"- FULL design lifecycle (parse → register → model → write back → A/B diff → write back): " +
+"call `design_workflow(drawing_no, file_a, file_b?, layers?, operator?)`. It runs the six steps in a fixed order. " +
+"Do NOT orchestrate these steps yourself, and do NOT search the filesystem for drawings.\n" +
+"- `drawing_no` and `file_a` are required; `file_b` enables A/B version comparison.\n" +
+"- ALWAYS pass `layers` (a JSON ARRAY of strings, not a comma-separated string) when the user names drawing layers, " +
+"e.g. layers=[\"土建\", \"C1 柱墙剖线\"]. " +
+"Without it every line in the drawing becomes an element, including axis and dimension lines, producing a cluttered model.\n" +
+"- Geometry-only A/B diff: call `dwg_diff(file_a, file_b, layers?, tolerance_mm?)`.\n" +
+"- Single drawing parse/model only: call `cad_import(file_path, layers?)`.\n" +
+"- If the user mentions drawings but gives no path, ask for the file path — do NOT glob the disk.\n" +
+"- `autocad` / `autocad_control` are for LIVE AutoCAD sessions only; they are NOT the entry point for static DWG files.\n\n" +
+
 "## PML Syntax Rules (CRITICAL — follow exactly when writing execute_pml scripts)\n" +
 "```\n" +
 "-- Variables: !local, !!global, $!textSubstitution (NOT a 'set CE' — it's literal text expansion)\n" +

@@ -27,6 +27,7 @@ namespace E3DCopilot.Core.Tools.Handlers
 
         public string Description => @"连接运行中的 AutoCAD，获取图纸中的图形对象并导入 E3D。
 前置条件：AutoCAD 已启动并打开了目标图纸。
+注意：本工具只在需要与「正在运行的 AutoCAD 实时交互」时使用。若是已有 DWG 文件、只想解析或建模，请用 design_workflow（设计全流程）或 cad_import（单图解析），它们不依赖 AutoCAD。
 
 操作流程：
 - status: 检查 AutoCAD 是否运行、是否已连接
