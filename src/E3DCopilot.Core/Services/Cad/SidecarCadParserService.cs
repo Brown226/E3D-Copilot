@@ -59,6 +59,16 @@ namespace E3DCopilot.Core.Services.Cad
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "dwg-sidecar.exe"),
             };
 
+            // E3D 安装目录下的 tools/。Loader（开发模式）通过 Assembly.Load(byte[])
+            // 从 src/E3DCopilot.Addin/bin/Release/net48 加载 DLL，BaseDirectory 是那里，
+            // 而不是 E3D 根目录；deploy.cmd 只把 sidecar 放到 <E3D_DIR>/tools/。
+            // 因此从 des.exe 所在目录再探一次，避免开发模式下解析静默降级。
+            string e3dDir = ResolveE3DInstallDir();
+            if (!string.IsNullOrEmpty(e3dDir))
+            {
+                candidates.Add(Path.Combine(e3dDir, "tools", "dwg-sidecar.exe"));
+            }
+
             // 环境变量显式指定（推荐，演示时不依赖猜测）
             string env = Environment.GetEnvironmentVariable("E3D_DWG_SIDECAR");
             if (!string.IsNullOrEmpty(env)) candidates.Insert(0, env);
@@ -68,6 +78,31 @@ namespace E3DCopilot.Core.Services.Cad
                 try { if (File.Exists(c)) return c; }
                 catch { }
             }
+            return null;
+        }
+
+        /// <summary>
+        /// 定位 E3D 安装目录（des.exe 所在目录）。
+        /// 插件可能被 Assembly.Load(byte[]) 从任意目录加载，BaseDirectory 不可靠，
+        /// 因此优先取当前进程主模块（des.exe）的真实路径；再回退 E3D_DIR 环境变量。
+        /// </summary>
+        private static string ResolveE3DInstallDir()
+        {
+            try
+            {
+                using (var proc = System.Diagnostics.Process.GetCurrentProcess())
+                {
+                    string mainModule = proc.MainModule != null ? proc.MainModule.FileName : null;
+                    if (!string.IsNullOrEmpty(mainModule))
+                        return Path.GetDirectoryName(mainModule);
+                }
+            }
+            catch { }
+
+            string envDir = Environment.GetEnvironmentVariable("E3D_DIR");
+            if (!string.IsNullOrEmpty(envDir) && Directory.Exists(envDir))
+                return envDir;
+
             return null;
         }
 
