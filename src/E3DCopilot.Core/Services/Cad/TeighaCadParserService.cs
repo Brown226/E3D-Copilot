@@ -394,10 +394,10 @@ namespace E3DCopilot.Core.Services.Cad
         }
 
         /// <summary>
-        /// 合并共线线段
+        /// 合并共线且相接的线段（POLYLINE 被解析器拆成的碎段复原为整段墙）
         /// </summary>
         /// <param name="segments">原始线段列表</param>
-        /// <param name="tolerance">角度容差（度）</param>
+        /// <param name="tolerance">距离容差（mm）：同线垂距与首尾间隙均不超过该值才合并</param>
         /// <returns>合并后的线段列表</returns>
         public static List<LineSegment> MergeCollinearSegments(List<LineSegment> segments, double tolerance = 5.0)
         {
@@ -421,7 +421,7 @@ namespace E3DCopilot.Core.Services.Cad
                         {
                         if (used[j]) continue;
 
-                        if (AreCollinear(current, segments[j], tolerance))
+                        if (AreCollinearAndTouching(current, segments[j], tolerance))
                         {
                             // 合并线段
                             current = MergeTwoSegments(current, segments[j]);
@@ -438,35 +438,52 @@ namespace E3DCopilot.Core.Services.Cad
         }
 
         /// <summary>
-        /// 判断两条线段是否共线
+        /// 判断两条线段是否真正共线且相接：平行 + 同一直线 + 投影重叠或间隙在容差内。
+        ///
+        /// 旧实现只查方向平行，不查是否同一直线——平行的两堵墙会被熔成一条
+        /// 跨越两者的斜线；同线但隔开的两段（门洞两侧的墙）也会被熔合。
+        /// 坐标串路径一次只传一面墙所以从未暴露；DWG 全图解析时平行墙遍地，
+        /// 直接沿用会把整张图的墙毁掉，必须补齐"同线 + 相接"两个条件。
         /// </summary>
-        private static bool AreCollinear(LineSegment a, LineSegment b, double angleTolerance)
+        private static bool AreCollinearAndTouching(LineSegment a, LineSegment b, double tolMm)
         {
-            // 计算两条线段的方向向量
-            var dir1 = new Point3D(a.End.X - a.Start.X, a.End.Y - a.Start.Y, a.End.Z - a.Start.Z);
-            var dir2 = new Point3D(b.End.X - b.Start.X, b.End.Y - b.Start.Y, b.End.Z - b.Start.Z);
-
-            // 计算长度
-            double len1 = Math.Sqrt(dir1.X * dir1.X + dir1.Y * dir1.Y + dir1.Z * dir1.Z);
-            double len2 = Math.Sqrt(dir2.X * dir2.X + dir2.Y * dir2.Y + dir2.Z * dir2.Z);
-
+            double d1x = a.End.X - a.Start.X, d1y = a.End.Y - a.Start.Y, d1z = a.End.Z - a.Start.Z;
+            double d2x = b.End.X - b.Start.X, d2y = b.End.Y - b.Start.Y, d2z = b.End.Z - b.Start.Z;
+            double len1 = Math.Sqrt(d1x * d1x + d1y * d1y + d1z * d1z);
+            double len2 = Math.Sqrt(d2x * d2x + d2y * d2y + d2z * d2z);
             if (len1 < 0.001 || len2 < 0.001)
                 return false;
 
-            // 归一化
-            dir1 = new Point3D(dir1.X / len1, dir1.Y / len1, dir1.Z / len1);
-            dir2 = new Point3D(dir2.X / len2, dir2.Y / len2, dir2.Z / len2);
+            // 1) 平行：单位向量点积绝对值 > cos(0.5°)
+            double u1x = d1x / len1, u1y = d1y / len1, u1z = d1z / len1;
+            double u2x = d2x / len2, u2y = d2y / len2, u2z = d2z / len2;
+            double dot = Math.Abs(u1x * u2x + u1y * u2y + u1z * u2z);
+            if (dot < 0.9999619)
+                return false;
 
-            // 计算点积
-            double dot = dir1.X * dir2.X + dir1.Y * dir2.Y + dir1.Z * dir2.Z;
+            // 2) 同一直线：b 两端点到 a 所在直线的垂距 ≤ tolMm
+            if (PointLineDistanceMm(b.Start, a.Start, u1x, u1y, u1z) > tolMm)
+                return false;
+            if (PointLineDistanceMm(b.End, a.Start, u1x, u1y, u1z) > tolMm)
+                return false;
 
-            // 计算角度（弧度）
-            double angle = Math.Acos(Math.Min(1, Math.Abs(dot)));
+            // 3) 相接或重叠：b 在 a 方向上的投影区间与 [0, len1] 的间隙 ≤ tolMm。
+            //    同线但远离的两段是门洞两侧的墙或独立墙，不能合并。
+            double t1 = (b.Start.X - a.Start.X) * u1x + (b.Start.Y - a.Start.Y) * u1y + (b.Start.Z - a.Start.Z) * u1z;
+            double t2 = (b.End.X - a.Start.X) * u1x + (b.End.Y - a.Start.Y) * u1y + (b.End.Z - a.Start.Z) * u1z;
+            double bMin = Math.Min(t1, t2), bMax = Math.Max(t1, t2);
+            double gap = Math.Max(bMin - len1, -bMax);
+            return gap <= tolMm;
+        }
 
-            // 转换为度
-            double angleDeg = angle * 180 / Math.PI;
-
-            return angleDeg < angleTolerance;
+        /// <summary>点到过 lineThrough、方向为 (ux,uy,uz) 单位向量的直线的垂距。</summary>
+        private static double PointLineDistanceMm(Point3D p, Point3D lineThrough, double ux, double uy, double uz)
+        {
+            double vx = p.X - lineThrough.X, vy = p.Y - lineThrough.Y, vz = p.Z - lineThrough.Z;
+            double cx = vy * uz - vz * uy;
+            double cy = vz * ux - vx * uz;
+            double cz = vx * uy - vy * ux;
+            return Math.Sqrt(cx * cx + cy * cy + cz * cz);
         }
 
         /// <summary>

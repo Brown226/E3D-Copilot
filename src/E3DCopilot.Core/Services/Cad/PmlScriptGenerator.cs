@@ -189,13 +189,23 @@ namespace E3DCopilot.Core.Services.Cad
             LastCreatedElementNames.Add(columnName);
             counter++;
 
+            // 单线柱取线段中点定位；只取起点会把柱放到线段一端（交接文档缺陷 1）
             var position = column.Points[0];
+            if (column.Points.Count >= 2)
+            {
+                var a = column.Points[0];
+                var b = column.Points[1];
+                position = new Point3D((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0, (a.Z + b.Z) / 2.0);
+            }
+
             double width = 300;
             double depth = 300;
             double height = 3000;
 
             if (column.Properties.ContainsKey("Width"))
                 double.TryParse(column.Properties["Width"].ToString(), out width);
+            else if (column.Properties.ContainsKey("Length"))
+                double.TryParse(column.Properties["Length"].ToString(), out width);
             if (column.Properties.ContainsKey("Depth"))
                 double.TryParse(column.Properties["Depth"].ToString(), out depth);
             if (column.Properties.ContainsKey("Height"))

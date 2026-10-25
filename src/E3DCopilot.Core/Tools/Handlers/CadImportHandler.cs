@@ -342,7 +342,11 @@ namespace E3DCopilot.Core.Tools.Handlers
                 var result = _parser.ParseFile(filePath);
                 if (!result.Success)
                     return (null, ToolResult.Fail(result.Error));
-                return (result.WallSegments, null);
+                // DWG 路径此前直接返回未合并的碎段——sidecar 把 POLYLINE 逐段拆开，
+                // 墙轮廓变成 150mm 级短段、每条独立建墙，拐角出现缺口。
+                // 与坐标串路径同规则做共线合并（MergeCollinearSegments 已在坐标路径验证过）。
+                var merged = TeighaCadParserService.MergeCollinearSegments(result.WallSegments);
+                return (merged, null);
             }
 
             if (!string.IsNullOrEmpty(pathsString))
@@ -381,6 +385,16 @@ namespace E3DCopilot.Core.Tools.Handlers
 
                 if (!string.IsNullOrEmpty(segment.Layer))
                     element.Properties["Layer"] = segment.Layer;
+
+                // 柱：单条剖线只给出柱沿墙向的边长（实测演示图「C1 柱墙剖线」层 44 条线段
+                // 全部轴对齐、端点互不共享，即每柱一条单线而非闭合矩形），
+                // 截面另一边取墙厚。此前 Width/Depth 从不赋值，PML 生成器只能
+                // 回退 300×300，与图纸完全不符。
+                if (element.Type == BuildingElementType.Column)
+                {
+                    element.Properties["Width"] = segment.Length;
+                    element.Properties["Depth"] = wallThickness;
+                }
 
                 double minX = Math.Min(segment.Start.X, segment.End.X) - wallThickness / 2;
                 double minY = Math.Min(segment.Start.Y, segment.End.Y) - wallThickness / 2;

@@ -158,5 +158,66 @@ namespace E3DCopilot.Tests
             Assert.IsTrue(pml.Contains("NEW STWALL") || pml.Contains("NEW EQUIP"),
                 "未知类型也必须生成实际建模语句，不能只有输出语句");
         }
+
+        // ====== 柱截面推导（交接文档缺陷 1 修复）======
+
+        private static BuildingElement Column(double x1, double y1, double x2, double y2,
+            Dictionary<string, object> props = null)
+        {
+            return new BuildingElement
+            {
+                Type = BuildingElementType.Column,
+                Points = new List<Point3D> { new Point3D(x1, y1, 0), new Point3D(x2, y2, 0) },
+                Properties = props ?? new Dictionary<string, object>()
+            };
+        }
+
+        [Test]
+        public void Column_ExplicitDimensions_HonoredAndMidpointPositioned()
+        {
+            var col = Column(0, 0, 2000, 0, new Dictionary<string, object>
+            {
+                { "Width", 500.0 }, { "Depth", 400.0 }, { "Height", 3500.0 }
+            });
+
+            var pml = _gen.GenerateBuildingScript(new List<BuildingElement> { col });
+
+            StringAssert.Contains("DESP 500.00 400.00 3500.00", pml,
+                "显式 Width/Depth/Height 必须原样生效");
+            StringAssert.Contains("POS E 1000.00 N 0.00 U 0.00", pml,
+                "柱定位应取线段中点(1000,0)，而不是起点(0,0)");
+        }
+
+        [Test]
+        public void Column_WithoutWidth_FallsBackToSegmentLength()
+        {
+            // 上游没给 Width 时（非 cad_import 路径的调用方），用线段长度兜底，
+            // 不再退化为 300
+            var col = Column(0, 0, 1500, 0, new Dictionary<string, object>
+            {
+                { "Length", 1500.0 }, { "Depth", 200.0 }, { "Height", 3000.0 }
+            });
+
+            var pml = _gen.GenerateBuildingScript(new List<BuildingElement> { col });
+
+            StringAssert.Contains("DESP 1500.00 200.00 3000.00", pml,
+                "缺 Width 时应以 Properties[Length]（线段长度）作为截面宽");
+        }
+
+        [Test]
+        public void Column_SinglePoint_StillCreatedAtThatPoint()
+        {
+            // 单点柱（无第二点）不取中点，直接在该点创建
+            var col = new BuildingElement
+            {
+                Type = BuildingElementType.Column,
+                Points = new List<Point3D> { new Point3D(700, 300, 0) },
+                Properties = new Dictionary<string, object>()
+            };
+
+            var pml = _gen.GenerateBuildingScript(new List<BuildingElement> { col });
+
+            StringAssert.Contains("POS E 700.00 N 300.00 U 0.00", pml);
+        }
     }
 }
