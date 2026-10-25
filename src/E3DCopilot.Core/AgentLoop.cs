@@ -1082,8 +1082,12 @@ namespace E3DCopilot.Core
             }
             request.Tools = toolSchemas;
 
-            // History messages (last 20)
-            var history = session.GetRecentMessages(20);
+            // History messages — token 预算制：全量发送直到接近窗口（1 字符 ≈ 1 token 保守近似），
+            // 条数仅作极端兜底。预算取窗口 40%：位于压缩器 soft 阈值（50%）之下，
+            // 保证单次请求不超长的同时把折叠决策留给 ContextCompactor（按真实 usage 触发）。
+            int ctxWindow = providerConfig.ContextWindow > 0 ? providerConfig.ContextWindow : 32000;
+            int charBudget = (int)(ctxWindow * 0.4);
+            var history = session.GetMessagesByBudget(charBudget);
 
             // 消息规范化（对齐 Reasonix NormalizeMessages）
             // 修复 tool_calls/tool 配对、截断 JSON 参数、孤立 tool 消息
@@ -1262,15 +1266,29 @@ namespace E3DCopilot.Core
 
         private const int MaxToolResultChars = 4000;
 
+        /// <summary>
+        /// 工具结果截断限额分级：知识类工具放宽。
+        /// 内置 SKILL.md 正文 4406~9663 字符，统一 4000 会截掉后半，模型拿到的技能规范残缺。
+        /// </summary>
+        private static int ToolResultLimit(string toolName)
+        {
+            if (toolName == "run_skill" || toolName == "read_file")
+                return 12000;
+            if (toolName == "grep" || toolName == "glob")
+                return 8000;
+            return MaxToolResultChars;
+        }
+
         private string TruncateToolResult(string text, string toolName)
         {
-            if (string.IsNullOrEmpty(text) || text.Length <= MaxToolResultChars)
+            int limit = ToolResultLimit(toolName);
+            if (string.IsNullOrEmpty(text) || text.Length <= limit)
                 return text;
 
-            string truncated = text.Substring(0, MaxToolResultChars);
-            string hint = $"\n\n[truncated: {toolName} result was {text.Length} chars, showing first {MaxToolResultChars}. " +
+            string truncated = text.Substring(0, limit);
+            string hint = $"\n\n[truncated: {toolName} result was {text.Length} chars, showing first {limit}. " +
                           "Use a more specific query or add filters to reduce results.]";
-            _sink?.Emit(CopilotEvent.NoticeSilent($"Token 预算: {toolName} 结果已截断 {text.Length}→{MaxToolResultChars} 字符"));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"Token 预算: {toolName} 结果已截断 {text.Length}→{limit} 字符"));
             return truncated + hint;
         }
 

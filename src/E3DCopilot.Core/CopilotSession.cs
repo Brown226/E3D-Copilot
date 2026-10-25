@@ -135,6 +135,44 @@ namespace E3DCopilot.Core
         }
 
         /// <summary>
+        /// 按字符预算获取最近的消息（token 预算制的字符近似，1 字符 ≈ 1 token 保守估计）。
+        /// 从尾部往回累积，超预算即止；至少保留最近 2 条，条数仅作极端兜底。
+        /// 全量历史不足预算时整段发送 —— 与 ContextCompactor 协同：
+        /// 窗口保证单次请求不超长，压缩器按真实 usage 比例折叠旧历史。
+        /// </summary>
+        public List<ChatMessage> GetMessagesByBudget(int charBudget, int maxCount = 1000)
+        {
+            lock (_msgLock)
+            {
+                if (Messages.Count <= 2)
+                    return new List<ChatMessage>(Messages);
+
+                int keep = 0, total = 0;
+                for (int i = Messages.Count - 1; i >= 0; i--)
+                {
+                    var m = Messages[i];
+                    int size = (m.Content?.Length ?? 0) + (m.ReasoningContent?.Length ?? 0);
+                    if (m.ToolCalls != null)
+                    {
+                        foreach (var tc in m.ToolCalls)
+                            size += (tc?.Name?.Length ?? 0) + (tc?.Arguments?.Length ?? 0);
+                    }
+
+                    // 至少保留最近 2 条，其余按预算截断
+                    if (keep >= 2 && total + size > charBudget)
+                        break;
+
+                    total += size;
+                    keep++;
+                    if (keep >= maxCount)
+                        break;
+                }
+
+                return new List<ChatMessage>(Messages.GetRange(Messages.Count - keep, keep));
+            }
+        }
+
+        /// <summary>
         /// 获取最后一条助手回复的文本内容（子代理结果提取用）
         /// </summary>
         public string LastAssistantText()
