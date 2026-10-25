@@ -50,8 +50,13 @@ namespace E3DCopilot.Core.Services.Cad
         {
             var sb = new StringBuilder();
 
-            // 头部和设置
-            sb.AppendLine("$!ECHO 正在导入建筑模型...");
+            // 头部和设置。
+            // 注意 1：PML 的输出命令是 $P（$P 'text'），$! 是文本替换语法，
+            //         写成 $!ECHO 会被解析成「把变量 ECHO 替换成文本」，直接报
+            //         ERROR - Variable ECHO not defined，并且整段脚本在第 1 行就中断。
+            // 注意 2：脚本内容一律用 ASCII。E3D 的 PML 解释器按 ANSI 读取脚本文件，
+            //         写入 UTF-8 中文会变成 æ¤ã... 乱码，同样使整段脚本失败。
+            sb.AppendLine("$P 'Importing building model...'");
             sb.AppendLine("UNITS /MM");
 
             // 可选：先切换到指定的 DESIGN 数据库
@@ -99,7 +104,7 @@ namespace E3DCopilot.Core.Services.Cad
             }
 
             sb.AppendLine();
-            sb.AppendLine("$!ECHO 导入完成！");
+            sb.AppendLine($"$P 'Created {elements.Count} elements.'");
             return sb.ToString();
         }
 
@@ -259,8 +264,24 @@ namespace E3DCopilot.Core.Services.Cad
 
             var position = element.Points[0];
 
-            sb.AppendLine($"$!ECHO 创建通用元素: {elemName} ({element.Type})");
-            sb.AppendLine($"$!ECHO 位置: E {position.X:F2} N {position.Y:F2} U {position.Z:F2}");
+            // 之前这里只有两行 $!ECHO，实际什么都没创建 —— 调用方却按
+            // elements.Count 报告「已创建 N 个元素」，属于静默假成功。
+            // 改为真正创建一条通用结构元素：用 STWALL 承载线段几何，
+            // 保证类型未知的线段也有可见三维结果。
+            if (element.Points.Count >= 2)
+            {
+                var start = element.Points[0];
+                var end = element.Points[1];
+                sb.AppendLine($"NEW STWALL /{elemName}");
+                sb.AppendLine($"  DESP 200.00 3000.00");
+                sb.AppendLine($"  POSS E {start.X:F2} N {start.Y:F2} U {start.Z:F2}");
+                sb.AppendLine($"  POSE E {end.X:F2} N {end.Y:F2} U {end.Z:F2}");
+            }
+            else
+            {
+                sb.AppendLine($"NEW EQUIP /{elemName}");
+                sb.AppendLine($"  POS E {position.X:F2} N {position.Y:F2} U {position.Z:F2}");
+            }
             sb.AppendLine();
         }
 
@@ -275,7 +296,7 @@ namespace E3DCopilot.Core.Services.Cad
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine("$!ECHO 生成管道系统...");
+            sb.AppendLine("$P 'Generating pipe system...'");
             sb.AppendLine("UNITS /MM");
             sb.AppendLine($"NEW SITE /{siteName}");
             sb.AppendLine($"NEW ZONE /{zoneName}");
@@ -326,7 +347,7 @@ namespace E3DCopilot.Core.Services.Cad
                 sb.AppendLine();
             }
 
-            sb.AppendLine("$!ECHO 管道系统生成完成！");
+            sb.AppendLine($"$P 'Created {pipeCounter - 1} pipe systems.'");
             return sb.ToString();
         }
 

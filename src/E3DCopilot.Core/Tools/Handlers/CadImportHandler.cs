@@ -232,6 +232,30 @@ namespace E3DCopilot.Core.Tools.Handlers
                     var execArgs = JsonConvert.SerializeObject(new { script = pmlScript });
                     var execResult = _dispatcher.ExecuteAsync("execute_pml", execArgs).GetAwaiter().GetResult();
 
+                    // execute_pml 失败时返回以 "Error:" 开头的字符串（约定见
+                    // RealE3DEnvironment.ExecutePmlDirect），不抛异常。之前这里不看返回值，
+                    // 一律报 executed=true，导致 PML 整段脚本第一行就崩了，
+                    // 结果却显示「已创建 317 个元素」——属于静默假成功，最误导人。
+                    bool execFailed = execResult != null &&
+                                      execResult.TrimStart().StartsWith("Error:", StringComparison.OrdinalIgnoreCase);
+
+                    if (execFailed)
+                    {
+                        var sbFail = new StringBuilder();
+                        sbFail.AppendLine("❌ CAD→E3D 导入执行失败，E3D 中没有创建任何元素");
+                        sbFail.AppendLine($"  线段数: {mergedSegments.Count}");
+                        sbFail.AppendLine($"  脚本中本应创建: {elements.Count} 个元素");
+                        sbFail.AppendLine($"  落位: {(string.IsNullOrEmpty(owner) ? "新建 SITE/ZONE" : owner)}");
+                        sbFail.AppendLine();
+                        sbFail.AppendLine($"PML 错误: {execResult}");
+                        sbFail.AppendLine();
+                        sbFail.AppendLine("完整 PML 脚本已生成，可修正后用 execute_pml 重新执行。");
+
+                        // 用 Fail 让上层（EvidenceLedger / 前端卡片）明确知道这一步失败了，
+                        // 而不是像以前那样按 Ok + executed=true 报成功。
+                        return ToolResult.Fail(sbFail.ToString());
+                    }
+
                     var sbExec = new StringBuilder();
                     sbExec.AppendLine($"✅ CAD→E3D 导入已执行完成");
                     sbExec.AppendLine($"  线段数: {mergedSegments.Count}");

@@ -493,8 +493,15 @@ namespace E3DCopilot.Tools.Bridge
             try
             {
                 // 直接写入脚本本身（结尾补换行，确保最后一条命令被解析）。
-                // 使用 UTF-8 编码（避免跨区域设置导致中文 PML 乱码）
-                System.IO.File.WriteAllText(tempFile, pmlCommand + "\n", new System.Text.UTF8Encoding(false));
+                //
+                // 编码必须是系统 ANSI 代码页（简中环境为 936/GBK），不能用 UTF-8。
+                // PML 解释器（$m 加载脚本文件）按 ANSI 读取，写 UTF-8 会让中文变成
+                // æ¤ã... 乱码，连带着整段脚本在第 1 行就报错退出。原实现用
+                // UTF8Encoding 恰好踩了这个坑，且注释里写的理由与事实相反。
+                //
+                // 若含中文则按 ANSI 写；纯 ASCII 时 ANSI 与 UTF-8 字节完全一致，
+                // 走同一分支不会引入差异。
+                System.IO.File.WriteAllText(tempFile, pmlCommand + "\n", System.Text.Encoding.Default);
 
                 // CNPE 官方格式：$m "路径"（双引号，不是单引号）
                 string cmd = "$m \"" + tempFile + "\"";
