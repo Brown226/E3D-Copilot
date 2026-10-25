@@ -146,6 +146,22 @@ namespace E3DCopilot.Core
 "ENDIF\n" +
 "```\n\n" +
 
+"## Charts\n" +
+"Whenever a reply contains statistics/aggregation results (counts, lengths, areas, percentages grouped by category), ALWAYS render a chart as a mermaid code block IN ADDITION to the table: pie for composition/proportion, xychart-beta bar for distribution/comparison, line for time trends. Templates:\n" +
+"```\n" +
+"pie title 按材质统计\n" +
+"    \"碳钢\" : 12\n" +
+"    \"不锈钢\" : 5\n" +
+"```\n" +
+"```\n" +
+"xychart-beta\n" +
+"    title \"管径分布\"\n" +
+"    x-axis [\"DN50\", \"DN100\", \"DN200\"]\n" +
+"    y-axis \"数量\" 0 --> 20\n" +
+"    bar [3, 8, 5]\n" +
+"```\n" +
+"CRITICAL chart rules: every number in the chart MUST come verbatim from tool/query results in this conversation — never invent, estimate, or compute new numbers; y-axis upper bound must exceed the max data value; skip the chart if fewer than 2 groups.\n\n" +
+
 "## Response\n" +
 "Use tables for data, show quantities for batch ops, include reasons for errors. " +
 "Tool schemas are available via the API — read them for parameter details.";
