@@ -25,6 +25,9 @@
   /* Border 分级 */
   --border: #e2e8f0;
   --border-soft: #f1f5f9;
+  /* 表格专用线色：比 --border 明显更深，保证浅底上框线清晰可辨 */
+  --table-border: #cbd5e1;
+  --table-head-bg: #f1f5f9;
 
   /* Focus ring 无障碍 */
   --focus-ring: 0 0 0 2px rgba(59, 130, 246, 0.5);
@@ -133,6 +136,9 @@
   --bg-elev-2: #334155;
   --border: #334155;
   --border-soft: #1e293b;
+  /* 表格专用线色（暗色）：比 --border 更亮，避免深底上框线糊成一片 */
+  --table-border: #475569;
+  --table-head-bg: #334155;
 
   --fg: #e2e8f0;
   --fg-dim: #94a3b8;
@@ -285,8 +291,12 @@ body {
 /* ============================================
    Messages — Reasonix 对标
    ============================================ */
+/* 只保留上下外边距，绝不能写 auto。
+   .msg 是 .msg-row（flex 容器）的子项，横向 auto 外边距会让它按自身内容宽度
+   水平居中，从而吞掉父级的 align-items: flex-end / stretch ——
+   表现为「用户气泡不贴右、助手正文缩在中间」。 */
 .msg {
-  margin: 18px auto;
+  margin: 18px 0;
   user-select: text;
   -webkit-user-select: text;
   content-visibility: auto;
@@ -461,6 +471,10 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
+  /* 撑满内容宽度：flex 列容器的子项默认按内容收窄，
+     不撑满时父级 align-items 没有可对齐的空间，气泡会贴在“内容宽度”的右侧。 */
+  width: 100%;
+  min-width: 0;
 }
 .msg-row--user {
   align-items: flex-end;
@@ -1098,11 +1112,12 @@ body {
 }
 .tool__output-md th, .tool__output-md td {
   padding: 5px 8px;
-  border: 1px solid var(--border-soft);
+  /* 与正文表格统一：原来用 --border-soft(#f1f5f9) 几乎看不见框线 */
+  border: 1px solid var(--table-border);
   text-align: left;
 }
 .tool__output-md th {
-  background: var(--bg-soft);
+  background: var(--table-head-bg);
   font-weight: 600;
 }
 
@@ -1142,18 +1157,30 @@ body {
   border-radius: 5px;
   padding: 1px 5px;
 }
+/* 表格：框线必须清晰可辨。
+   原来用 --border(#e2e8f0) 画线，在浅色底上几乎看不见；
+   th 底色又接近页面底色，整张表读起来像没有框线。
+   改用专门的表格线色，并给表头加区分度底色。 */
 .md table {
   border-collapse: collapse;
   margin: 0 0 12px;
   display: block;
   overflow-x: auto;
+  width: max-content;
+  max-width: 100%;
 }
 .md th, .md td {
-  border: 1px solid var(--border);
-  padding: 5px 10px;
+  border: 1px solid var(--table-border);
+  padding: 6px 12px;
   text-align: left;
+  vertical-align: top;
 }
-.md th { background: var(--bg-soft); font-weight: 700; }
+.md th {
+  background: var(--table-head-bg);
+  color: var(--fg);
+  font-weight: 700;
+  white-space: nowrap;
+}
 
 /* ── 代码块语言标签 ── */
 .md pre .relative > span:first-child {
