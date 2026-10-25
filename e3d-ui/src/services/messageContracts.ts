@@ -172,6 +172,14 @@ export interface ApprovalRequestPayload {
   args?: string;
   description: string;
   agentName?: string;
+  /** 审批富预览（后端 IApprovalPreview 产出，如 write_file 的前后 diff） */
+  preview?: {
+    fileDiff?: {
+      fileName: string;
+      oldText: string | null;
+      newText: string;
+    };
+  };
 }
 
 

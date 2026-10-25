@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Shield, ShieldCheck, X, AlertTriangle } from 'lucide-react'
+import { DiffView } from './DiffView'
 import type { PendingApproval } from '@/store/useChatStore'
 
 interface ApprovalCardProps {
@@ -74,7 +75,20 @@ export function ApprovalCard({ approval, onAnswer }: ApprovalCardProps) {
           {approval.description}
         </div>
       ) : null}
-      {approval.args ? (
+      {/* 写文件等操作的改动前后 diff — 放行前看清要改什么 */}
+      {approval.preview?.fileDiff ? (
+        <div className="border-b border-amber-100 dark:border-amber-800/50">
+          <DiffView
+            oldText={approval.preview.fileDiff.oldText ?? ''}
+            newText={approval.preview.fileDiff.newText}
+            fileName={
+              approval.preview.fileDiff.oldText == null
+                ? `${approval.preview.fileDiff.fileName}（新文件）`
+                : approval.preview.fileDiff.fileName
+            }
+          />
+        </div>
+      ) : approval.args ? (
         <pre className="px-3 py-1.5 text-[11px] font-mono text-amber-600/80 dark:text-amber-400/70 bg-amber-50/50 dark:bg-amber-900/10 overflow-x-auto max-h-24 border-b border-amber-100 dark:border-amber-800/50">
           {typeof approval.args === 'string' ? approval.args : JSON.stringify(approval.args, null, 2)}
         </pre>

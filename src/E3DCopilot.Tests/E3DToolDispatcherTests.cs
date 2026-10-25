@@ -172,5 +172,23 @@ namespace E3DCopilot.Tests
 
             manager.Clear();
         }
+        [Test]
+        public async Task UndoCreate_DeletesBatchElements()
+        {
+            var manager = E3DCopilot.Core.Tools.UndoRedoManager.Instance;
+            manager.Clear();
+            // Simulated 环境内置 PIPE-001；记录一个创建批次
+            manager.RecordCreation("test", "测试批次", new[] { "PIPE-001", "NOT-EXIST-XYZ" });
+            Assert.AreEqual(1, manager.CreationCount);
+
+            // undo_create 走真实 handler（dispatcher design delete_element）
+            var executor = E3DCopilot.Core.Tools.ToolExecutor.CreateDefault(_dispatcher, null);
+            var tr = await executor.ExecuteAsync("undo_redo", "{\"action\": \"undo_create\"}");
+
+            // PIPE-001 删除成功；NOT-EXIST 失败被如实汇报
+            StringAssert.Contains("删除", tr.Text ?? "");
+            manager.Clear();
+        }
+
     }
 }

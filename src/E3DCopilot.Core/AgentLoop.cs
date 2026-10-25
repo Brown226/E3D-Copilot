@@ -711,7 +711,10 @@ namespace E3DCopilot.Core
                     ToolName = call.Name,
                     Args = call.Arguments,
                     Description = $"{call.Name}({call.Arguments})"
-                        + (isBatch ? " [batch]" : "")
+                        + (isBatch ? " [batch]" : ""),
+                    // 富预览（write_file 等实现 IApprovalPreview 的工具）：审批卡片直接展示 diff
+                    Preview = (_executor.GetHandler(call.Name) as IApprovalPreview)
+                        ?.GetApprovalPreview(call.Arguments)
                 };
 
                 if (_controller != null)

@@ -21,6 +21,10 @@ namespace E3DCopilot.Core.Tools
         private readonly Stack<UndoEntry> _redoStack = new Stack<UndoEntry>();
         private readonly object _lock = new object();
 
+        // ── 创建批次栈：cad_import / design 建模类工具的"一键批量删除"撤销 ──
+        private readonly Stack<CreationBatch> _creationStack = new Stack<CreationBatch>();
+        private const int MaxCreationBatches = 20;
+
         private const int MaxHistory = 50;
 
         /// <summary>
@@ -105,8 +109,49 @@ namespace E3DCopilot.Core.Tools
             {
                 _undoStack.Clear();
                 _redoStack.Clear();
+                _creationStack.Clear();
             }
         }
+
+        // ════════════════════════════════════════
+        //  创建批次（cad_import 等批量建模的撤销）
+        // ════════════════════════════════════════
+
+        /// <summary>记录一次批量创建（元素创建成功后调用，undo_create 可整批删除）</summary>
+        public void RecordCreation(string toolName, string description, System.Collections.Generic.IEnumerable<string> elementNames)
+        {
+            if (elementNames == null) return;
+            lock (_lock)
+            {
+                _creationStack.Push(new CreationBatch
+                {
+                    ToolName = toolName,
+                    Description = description,
+                    Elements = new System.Collections.Generic.List<string>(elementNames),
+                    Timestamp = DateTime.Now
+                });
+                while (_creationStack.Count > MaxCreationBatches)
+                {
+                    var temp = new Stack<CreationBatch>();
+                    var arr = _creationStack.ToArray();
+                    for (int i = arr.Length - 2; i >= 0; i--) temp.Push(arr[i]);
+                    _creationStack.Clear();
+                    while (temp.Count > 0) _creationStack.Push(temp.Pop());
+                }
+            }
+        }
+
+        public CreationBatch PeekCreation()
+        {
+            lock (_lock) { return _creationStack.Count > 0 ? _creationStack.Peek() : null; }
+        }
+
+        public CreationBatch PopCreation()
+        {
+            lock (_lock) { return _creationStack.Count > 0 ? _creationStack.Pop() : null; }
+        }
+
+        public int CreationCount { get { lock (_lock) { return _creationStack.Count; } } }
     }
 
     public class UndoEntry
@@ -116,6 +161,14 @@ namespace E3DCopilot.Core.Tools
         public string OldValue { get; set; }
         public string NewValue { get; set; }
         public string ToolName { get; set; }
+        public DateTime Timestamp { get; set; }
+    }
+    /// <summary>一次批量创建的记录（cad_import / design 建模），undo_create 时整批删除</summary>
+    public class CreationBatch
+    {
+        public string ToolName { get; set; }
+        public string Description { get; set; }
+        public System.Collections.Generic.List<string> Elements { get; set; }
         public DateTime Timestamp { get; set; }
     }
 }

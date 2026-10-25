@@ -57,6 +57,14 @@ export interface PendingApproval {
   description?: string;
   /** 来源 Agent 名称 */
   agentName?: string;
+  /** 审批富预览（write_file 的前后 diff 等） */
+  preview?: {
+    fileDiff?: {
+      fileName: string;
+      oldText: string | null;
+      newText: string;
+    };
+  };
 }
 
 /** AI 主动提问（对齐 Reasonix AskRequest） */

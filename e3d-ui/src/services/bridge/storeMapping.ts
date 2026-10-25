@@ -232,6 +232,7 @@ export function registerStoreMappings(bridgeInstance: Bridge): void {
           args: parsedArgs,
           description: p.description,
           agentName: p.agentName,
+          preview: p.preview,
         }, tabId);
         break;
       }

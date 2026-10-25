@@ -13,6 +13,13 @@ namespace E3DCopilot.Core.Services.Cad
     public class PmlScriptGenerator
     {
         /// <summary>
+        /// 最近一次 GenerateBuildingScript 创建的元素名清单（撤销用）。
+        /// 写工具串行执行，无并发问题；每次 Generate* 开头重置。
+        /// </summary>
+        public System.Collections.Generic.List<string> LastCreatedElementNames { get; }
+            = new System.Collections.Generic.List<string>();
+
+        /// <summary>
         /// 各建筑元素类型使用的默认规格名（可由 specifications 参数覆盖）。
         /// 注意：这些是项目约定的默认混凝土规格；若目标 E3D 库不存在对应规格，请通过 specifications 传入实际规格名。
         /// </summary>
@@ -48,6 +55,7 @@ namespace E3DCopilot.Core.Services.Cad
         /// <returns>PML 脚本字符串</returns>
         public string GenerateBuildingScript(List<BuildingElement> elements, string siteName = "IMPORT_SITE", string zoneName = "IMPORT_ZONE", Dictionary<BuildingElementType, string> specifications = null, string databaseName = null, string owner = null)
         {
+            LastCreatedElementNames.Clear();
             var sb = new StringBuilder();
 
             // 头部和设置。
@@ -117,6 +125,7 @@ namespace E3DCopilot.Core.Services.Cad
                 return;
 
             string wallName = $"WALL_{counter:D4}";
+            LastCreatedElementNames.Add(wallName);
             counter++;
 
             // 获取墙体参数
@@ -155,6 +164,7 @@ namespace E3DCopilot.Core.Services.Cad
                     var end = wall.Points[(i + 1) % wall.Points.Count];
 
                     string segmentName = $"{wallName}_S{i + 1:D2}";
+                        LastCreatedElementNames.Add(segmentName);
 
                     sb.AppendLine($"NEW STWALL /{segmentName}");
                     sb.AppendLine($"  DESP {thickness:F2} {height:F2}");
@@ -176,6 +186,7 @@ namespace E3DCopilot.Core.Services.Cad
                 return;
 
             string columnName = $"COL_{counter:D4}";
+            LastCreatedElementNames.Add(columnName);
             counter++;
 
             var position = column.Points[0];
@@ -209,6 +220,7 @@ namespace E3DCopilot.Core.Services.Cad
                 return;
 
             string beamName = $"BEAM_{counter:D4}";
+            LastCreatedElementNames.Add(beamName);
             counter++;
 
             var start = beam.Points[0];

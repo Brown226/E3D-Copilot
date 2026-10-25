@@ -24,4 +24,14 @@ namespace E3DCopilot.Core.Tools
         /// <summary>执行工具</summary>
         Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default);
     }
+
+    /// <summary>
+    /// 审批预览（可选实现）：工具需要用户审批时，为审批卡片提供富预览数据
+    /// （如 write_file 的改动前后 diff）。AgentLoop 在发射审批事件前调用。
+    /// </summary>
+    public interface IApprovalPreview
+    {
+        /// <summary>返回随审批事件下发的预览数据（null = 无预览）</summary>
+        object GetApprovalPreview(string args);
+    }
 }

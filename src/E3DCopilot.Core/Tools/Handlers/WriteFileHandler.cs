@@ -19,7 +19,7 @@ namespace E3DCopilot.Core.Tools.Handlers
     ///   - 默认只允许写入项目目录
     ///   - 禁止覆盖 .exe, .dll 等二进制文件
     /// </summary>
-    public class WriteFileHandler : IToolHandler
+    public class WriteFileHandler : IToolHandler, IApprovalPreview
     {
         private readonly IEventSink _sink;
 
@@ -77,6 +77,38 @@ namespace E3DCopilot.Core.Tools.Handlers
         /// 写前快照回调（由 CopilotController 注入 CheckpointManager.SnapshotFile）
         /// </summary>
         internal static Func<string, string> OnBeforeWrite { get; set; }
+
+        /// <summary>
+        /// 审批预览：覆盖已有文件时带 old/new diff，让用户放行前看清改动
+        /// </summary>
+        public object GetApprovalPreview(string args)
+        {
+            try
+            {
+                var json = Newtonsoft.Json.Linq.JObject.Parse(args);
+                string path = json.Value<string>("path");
+                string content = json.Value<string>("content") ?? "";
+                if (string.IsNullOrWhiteSpace(path)) return null;
+
+                string fullPath = ResolvePath(path);
+                if (fullPath == null) return null;
+
+                string oldText = File.Exists(fullPath) ? File.ReadAllText(fullPath) : null;
+                return new
+                {
+                    fileDiff = new
+                    {
+                        fileName = path,
+                        oldText,
+                        newText = content
+                    }
+                };
+            }
+            catch
+            {
+                return null; // 预览失败不阻塞审批流程
+            }
+        }
 
         public async Task<ToolResult> ExecuteAsync(string args, CancellationToken ct = default)
         {

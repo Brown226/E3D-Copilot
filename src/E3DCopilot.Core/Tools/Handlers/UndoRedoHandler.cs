@@ -35,8 +35,8 @@ namespace E3DCopilot.Core.Tools.Handlers
   ""properties"": {
     ""action"": {
       ""type"": ""string"",
-      ""enum"": [""undo"", ""redo"", ""status""],
-      ""description"": ""undo=撤销最近一次修改, redo=重做, status=查看历史""
+      ""enum"": [""undo"", ""redo"", ""undo_create"", ""status""],
+      ""description"": ""undo=撤销最近一次属性修改, redo=重做, undo_create=删除最近一次批量创建的全部元素（cad_import/design 建模后悔药）, status=查看历史""
     },
     ""count"": {
       ""type"": ""integer"",
@@ -66,6 +66,9 @@ namespace E3DCopilot.Core.Tools.Handlers
                     case "redo":
                         return await RedoAsync(manager, count, ct);
 
+                    case "undo_create":
+                        return await UndoCreateAsync(manager, ct);
+
                     case "status":
                         return GetStatus(manager);
 
@@ -77,6 +80,39 @@ namespace E3DCopilot.Core.Tools.Handlers
             {
                 return ToolResult.Fail($"UndoRedo failed: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 撤销最近一次批量创建：逐个删除该批次记录的所有元素。
+        /// cad_import 一次可能建数百元素，方向全错时这是唯一可行的整体回退。
+        /// </summary>
+        private async Task<ToolResult> UndoCreateAsync(UndoRedoManager manager, CancellationToken ct)
+        {
+            var batch = manager.PopCreation();
+            if (batch == null)
+                return ToolResult.Fail("没有可撤销的创建批次");
+
+            int deleted = 0, failed = 0;
+            var failedNames = new System.Text.StringBuilder();
+            foreach (var name in batch.Elements)
+            {
+                ct.ThrowIfCancellationRequested();
+                var deleteArgs = Newtonsoft.Json.JsonConvert.SerializeObject(new
+                {
+                    action = "delete_element",
+                    element = name
+                });
+                var r = await _dispatcher.ExecuteAsync("design", deleteArgs);
+                bool ok = r != null && r.Contains("\"deleted\": true");
+                if (ok) deleted++;
+                else { failed++; if (failedNames.Length > 0) failedNames.Append(", "); failedNames.Append(name); }
+            }
+
+            string summary = $"已撤销创建批次「{batch.Description}」：删除 {deleted} 个元素" +
+                (failed > 0 ? $"，失败 {failed} 个（{failedNames}）——失败的元素可能已被手动删除" : "");
+            return failed == deleted && deleted == 0
+                ? ToolResult.Fail(summary)
+                : ToolResult.Ok(summary, new { deleted, failed, batch = batch.Description });
         }
 
         private async Task<ToolResult> UndoAsync(UndoRedoManager manager, int count, CancellationToken ct)

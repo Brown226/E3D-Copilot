@@ -256,6 +256,12 @@ namespace E3DCopilot.Core.Tools.Handlers
                         return ToolResult.Fail(sbFail.ToString());
                     }
 
+                    // 创建批次入撤销栈：undo_create 可一键批量删除本轮建的所有元素
+                    if (_pmlGenerator.LastCreatedElementNames.Count > 0)
+                        UndoRedoManager.Instance.RecordCreation("cad_import",
+                            $"CAD 导入（{elements.Count} 元素，落位 {owner ?? "新建 SITE/ZONE"}）",
+                            _pmlGenerator.LastCreatedElementNames);
+
                     var sbExec = new StringBuilder();
                     sbExec.AppendLine($"✅ CAD→E3D 导入已执行完成");
                     sbExec.AppendLine($"  线段数: {mergedSegments.Count}");

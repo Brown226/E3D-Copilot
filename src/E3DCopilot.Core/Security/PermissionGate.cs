@@ -22,6 +22,8 @@ namespace E3DCopilot.Core.Security
         public string ToolName { get; set; }
         public string Args { get; set; }
         public string Description { get; set; }
+        /// <summary>审批预览（IApprovalPreview 产出，如 write_file 的前后 diff；null = 无）</summary>
+        public object Preview { get; set; }
 
         private readonly TaskCompletionSource<ApprovalResult> _tcs
             = new TaskCompletionSource<ApprovalResult>();
