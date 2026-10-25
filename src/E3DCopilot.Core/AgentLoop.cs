@@ -1089,6 +1089,20 @@ namespace E3DCopilot.Core
             int charBudget = (int)(ctxWindow * 0.4);
             var history = session.GetMessagesByBudget(charBudget);
 
+            // ── 历史图片剥离：只保留最近 2 条带图消息（多模态 token 膨胀控制）──
+            // 每张图数百~数千 token，全量历史重发会让多图对话的 prompt 指数膨胀。
+            // 对齐主流 Agent 实践：旧图丢弃，用户要看重发即可。
+            {
+                int imageBudget = 2;
+                for (int i = history.Count - 1; i >= 0; i--)
+                {
+                    var m = history[i];
+                    if (m.Images == null || m.Images.Length == 0) continue;
+                    if (imageBudget > 0) { imageBudget--; continue; }
+                    m.Images = null;
+                }
+            }
+
             // 消息规范化（对齐 Reasonix NormalizeMessages）
             // 修复 tool_calls/tool 配对、截断 JSON 参数、孤立 tool 消息
             history = MessageNormalizer.Normalize(history);

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using E3DCopilot.Core.Config;
+using E3DCopilot.Core.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -48,14 +49,55 @@ namespace E3DCopilot.Core.Providers
             // 该字段此前从未被赋值（编译器一直报 CS0649），导致 config.json 里的
             // Effort / ReasoningProtocol 永远不生效，请求固定用硬编码的 "high" / "deepseek"。
             _configProvider = configProvider;
-            
+
             // 强制启用 TLS 1.2（.NET 4.8 在某些系统上默认不包含，导致 HTTPS 连接失败）
             System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
-            
+
+            // 超时尊重配置（推理模型思考可达数分钟，120s 硬编码会把长思考掐断）
+            int timeoutMs = _configProvider?.TimeoutMs > 0 ? _configProvider.TimeoutMs : 120000;
             _http = new HttpClient
             {
-                Timeout = TimeSpan.FromMilliseconds(120000)
+                Timeout = TimeSpan.FromMilliseconds(timeoutMs)
             };
+        }
+
+        /// <summary>
+        /// 从 /v1/models 自动发现当前模型的真实上下文窗口。
+        /// 配置里 ContextWindow <= 0 时以服务端返回为准（context_length / max_input_tokens），
+        /// 回写内存中的 ProviderConfig —— BuildRequest 预算窗口与 ContextCompactor 阈值均依赖该值。
+        /// </summary>
+        public async Task DiscoverContextWindowAsync(CopilotConfig.ProviderConfig config, string model = null)
+        {
+            try
+            {
+                string url = $"{_baseUrl}/models";
+                using (var resp = await _http.GetAsync(url, new CancellationTokenSource(8000).Token))
+                {
+                    if (!resp.IsSuccessStatusCode) return;
+                    string body = await resp.Content.ReadAsStringAsync();
+                    var root = JObject.Parse(body);
+                    string target = model ?? _model;
+                    foreach (var m in root["models"] as JArray ?? root["data"] as JArray ?? new JArray())
+                    {
+                        if (!string.Equals(m["id"]?.Value<string>(), target, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        int? window = m["context_length"]?.Type == JTokenType.Integer ? m["context_length"].Value<int>()
+                            : m["context_window"]?.Type == JTokenType.Integer ? m["context_window"].Value<int>()
+                            : m["max_input_tokens"]?.Type == JTokenType.Integer ? m["max_input_tokens"].Value<int>()
+                            : (int?)null;
+                        if (window > 0)
+                        {
+                            config.ContextWindow = window.Value;
+                            CopilotLogger.Info("ContextWindow 自动发现: {0} → {1}", target, window.Value);
+                        }
+                        return;
+                    }
+                }
+            }
+            catch
+            {
+                // 发现失败保持配置现状，静默降级
+            }
         }
         
         /// <summary>
@@ -111,6 +153,9 @@ namespace E3DCopilot.Core.Providers
                         ["stream"] = true,
                         ["temperature"] = request.Temperature,
                         ["max_tokens"] = request.MaxTokens,
+                        // OpenAI 兼容流式默认不回传 usage，必须显式请求。
+                        // ContextCompactor 依赖真实 prompt_tokens 触发压缩，缺了就永远走字符估算。
+                        ["stream_options"] = new JObject { ["include_usage"] = true },
                         ["messages"] = new JArray(request.Messages.Select(SerializeMessage))
                     };
 
@@ -401,18 +446,17 @@ namespace E3DCopilot.Core.Providers
                         ["arguments"] = tc.Arguments
                     }
                 }));
-                // When there are tool_calls, content should be null (OpenAI spec)
-                msg["content"] = null;
+                // OpenAI 规范允许 content 与 tool_calls 并存；保留 assistant 的中间陈述文本
+                // （下一轮模型才能看到自己「边说边做」的过程，丢弃会破坏多轮连贯性）
+                msg["content"] = string.IsNullOrEmpty(m.Content) ? null : m.Content;
             }
 
-            // DeepSeek 等推理模型要求多轮回传 assistant 的 reasoning_content
-            if (m.Role == MessageRole.Assistant
-                && !string.IsNullOrEmpty(m.ReasoningContent))
-            {
-                msg["reasoning_content"] = m.ReasoningContent;
-            }
+            // 历史 reasoning_content 不回传：DeepSeek/Qwen3 官方均在输入侧忽略它，
+            // 回传只会白白重发整段思考（多轮场景 token 翻倍）。最新一条的思考
+            // 已通过 Reasoning 通道实时呈现给用户，模型无需再看到自己的旧思考。
+
             // User/System messages with images: use array format for vision models
-            else if ((m.Role == MessageRole.User || m.Role == MessageRole.System) 
+            if ((m.Role == MessageRole.User || m.Role == MessageRole.System)
                      && m.Images != null && m.Images.Length > 0)
             {
                 var contentArray = new JArray();

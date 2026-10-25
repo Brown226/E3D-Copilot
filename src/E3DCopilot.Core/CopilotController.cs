@@ -359,7 +359,18 @@ namespace E3DCopilot.Core
                 CopilotLogger.Warn("Provider 创建失败，降级为 OpenAI 兼容模式: " + ex.Message);
                 provider = new VllmProvider(providerConfig.BaseUrl, modelName, ProviderRegistry.ResolveApiKey(providerConfig), providerConfig);
             }
-            
+
+            // ── ContextWindow 自动发现：配置为 0 时从 /v1/models 取服务端真实值 ──
+            // 预算窗口（BuildRequest）与压缩阈值（ContextCompactor）都依赖该值，
+            // 缺省时按 32k 假设会严重低估可用上下文。
+            if (provider is VllmProvider vllmProvider && providerConfig.ContextWindow <= 0)
+            {
+                var cfgSnapshot = providerConfig;
+                var modelSnapshot = modelName;
+                Task.Run(async () =>
+                    await vllmProvider.DiscoverContextWindowAsync(cfgSnapshot, modelSnapshot));
+            }
+
             // ── 关键修复：提前创建 BridgeEventSink ──
             // 修复 AskUserHandler 等工具的 _sink 为 null 的 bug。
             // 之前 sink 参数为 null（调用方 CopilotAddinBoot/AddinBoot 未传入），

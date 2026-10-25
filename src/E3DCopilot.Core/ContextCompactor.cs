@@ -628,14 +628,16 @@ namespace E3DCopilot.Core
 
         private int EstimatePromptTokens(CopilotSession session)
         {
-            // 优先使用真实 usage
+            // 优先使用真实 usage（依赖请求带 stream_options.include_usage）
             if (_lastUsage != null && _lastUsage.PromptTokens > 0)
                 return _lastUsage.PromptTokens;
-            // 回退：字符估算
-            int totalChars = 0;
+            // 回退：逐消息 CJK 感知估算（MsgChars 内部按 rune/bytes 双口径取大值，
+            // 中文 ≈ 1 rune/token）。此前用 totalChars * 0.25 把中文低估约 4 倍，
+            // 压缩触发严重滞后。
+            int total = 0;
             foreach (var m in session.Messages)
-                totalChars += MsgChars(m);
-            return (int)(totalChars * FallbackTokPerChar);
+                total += MsgChars(m);
+            return total;
         }
 
         private double TokPerChar(CopilotSession session)
