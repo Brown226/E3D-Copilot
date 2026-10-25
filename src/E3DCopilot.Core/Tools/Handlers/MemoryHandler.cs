@@ -273,7 +273,7 @@ namespace E3DCopilot.Core.Tools.Handlers
             string action = string.IsNullOrEmpty(id) ? "Remembered" : "Updated";
             string msg = $"{action}: {saved.Title} [{saved.Id}]";
 
-            _sink?.Emit(CopilotEvent.Notice(msg));
+            _sink?.Emit(CopilotEvent.NoticeSilent(msg));
 
             return ToolResult.Ok(msg, new
             {
@@ -300,7 +300,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                 return ToolResult.Fail($"Memory '{id}' not found");
 
             string msg = $"Forgotten (archived): {id}";
-            _sink?.Emit(CopilotEvent.Notice(msg));
+            _sink?.Emit(CopilotEvent.NoticeSilent(msg));
 
             return ToolResult.Ok(msg, new { operation = "forget", id, archived = true });
         }

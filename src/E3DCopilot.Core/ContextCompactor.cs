@@ -123,7 +123,7 @@ namespace E3DCopilot.Core
             if (promptTokens >= softThreshold && promptTokens < snipThreshold && !_softCompactNoticed)
             {
                 _softCompactNoticed = true;
-                _sink?.Emit(CopilotEvent.Notice(
+                _sink?.Emit(CopilotEvent.NoticeSilent(
                     $"上下文已达窗口的 {Percent(promptTokens, contextWindow)}%，将在 {Percent(compactRatio, 1.0)}% 时自动清理"));
                 return;
             }
@@ -135,7 +135,7 @@ namespace E3DCopilot.Core
                 if (stats.Results > 0)
                 {
                     int savedTokens = (int)(stats.SavedChars * TokPerChar(session));
-                    _sink?.Emit(CopilotEvent.Notice(
+                    _sink?.Emit(CopilotEvent.NoticeSilent(
                         $"已截断 {stats.Results} 个过期工具结果（估计节省 ~{savedTokens} tokens）"));
                 }
                 return;
@@ -159,7 +159,7 @@ namespace E3DCopilot.Core
             if (pruneStats.Results > 0)
             {
                 int savedTokens = (int)(pruneStats.SavedChars * TokPerChar(session));
-                _sink?.Emit(CopilotEvent.Notice(
+                _sink?.Emit(CopilotEvent.NoticeSilent(
                     $"已清除 {pruneStats.Results} 个过期工具结果（估计节省 ~{savedTokens} tokens）"));
 
                 // Prune 后重新估算，若已降到阈值以下则跳过 Summary
@@ -174,7 +174,7 @@ namespace E3DCopilot.Core
             bool ok = await CompactAsync(session, "auto", force, ct);
             if (!ok)
             {
-                _sink?.Emit(CopilotEvent.Notice("上下文清理暂时跳过"));
+                _sink?.Emit(CopilotEvent.NoticeSilent("上下文清理暂时跳过"));
                 return;
             }
 
@@ -183,7 +183,7 @@ namespace E3DCopilot.Core
             if (_consecutiveCompacts >= 2)
             {
                 _compactStuck = true;
-                _sink?.Emit(CopilotEvent.Notice(
+                _sink?.Emit(CopilotEvent.NoticeSilent(
                     $"自动上下文清理已暂停：context_window={contextWindow} 过小，" +
                     "系统提示 + 单轮对话已超阈值。建议增大 context_window 或减少工具输出。"));
             }
@@ -368,7 +368,7 @@ namespace E3DCopilot.Core
             {
                 // 机械折叠回退
                 summary = MechanicalFoldDigest(fold.Count, archived);
-                _sink?.Emit(CopilotEvent.Notice("摘要生成失败，已执行机械折叠"));
+                _sink?.Emit(CopilotEvent.NoticeSilent("摘要生成失败，已执行机械折叠"));
             }
 
             // 重组会话：pinned prefix + kept + summary + tail
@@ -389,7 +389,7 @@ namespace E3DCopilot.Core
             msgs.Clear();
             msgs.AddRange(compacted);
 
-            _sink?.Emit(CopilotEvent.Notice(
+            _sink?.Emit(CopilotEvent.NoticeSilent(
                 $"上下文已压缩: {fold.Count} 条消息 → 摘要, {msgs.Count - head - kept.Count - 1} 条原样保留"));
             return true;
         }

@@ -263,7 +263,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                     }
 
                     string summary = $"Grep: '{pattern}' → {matches.Count} matches";
-                    _sink?.Emit(CopilotEvent.Notice(summary));
+                    _sink?.Emit(CopilotEvent.NoticeSilent(summary));
 
                     return ToolResult.Ok(sb.ToString().TrimEnd(), new
                     {

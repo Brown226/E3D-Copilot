@@ -208,6 +208,8 @@ export interface QuestionAnswerItem {
 
 export interface NoticePayload {
   text: string;
+  /** silent=不显示，info=普通提示，warn=醒目提示 */
+  level?: 'silent' | 'info' | 'warn' | string;
 }
 
 export interface ErrorPayload {

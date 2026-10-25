@@ -64,7 +64,7 @@ namespace E3DCopilot.Core.Agents
             _blockedRepeatCount = 0;
 
             CopilotLogger.Info("GoalController: 启动目标 '{0}'", Truncate(_objective, 100));
-            _sink?.Emit(CopilotEvent.Notice($"🎯 Goal 模式已启动: {_objective}"));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"🎯 Goal 模式已启动: {_objective}"));
         }
 
         /// <summary>
@@ -79,7 +79,7 @@ namespace E3DCopilot.Core.Agents
                 ? $"Goal 模式已停止: {reason}"
                 : "Goal 模式已停止";
             CopilotLogger.Info("GoalController: {0} (执行了 {1} 轮)", msg, _turnCount);
-            _sink?.Emit(CopilotEvent.Notice($"🏁 {msg}（共 {_turnCount} 轮）"));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"🏁 {msg}（共 {_turnCount} 轮）"));
         }
 
         // ═══════════════════════════════════════════════════════════

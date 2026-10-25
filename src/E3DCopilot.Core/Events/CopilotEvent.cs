@@ -37,6 +37,17 @@ namespace E3DCopilot.Core.Events
     /// <summary>
     /// 统一事件，贯穿 AgentLoop → Controller → UI
     /// </summary>
+    /// <summary>
+    /// Notice 事件的显示级别。
+    /// silent = 只写日志，前端不显示；info = 普通 Toast；warn = 醒目 Toast。
+    /// </summary>
+    public static class NoticeLevel
+    {
+        public const string Silent = "silent";
+        public const string Info = "info";
+        public const string Warn = "warn";
+    }
+
     public class CopilotEvent
     {
         public EventKind Kind { get; set; }
@@ -104,8 +115,27 @@ namespace E3DCopilot.Core.Events
         public static CopilotEvent Error(string message) =>
             new CopilotEvent { Kind = EventKind.Error, Text = message };
 
+        /// <summary>
+        /// 通用通知。默认 level = "info"，前端会弹 Toast。
+        /// </summary>
         public static CopilotEvent Notice(string message) =>
-            new CopilotEvent { Kind = EventKind.Notice, Text = message };
+            new CopilotEvent { Kind = EventKind.Notice, Text = message, Data = NoticeLevel.Info };
+
+        /// <summary>
+        /// 静默通知：只进日志/trace，前端不弹 Toast。
+        ///
+        /// 用于工具执行摘要、技能加载、步骤签核这类「内部机制」信息 —— 它们原本
+        /// 全都弹成右上角横幅，一次任务能弹十几条，把界面糊住了。真正需要用户
+        /// 知道的（审批超时、错误、超限、恢复失败）仍走 Notice()。
+        /// </summary>
+        public static CopilotEvent NoticeSilent(string message) =>
+            new CopilotEvent { Kind = EventKind.Notice, Text = message, Data = NoticeLevel.Silent };
+
+        /// <summary>
+        /// 需要用户注意的通知：前端弹 warning 样式 Toast。
+        /// </summary>
+        public static CopilotEvent NoticeWarn(string message) =>
+            new CopilotEvent { Kind = EventKind.Notice, Text = message, Data = NoticeLevel.Warn };
 
         public static CopilotEvent RetryEvent(string message, int attempt) =>
             new CopilotEvent { Kind = EventKind.Retry, Text = $"{message} (第 {attempt} 次尝试)" };

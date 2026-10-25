@@ -254,7 +254,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                     output = sb.ToString().TrimEnd();
                 }
 
-                _sink?.Emit(CopilotEvent.Notice($"TodoWrite: {completed}/{_todos.Count} done"));
+                _sink?.Emit(CopilotEvent.NoticeSilent($"TodoWrite: {completed}/{_todos.Count} done"));
 
                 return ToolResult.Ok(output, new
                 {

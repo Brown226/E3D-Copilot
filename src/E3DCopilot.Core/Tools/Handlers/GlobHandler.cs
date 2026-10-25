@@ -232,7 +232,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                     }
 
                     string summary = $"Glob: '{pattern}' → {results.Count} files";
-                    _sink?.Emit(CopilotEvent.Notice(summary));
+                    _sink?.Emit(CopilotEvent.NoticeSilent(summary));
 
                     return ToolResult.Ok(sb.ToString().TrimEnd(), new
                     {

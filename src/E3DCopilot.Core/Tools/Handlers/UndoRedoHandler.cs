@@ -130,7 +130,7 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (undone == 0)
                 return ToolResult.Ok("没有可撤销的操作。", new { undoAvailable = manager.UndoCount });
 
-            _sink?.Emit(CopilotEvent.Notice($"Undo: {undone} operation(s) reverted"));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"Undo: {undone} operation(s) reverted"));
             return ToolResult.Ok(sb.ToString().TrimEnd(), new
             {
                 undone,
@@ -190,7 +190,7 @@ namespace E3DCopilot.Core.Tools.Handlers
             if (redone == 0)
                 return ToolResult.Ok("没有可重做的操作。", new { redoAvailable = manager.RedoCount });
 
-            _sink?.Emit(CopilotEvent.Notice($"Redo: {redone} operation(s) re-applied"));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"Redo: {redone} operation(s) re-applied"));
             return ToolResult.Ok(sb.ToString().TrimEnd(), new
             {
                 redone,

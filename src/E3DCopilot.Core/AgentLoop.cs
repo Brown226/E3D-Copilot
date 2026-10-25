@@ -40,7 +40,19 @@ namespace E3DCopilot.Core
         private readonly Logging.ConversationTracer _tracer;
         private readonly ContextCompactor _compactor;
 
-        private int MaxSteps => _config?.Ui?.MaxSteps > 0 ? _config.Ui.MaxSteps : 20;
+        /// <summary>
+        /// 步数上限。0（或负）= 不限，一直跑到任务完成。
+        ///
+        /// 不设硬上限是有意的：真实建模任务（解析图纸 → 多批建模 → 校验 → 回写）
+        /// 常常需要几十步，20 步会在建模尚未执行时就把任务截断。
+        /// 不设上限并不等于可能死循环 —— 下列机制仍会终止或纠偏：
+        ///   - Storm Breaker：同参数连续失败 3 次 → 强制注入换策略提示
+        ///   - 重复成功守卫：同参数写操作成功 2 次后直接拦截
+        ///   - 进度守卫：有 todo 时连续 16 轮无新进度 → 暂停并终止本轮
+        ///   - HangWatchdog：120s 无活动 → 取消本次操作
+        ///   - 用户随时可点取消（CancellationToken）
+        /// </summary>
+        private int MaxSteps => _config?.Ui?.MaxSteps ?? 0;
 
         // ── Storm Breaker 状态（由 CopilotController 跨 turn 持久化注入） ──
         public string StormSig { get; set; } = "";
@@ -289,14 +301,25 @@ namespace E3DCopilot.Core
 
             try
             {
-            for (int step = 0; step < MaxSteps; step++)
+            // MaxSteps = 0 表示不设上限，直到模型不再调用工具（任务完成）
+            for (int step = 0; MaxSteps <= 0 || step < MaxSteps; step++)
             {
                 ct.ThrowIfCancellationRequested();
 
+                // ── 进度守卫暂停：连续多轮无新进度时终止，避免无上限带来的原地打转 ──
+                if (_progressGuard != null && _progressGuard.IsPaused)
+                {
+                    _sink.Emit(CopilotEvent.NoticeWarn(
+                        $"进度守卫：连续 {_progressGuard.NoProgressRounds} 轮无新进度，已终止本轮。请检查任务方向后重试。"));
+                    _tracer?.RecordSystemEvent($"进度守卫终止（连续 {_progressGuard.NoProgressRounds} 轮无进度）");
+                    traceOutcome = "paused_no_progress";
+                    return;
+                }
+
                 try
                 {
-                    // ── Grace Round: 最大步数前注入收尾 nudge（对齐 Reasonix） ──
-                    if (step == MaxSteps - 1)
+                    // ── Grace Round: 仅在显式配置了上限时，于最后一步前注入收尾 nudge ──
+                    if (MaxSteps > 0 && step == MaxSteps - 1)
                     {
                         session.AddSystemMessage(
                             "You are about to reach the maximum step limit. " +
@@ -313,7 +336,7 @@ namespace E3DCopilot.Core
                             session.AddSystemMessage(
                                 $"[user steer] The user has provided mid-run guidance: \"{steer}\"\n" +
                                 "Please adjust your approach accordingly.");
-                            _sink?.Emit(CopilotEvent.Notice($"已注入用户引导: {steer}"));
+                            _sink?.Emit(CopilotEvent.NoticeSilent($"已注入用户引导: {steer}"));
                         }
                     }
 
@@ -368,7 +391,7 @@ namespace E3DCopilot.Core
                         {
                             session.AddSystemMessage(
                                 "Before giving a final answer, address the missing items: " + readinessFailure);
-                            _sink?.Emit(CopilotEvent.Notice($"就绪检查: {readinessFailure}"));
+                            _sink?.Emit(CopilotEvent.NoticeSilent($"就绪检查: {readinessFailure}"));
                             await MaybeCompactAsync(session, ct);
                             continue;
                         }
@@ -407,8 +430,12 @@ namespace E3DCopilot.Core
                 }
             }
 
-            _sink.Emit(CopilotEvent.Notice($"已达到最大步数限制 {MaxSteps}"));
-            traceOutcome = "max_steps";
+            // 只有显式配置了上限才会走到这里（不设上限时只能由 return 退出）
+            if (MaxSteps > 0)
+            {
+                _sink.Emit(CopilotEvent.NoticeWarn($"已达到最大步数限制 {MaxSteps}"));
+                traceOutcome = "max_steps";
+            }
             }
             finally
             {
@@ -572,7 +599,7 @@ namespace E3DCopilot.Core
             if (string.IsNullOrWhiteSpace(call.Name))
             {
                 _sink?.Emit(CopilotEvent.ToolStart(call.Id, call.Name ?? "unknown", call.Arguments));
-                _sink?.Emit(CopilotEvent.Notice($"已跳过空工具名称的调用"));
+                _sink?.Emit(CopilotEvent.NoticeSilent($"已跳过空工具名称的调用"));
                 _sink?.Emit(CopilotEvent.ToolFail(call.Id, "empty name"));
                 return ("已跳过: 工具名称为空", "empty name");
             }
@@ -637,7 +664,7 @@ namespace E3DCopilot.Core
                     // Warning 级别：不阻止执行，但通知前端显示警告
                     if (validation.Level == PmlValidationLevel.Warning)
                     {
-                        _sink?.Emit(CopilotEvent.Notice($"[PML 预检警告] {validation.Message}"));
+                        _sink?.Emit(CopilotEvent.NoticeWarn($"[PML 预检警告] {validation.Message}"));
                     }
                 }
             }
@@ -761,7 +788,7 @@ namespace E3DCopilot.Core
                     if (!string.IsNullOrEmpty(progressMsg))
                     {
                         session.AddSystemMessage(progressMsg);
-                        _sink?.Emit(CopilotEvent.Notice(progressMsg.Contains("PAUSED")
+                        _sink?.Emit(CopilotEvent.NoticeWarn(progressMsg.Contains("PAUSED")
                             ? "进度守卫: 连续 16 轮无新进度,已暂停"
                             : "进度守卫: 连续 8 轮无新进度,已注入重评估提示"));
                         _tracer?.RecordSystemEvent(progressMsg.Contains("PAUSED")
@@ -861,7 +888,7 @@ namespace E3DCopilot.Core
             results[0] = results[0] + $"\n\n[循环守卫] {subject} 已连续 {StormCount} 次因相同错误失败。重新发送此调用（即使修改措辞）也不会有帮助。请更换策略：如果参数被截断，请在单次调用中写入更少内容；否则修正参数、使用其他工具，或在最终回复中解释阻塞原因。";
 
             _tracer?.RecordSystemEvent($"循环守卫: {shortMsg} 已连续 {StormCount} 次因相同方式失败");
-            _sink.Emit(CopilotEvent.Notice(
+            _sink.Emit(CopilotEvent.NoticeWarn(
                 $"循环守卫: {shortMsg} 已连续 {StormCount} 次因相同方式失败 — 提示模型更换策略"));
         }
 
@@ -935,7 +962,7 @@ namespace E3DCopilot.Core
                     string errMsg = ex.Message;
                     if (errMsg != null && errMsg.Length > 100)
                         errMsg = errMsg.Substring(0, 100);
-                    _sink.Emit(CopilotEvent.Notice($"LLM 流式中断: {ex.GetType().Name}: {errMsg}"));
+                    _sink.Emit(CopilotEvent.NoticeSilent($"LLM 流式中断: {ex.GetType().Name}: {errMsg}"));
                     return (text, reasoningText, toolCalls, true, partialToolStarted);
                 }
                 throw;
@@ -949,7 +976,7 @@ namespace E3DCopilot.Core
                 if (reasoningCalls.Count > 0)
                 {
                     toolCalls.AddRange(reasoningCalls);
-                    _sink.Emit(CopilotEvent.Notice(
+                    _sink.Emit(CopilotEvent.NoticeSilent(
                         $"已从推理内容中提取 {reasoningCalls.Count} 个工具调用（推理回退模式）"));
                 }
             }
@@ -963,7 +990,7 @@ namespace E3DCopilot.Core
                 {
                     toolCalls.AddRange(xmlCalls);
                     text = Providers.ToolInvocationParser.StripToolInvocationTags(text);
-                    _sink.Emit(CopilotEvent.Notice(
+                    _sink.Emit(CopilotEvent.NoticeSilent(
                         $"已从文本中解析 {xmlCalls.Count} 个 XML 格式工具调用（回退模式）"));
                 }
             }
@@ -973,7 +1000,7 @@ namespace E3DCopilot.Core
             if (string.IsNullOrWhiteSpace(text) && toolCalls.Count == 0)
             {
                 errorMessage = "LLM 返回了空响应（无内容且无工具调用）";
-                _sink.Emit(CopilotEvent.Notice("警告: LLM 返回了空响应"));
+                _sink.Emit(CopilotEvent.NoticeSilent("警告: LLM 返回了空响应"));
             }
 
             _sink.Emit(CopilotEvent.StreamEnd(errorMessage: errorMessage));
@@ -1210,7 +1237,7 @@ namespace E3DCopilot.Core
                 }
                 sb.AppendLine("</relevant-memories>");
 
-                _sink?.Emit(CopilotEvent.Notice($"记忆上下文: {top.Count} 条相关记忆已注入"));
+                _sink?.Emit(CopilotEvent.NoticeSilent($"记忆上下文: {top.Count} 条相关记忆已注入"));
 
                 // C1②/④ 追加用户画像 + 项目知识库到上下文
                 var profCtx = _controller?.Memory?.GetSystemPromptContext();
@@ -1243,7 +1270,7 @@ namespace E3DCopilot.Core
             string truncated = text.Substring(0, MaxToolResultChars);
             string hint = $"\n\n[truncated: {toolName} result was {text.Length} chars, showing first {MaxToolResultChars}. " +
                           "Use a more specific query or add filters to reduce results.]";
-            _sink?.Emit(CopilotEvent.Notice($"Token 预算: {toolName} 结果已截断 {text.Length}→{MaxToolResultChars} 字符"));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"Token 预算: {toolName} 结果已截断 {text.Length}→{MaxToolResultChars} 字符"));
             return truncated + hint;
         }
 

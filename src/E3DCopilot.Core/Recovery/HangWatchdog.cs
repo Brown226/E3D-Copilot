@@ -106,7 +106,7 @@ namespace E3DCopilot.Core.Recovery
                 _hasWarned = true;
                 int elapsedSec = (int)elapsed.TotalSeconds;
                 CopilotLogger.Info("HangWatchdog: 检测到可能的挂起 ({0}s 无活动)", elapsedSec);
-                _sink?.Emit(CopilotEvent.Notice(
+                _sink?.Emit(CopilotEvent.NoticeWarn(
                     $"⚠️ 检测到响应超时（{elapsedSec}s 无活动）。如果 LLM 服务无响应，请检查网络连接或取消当前操作。"));
 
                 // 如果关联了 CTS，触发取消
@@ -116,7 +116,7 @@ namespace E3DCopilot.Core.Recovery
                     try
                     {
                         cts.Cancel();
-                        _sink?.Emit(CopilotEvent.Notice("已自动取消超时操作"));
+                        _sink?.Emit(CopilotEvent.NoticeWarn("已自动取消超时操作"));
                     }
                     catch { }
                 }

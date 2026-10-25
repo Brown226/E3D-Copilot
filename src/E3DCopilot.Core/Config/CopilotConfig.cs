@@ -118,8 +118,11 @@ namespace E3DCopilot.Core.Config
             public bool SoundEnabled { get; set; } = false;
             /// <summary>字体族：default / mono</summary>
             public string FontFamily { get; set; } = "default";
-            /// <summary>Agent 执行轮数上限（0 = 不限）</summary>
-            public int MaxSteps { get; set; } = 20;
+            /// <summary>
+            /// Agent 执行轮数上限，0 = 不限（默认），一直执行到任务完成。
+            /// 想限制时在 config.json 里填正整数；终止兜底见 AgentLoop.MaxSteps 注释。
+            /// </summary>
+            public int MaxSteps { get; set; } = 0;
             /// <summary>Context Compaction 触发比（0~1，当前 token 窗口用满此比例时触发压缩，0 = 禁用）</summary>
             public double CompactRatio { get; set; } = 0.8;
             /// <summary>Context Compaction 触发阈值：assistant 消息数超过此值才检查压缩（硬阈值，避免短对话触发）</summary>

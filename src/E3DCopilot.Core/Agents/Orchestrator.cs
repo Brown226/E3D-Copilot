@@ -55,7 +55,7 @@ namespace E3DCopilot.Core.Agents
             ct.ThrowIfCancellationRequested();
 
             // Phase 1: Plan — Planner 子代理产出计划
-            _sink?.Emit(CopilotEvent.Notice($"编排: 开始规划任务..."));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"编排: 开始规划任务..."));
             var plan = await PlanAsync(task, ct);
             if (plan == null)
                 return "编排失败: Planner 未能产出有效计划";
@@ -65,7 +65,7 @@ namespace E3DCopilot.Core.Agents
             if (validationError != null)
                 return $"编排失败: 计划无效 — {validationError}";
 
-            _sink?.Emit(CopilotEvent.Notice(
+            _sink?.Emit(CopilotEvent.NoticeSilent(
                 $"编排: 计划 '{plan.Title}' 包含 {plan.Steps.Count} 个步骤"));
 
             // Phase 2: Execute — 按依赖和并行组执行
@@ -156,7 +156,7 @@ namespace E3DCopilot.Core.Agents
 
         private async Task<AgentResult> ExecuteStepAsync(PlanStep step, CancellationToken ct)
         {
-            _sink?.Emit(CopilotEvent.Notice($"编排: 执行步骤 '{step.Name}'..."));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"编排: 执行步骤 '{step.Name}'..."));
 
             var ctx = new SubagentContext
             {

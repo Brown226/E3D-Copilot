@@ -181,7 +181,7 @@ namespace E3DCopilot.Core
             if (!string.IsNullOrWhiteSpace(message))
             {
                 SteerQueue.Enqueue(message.Trim());
-                _sink?.Emit(CopilotEvent.Notice($"Steer queued: {message}"));
+                _sink?.Emit(CopilotEvent.NoticeSilent($"Steer queued: {message}"));
             }
         }
 
@@ -278,7 +278,7 @@ namespace E3DCopilot.Core
                 if (SafeMode.IsActive)
                     CopilotLogger.Info("安全模式已激活: {0}", SafeMode.Reason);
                 // 通知前端上次崩溃
-                _sink?.Emit(CopilotEvent.Notice(
+                _sink?.Emit(CopilotEvent.NoticeWarn(
                     $"⚠️ 检测到上次异常退出（连续第 {CrashDetector.ConsecutiveCrashes} 次）。" +
                     (SafeMode.IsActive ? " 已进入安全模式。" : " 会话已恢复。")));
             }
@@ -485,7 +485,7 @@ namespace E3DCopilot.Core
                     if (continuation != null)
                     {
                         // 自动续轮：将 continuation 作为下一轮输入
-                        _sink?.Emit(CopilotEvent.Notice($"🎯 Goal 续轮 ({Goal.TurnCount})"));
+                        _sink?.Emit(CopilotEvent.NoticeSilent($"🎯 Goal 续轮 ({Goal.TurnCount})"));
                         // 递归调用（受 SemaphoreSlim 保护，不会并发）
                         _sendLock.Release();
                         _isRunning = false;
@@ -528,7 +528,7 @@ namespace E3DCopilot.Core
             if (_isRunning) throw new InvalidOperationException("Cannot switch provider while a task is running");
             _provider = newProvider;
             CurrentModelName = modelRef; // 记录当前模型引用（如 "mimo/mimo-v2.5"）
-            _sink.Emit(CopilotEvent.Notice($"Provider switched to {newProvider.Name ?? "unknown"}"));
+            _sink.Emit(CopilotEvent.NoticeSilent($"Provider switched to {newProvider.Name ?? "unknown"}"));
         }
 
         /// <summary>
@@ -543,7 +543,7 @@ namespace E3DCopilot.Core
             var newProvider = ProviderRegistry.Instance.New(providerConfig, modelName);
             _provider = newProvider;
             CurrentModelName = modelRef;
-            _sink.Emit(CopilotEvent.Notice($"Provider switched to {newProvider.Name ?? modelRef}"));
+            _sink.Emit(CopilotEvent.NoticeSilent($"Provider switched to {newProvider.Name ?? modelRef}"));
         }
 
         /// <summary>
@@ -594,7 +594,7 @@ namespace E3DCopilot.Core
                 if (_pendingApprovals.TryRemove(approval.Id, out var timedOut))
                 {
                     timedOut.Complete(false, false, timedOut: true);
-                    _sink.Emit(CopilotEvent.Notice($"审批超时: {approval.ToolName} 未在 2 分钟内获得确认"));
+                    _sink.Emit(CopilotEvent.NoticeWarn($"审批超时: {approval.ToolName} 未在 2 分钟内获得确认"));
                 }
             });
 
@@ -713,7 +713,7 @@ namespace E3DCopilot.Core
             _pendingAsks.Clear();
 
             _session = new CopilotSession();
-            _sink.Emit(CopilotEvent.Notice("已创建新会话"));
+            _sink.Emit(CopilotEvent.NoticeSilent("已创建新会话"));
         }
 
         /// <summary>
@@ -748,7 +748,7 @@ namespace E3DCopilot.Core
             }
 
             _session = loaded;
-            _sink.Emit(CopilotEvent.Notice($"已恢复会话: {sessionPath}"));
+            _sink.Emit(CopilotEvent.NoticeSilent($"已恢复会话: {sessionPath}"));
             return true;
         }
 

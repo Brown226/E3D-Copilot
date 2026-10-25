@@ -39,7 +39,7 @@ namespace E3DCopilot.Core.Agents
         {
             if (spec == null) throw new ArgumentNullException(nameof(spec));
             _agents[spec.Name] = spec;
-            _sink?.Emit(CopilotEvent.Notice($"Coordinator: 注册专长 Agent '{spec.Name}'"));
+            _sink?.Emit(CopilotEvent.NoticeSilent($"Coordinator: 注册专长 Agent '{spec.Name}'"));
         }
 
         /// <summary>从 CopilotConfig.SpecializedAgents 加载预置 Agent</summary>
@@ -78,7 +78,7 @@ namespace E3DCopilot.Core.Agents
             string cacheKey = $"{agentName}:{context.GetHashCode()}";
             if (_cache.TryGetValue(cacheKey, out var cached))
             {
-                _sink?.Emit(CopilotEvent.Notice($"Coordinator: 使用缓存结果 '{agentName}'"));
+                _sink?.Emit(CopilotEvent.NoticeSilent($"Coordinator: 使用缓存结果 '{agentName}'"));
                 return Task.FromResult(cached);
             }
 

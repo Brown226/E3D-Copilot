@@ -101,7 +101,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                 sb.AppendLine("</skill-pin>");
 
                 string result = sb.ToString();
-                _sink?.Emit(CopilotEvent.Notice($"Loaded skill: {name} ({result.Length} chars)"));
+                _sink?.Emit(CopilotEvent.NoticeSilent($"Loaded skill: {name} ({result.Length} chars)"));
 
                 return ToolResult.Ok(result, new { skill = name, length = result.Length });
             }

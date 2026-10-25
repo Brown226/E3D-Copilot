@@ -167,7 +167,7 @@ namespace E3DCopilot.Core.Tools.Handlers
                         sbResult.AppendLine($"  {err}");
                 }
 
-                _sink?.Emit(CopilotEvent.Notice($"Batch: {success}/{names.Count} modified"));
+                _sink?.Emit(CopilotEvent.NoticeSilent($"Batch: {success}/{names.Count} modified"));
                 return ToolResult.Ok($"{summary}\n\n{sbResult.ToString().TrimEnd()}", new
                 {
                     success, failed, total = names.Count, attributes

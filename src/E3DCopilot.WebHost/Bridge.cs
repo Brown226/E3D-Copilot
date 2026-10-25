@@ -637,7 +637,8 @@ namespace E3DCopilot.WebHost
                     break;
 
                 case EventKind.Notice:
-                    SendToFrontend(MessageTypes.Notice, new { text = evt.Text });
+                    // Data 承载级别（silent/info/warn）：silent 由前端丢弃，warn 弹醒目样式
+                    SendToFrontend(MessageTypes.Notice, new { text = evt.Text, level = evt.Data as string });
                     break;
 
                 case EventKind.Error:

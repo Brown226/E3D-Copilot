@@ -275,9 +275,11 @@ export function registerStoreMappings(bridgeInstance: Bridge): void {
 
       case MessageTypes.Notice: {
         const p = msg.payload as NoticePayload;
-        // Toast 通知
+        // 后端按级别分流：silent 只进日志（前端直接丢弃），warn 弹醒目样式，其余普通提示
+        if (p?.level === 'silent') break;
+        const toastType = p?.level === 'warn' ? 'warning' : 'info';
         import('../../store/useToastStore').then(({ useToastStore }) => {
-          useToastStore.getState().addToast('info', p.text);
+          useToastStore.getState().addToast(toastType, p.text);
         });
         break;
       }

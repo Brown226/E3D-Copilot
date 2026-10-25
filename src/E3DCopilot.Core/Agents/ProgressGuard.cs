@@ -67,7 +67,6 @@ namespace E3DCopilot.Core.Agents
         /// </summary>
         public string RecordToolCompletion(string toolName, string resultSignature)
         {
-            if (!_hasActiveTodo) return null;
             if (_isPaused) return null;
 
             // 检测精确重复（对齐 Reasonix "exact repeats do not renew"）
@@ -91,7 +90,7 @@ namespace E3DCopilot.Core.Agents
             {
                 _isPaused = true;
                 CopilotLogger.Info("ProgressGuard: 连续 {0} 轮无进度，暂停执行", _noProgressRounds);
-                _sink?.Emit(CopilotEvent.Notice(
+                _sink?.Emit(CopilotEvent.NoticeWarn(
                     $"⏸️ 进度守卫：连续 {_noProgressRounds} 轮无新进度，已暂停。请检查任务是否需要调整方向。"));
                 return BuildPauseMessage();
             }

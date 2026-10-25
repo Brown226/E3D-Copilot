@@ -188,7 +188,7 @@ namespace E3DCopilot.Core.Tools.Handlers
 
                 string output = sb.ToString().TrimEnd();
 
-                _sink?.Emit(CopilotEvent.Notice($"CompleteStep: \"{step}\" signed off"));
+                _sink?.Emit(CopilotEvent.NoticeSilent($"CompleteStep: \"{step}\" signed off"));
 
                 return ToolResult.Ok(output, new
                 {
