@@ -284,4 +284,99 @@ namespace E3DCopilot.Tests
             Assert.IsNull(sources.Find(s => s.Path == ghostPath));
         }
     }
+
+    /// <summary>
+    /// 内置 skills 的部署回归。
+    ///
+    /// 背景：源码里存在 skills/ 目录，但曾经因为 csproj 只复制 src/E3DCopilot.Core/skills/，
+    /// 导致 12 个手工整理的 skill 从未进入部署目录，模型在系统提示词里根本看不到它们。
+    /// 这类缺陷不会报错、不会失败编译，只会静默地"技能不存在"，因此必须用测试锁住。
+    /// </summary>
+    [TestFixture]
+    public class BuiltinSkillsDeploymentTests
+    {
+        private static readonly string[] RequiredSkills =
+        {
+            "pml-authoring",
+            "cad-e3d-modeling",
+            "e3d-element-ops",
+            "iso-and-standards",
+        };
+
+        private static string BuiltinSkillsDir
+        {
+            get
+            {
+                // 测试程序集输出目录下的 skills/，即 SkillManager 在运行时扫描的位置
+                return Path.Combine(
+                    Path.GetDirectoryName(typeof(BuiltinSkillsDeploymentTests).Assembly.Location),
+                    "skills");
+            }
+        }
+
+        [Test]
+        public void CoreSkills_AreCopiedToOutputDirectory()
+        {
+            Assert.IsTrue(Directory.Exists(BuiltinSkillsDir),
+                "内置 skills 未复制到输出目录: " + BuiltinSkillsDir);
+
+            foreach (var name in RequiredSkills)
+            {
+                string file = Path.Combine(BuiltinSkillsDir, name, "SKILL.md");
+                Assert.IsTrue(File.Exists(file), "缺少 SKILL.md: " + name);
+            }
+        }
+
+        [Test]
+        public void CoreSkills_LoadWithNonEmptyBodyAndNoFrontmatter()
+        {
+            var mgr = new SkillManager(null, new[] { BuiltinSkillsDir });
+            var loaded = mgr.ListSkills();
+
+            foreach (var name in RequiredSkills)
+            {
+                var skill = loaded.Find(s => s.Name == name);
+                Assert.IsNotNull(skill, "SkillManager 未能加载: " + name);
+                Assert.IsTrue(skill.Enabled, "技能被禁用: " + name);
+
+                string body = mgr.ReadContent(name);
+                Assert.IsNotNull(body, "读不到正文: " + name);
+                Assert.Greater(body.Length, 1500, "正文过短，可能复制不完整: " + name);
+                Assert.IsFalse(body.TrimStart().StartsWith("---"),
+                    "frontmatter 未剥离，会污染模型上下文: " + name);
+            }
+        }
+
+        [Test]
+        public void CoreSkills_ContainTheirCriticalGuidance()
+        {
+            var mgr = new SkillManager(null, new[] { BuiltinSkillsDir });
+
+            // 每份 skill 里最容易丢失、且丢了就会误导模型的那一句
+            Assert.IsTrue(mgr.ReadContent("pml-authoring").Contains("执行约束"));
+            Assert.IsTrue(mgr.ReadContent("cad-e3d-modeling").Contains("图层过滤"));
+            Assert.IsTrue(mgr.ReadContent("e3d-element-ops").Contains("尚未实现"));
+            Assert.IsTrue(mgr.ReadContent("iso-and-standards").Contains("GBK"));
+        }
+
+        [Test]
+        public void CoreSkills_CrossReferencesPointToExistingSkills()
+        {
+            var mgr = new SkillManager(null, new[] { BuiltinSkillsDir });
+            var loaded = new System.Collections.Generic.HashSet<string>();
+            foreach (var s in mgr.ListSkills()) loaded.Add(s.Name);
+
+            foreach (var name in RequiredSkills)
+            {
+                string body = mgr.ReadContent(name);
+                foreach (System.Text.RegularExpressions.Match m in
+                    System.Text.RegularExpressions.Regex.Matches(body, @"run_skill\(name='([a-z0-9-]+)'\)"))
+                {
+                    string target = m.Groups[1].Value;
+                    Assert.IsTrue(loaded.Contains(target),
+                        name + " 引用了不存在的 skill: " + target);
+                }
+            }
+        }
+    }
 }

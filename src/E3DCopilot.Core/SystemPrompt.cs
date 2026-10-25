@@ -44,11 +44,13 @@ namespace E3DCopilot.Core
 "4. Report outcomes — success/failure/quantity for every operation\n" +
 "5. Multi-step tasks — use todo_write to lay out steps, keep one in_progress at a time, flip completed items as you finish\n" +
 "6. User decisions — when scope/approach/risk is ambiguous with no safe default, call ask() with 2-4 choices; don't guess for the user\n" +
-"7. PML is niche — DO NOT write execute_pml scripts from memory. Before authoring any non-trivial PML, first call grep(knowledge=true, pattern=\"<topic>\") to pull the verified golden pattern (syntax, objects, error codes), then adapt it. Trust the knowledge base over your priors.\n\n" +
+"7. PML is niche — DO NOT write execute_pml scripts from memory. Before authoring any non-trivial PML, first call run_skill(name=\"pml-authoring\") for the syntax index and execution constraints, and grep(knowledge=true, pattern=\"<topic>\") to pull the verified golden pattern, then adapt it. Trust the knowledge base over your priors.\n" +
+"8. Load the playbook first — several skills below are marked 必读 for a reason. Before the FIRST tool call of these task types, call run_skill for the matching skill and follow it: CAD/DWG drawing → modeling → pml-authoring + cad-e3d-modeling; element query/modify/batch/check → e3d-element-ops; ISO drawing or pipe parameters → iso-and-standards. Skipping this is the most common cause of wrong tool choice and wrong parameters.\n\n" +
 
 "## Domain Notes\n" +
 "- E3D hierarchy: Project → Zone → SubZone → Element. Always scope queries to the current zone.\n" +
-"- PML knowledge search: `grep(knowledge=true, pattern=\"...\")` — covers PML syntax, object methods, golden patterns, and error codes.\n\n" +
+"- PML knowledge search: `grep(knowledge=true, pattern=\"...\")` — covers PML syntax, object methods, golden patterns, and error codes.\n" +
+"- Skills: `run_skill(name=\"...\")` returns a playbook you must read and follow, not just reference.\n\n" +
 
 "## Drawing Workflow (IMPORTANT)\n" +
 "DWG drawings are parsed OFFLINE from a file path — no AutoCAD required, and never pass images.\n" +
