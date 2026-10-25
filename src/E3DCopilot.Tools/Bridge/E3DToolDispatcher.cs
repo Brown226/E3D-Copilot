@@ -251,6 +251,9 @@ namespace E3DCopilot.Tools.Bridge
                 
                         // 审计日志：记录属性修改
                         _auditLogger.LogAttributeChange(dburi, attrName, oldValue, attrValue);
+
+                        // 撤销记录：modify 成功后入栈，undo_redo 工具可一键恢复旧值
+                        UndoRedoManager.Instance.Record(dburi, attrName, oldValue, attrValue, "modify");
                     }
                     else
                         failedList.Add(attrName);

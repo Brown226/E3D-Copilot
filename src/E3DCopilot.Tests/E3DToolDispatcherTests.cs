@@ -142,5 +142,35 @@ namespace E3DCopilot.Tests
             // Assert
             Assert.IsNotNull(result["error"]);
         }
+
+        // ════════════════════════════════════════
+        //  undo_redo 接线：modify 成功后记录撤销条目
+        // ════════════════════════════════════════
+
+        [Test]
+        public async Task Modify_Success_RecordsUndoEntry()
+        {
+            var manager = E3DCopilot.Core.Tools.UndoRedoManager.Instance;
+            manager.Clear();
+
+            // modify 前读取旧值（模拟环境 PIPE-001 存在）
+            var oldValue = _env.GetAttribute("PIPE-001", "DESC") ?? "";
+
+            var resultJson = await _dispatcher.ExecuteAsync("modify",
+                "{\"dburi\": \"PIPE-001\", \"attributes\": {\"DESC\": \"modified-by-test\"}}");
+            var result = JObject.Parse(resultJson);
+
+            // 成功的 modify 必须留下撤销记录（此前 Record 零调用者，undo 永远空转）
+            Assert.IsTrue((bool)result["success"], "modify 应成功: " + resultJson);
+            Assert.AreEqual(1, manager.UndoCount, "modify 成功后应记录 1 条撤销条目");
+
+            var peek = manager.PeekUndo();
+            Assert.AreEqual("PIPE-001", peek.Element);
+            Assert.AreEqual("DESC", peek.Attribute);
+            Assert.AreEqual(oldValue, peek.OldValue);
+            Assert.AreEqual("modified-by-test", peek.NewValue);
+
+            manager.Clear();
+        }
     }
 }

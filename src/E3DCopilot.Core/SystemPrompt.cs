@@ -157,7 +157,8 @@ namespace E3DCopilot.Core
         /// 静态基础部分享受 vLLM 前缀缓存，动态后缀在每回合末端断裂
         /// </summary>
         public static string Build(string currentElement = null, string currentZone = null, 
-            List<string> selectedElements = null, SkillManager skillManager = null)
+            List<string> selectedElements = null, SkillManager skillManager = null,
+            string customInstructions = null)
         {
             var sb = new StringBuilder();
             
@@ -182,6 +183,14 @@ namespace E3DCopilot.Core
                 }
             }
             
+            // Part B2: 用户自定义指令（改动频率低，保留在前缀缓存区）
+            if (!string.IsNullOrWhiteSpace(customInstructions))
+            {
+                sb.AppendLine();
+                sb.AppendLine("## User Instructions (must follow)");
+                sb.AppendLine(customInstructions.Trim());
+            }
+
             // Part C: 动态上下文（每轮变化，缓存断裂点）
             sb.AppendLine();
             sb.AppendLine("## Current Context");

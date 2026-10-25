@@ -112,6 +112,8 @@ namespace E3DCopilot.Core.Config
             public int FontSize { get; set; } = 16;
             /// <summary>默认模式：act / plan</summary>
             public string DefaultMode { get; set; } = "act";
+            /// <summary>自定义指令：注入系统提示词（用户级项目规则/偏好，对齐主流 Agent 的 custom instructions）</summary>
+            public string CustomInstructions { get; set; } = "";
             /// <summary>桌面通知</summary>
             public bool Notifications { get; set; } = true;
             /// <summary>提示音</summary>

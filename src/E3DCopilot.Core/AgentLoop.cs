@@ -1052,7 +1052,7 @@ namespace E3DCopilot.Core
             var selectedElements = _executor.GetSelectedElementNames();
             string currentZone = DeriveZoneFromElement(currentElement);
             request.Messages.Add(new ChatMessage(MessageRole.System,
-                SystemPrompt.Build(currentElement, currentZone, selectedElements, _skillManager)));
+                SystemPrompt.Build(currentElement, currentZone, selectedElements, _skillManager, _config?.Ui?.CustomInstructions)));
 
             // Tool definitions — 暴露给 LLM 的工具
             var toolSchemas = new List<ToolSchema>();

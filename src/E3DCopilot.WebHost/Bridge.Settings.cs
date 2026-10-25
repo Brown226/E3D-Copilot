@@ -85,6 +85,9 @@ namespace E3DCopilot.WebHost
                             if (prov != null) prov.ReasoningProtocol = value ?? "auto";
                         }
                         break;
+                    case "customInstructions":
+                        config.Ui.CustomInstructions = value ?? "";
+                        break;
                     case "version":
                         config.Ui.Version = value ?? "2.0.0";
                         break;
