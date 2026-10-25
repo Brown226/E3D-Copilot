@@ -187,5 +187,29 @@ namespace E3DCopilot.Core
                 return null;
             }
         }
+
+        /// <summary>
+        /// 回退会话到只保留前 keepUserTurns 条用户消息的完整轮次
+        /// （编辑重发用：前端截断了从被编辑消息起的历史，后端 session 必须同步截断，
+        /// 否则全量发送上下文时被"删掉"的消息仍会进入 LLM）
+        /// </summary>
+        public void RewindToUserTurnCount(int keepUserTurns)
+        {
+            lock (_msgLock)
+            {
+                if (keepUserTurns < 0) return;
+                int seen = 0;
+                for (int i = 0; i < Messages.Count; i++)
+                {
+                    if (Messages[i].Role != MessageRole.User) continue;
+                    seen++;
+                    if (seen > keepUserTurns)
+                    {
+                        Messages.RemoveRange(i, Messages.Count - i);
+                        return;
+                    }
+                }
+            }
+        }
     }
 }

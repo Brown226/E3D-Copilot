@@ -34,6 +34,10 @@ export interface UISlice {
   turnStartAt: number | null;
   turnTokens: number;
   sessionTokens: number;
+  /** 最近一次 LLM 请求的真实 prompt tokens（Usage 事件下发） */
+  lastPromptTokens: number;
+  /** 当前模型上下文窗口（Usage 事件随行下发，0 = 未知） */
+  contextWindow: number;
 
   // 动作
   setInputValue: (v: string) => void;
@@ -62,12 +66,13 @@ export interface UISlice {
   editUserMessage: (
     messageId: string,
     newText?: string,
-    bridgeSend?: (text: string, images?: string[], files?: string[], tabId?: string) => void
+    bridgeSend?: (text: string, images?: string[], files?: string[], tabId?: string, rewindTurns?: number) => void
   ) => void;
   rollbackToMessage: (messageId: string) => void;
   setRetrying: (retrying: boolean) => void;
   setTurnStart: (timestamp: number | null) => void;
   addTurnTokens: (tokens: number) => void;
+  setContextUsage: (promptTokens: number, contextWindow?: number) => void;
   resetTurnStats: () => void;
 }
 
@@ -93,6 +98,8 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
   turnStartAt: null,
   turnTokens: 0,
   sessionTokens: 0,
+  lastPromptTokens: 0,
+  contextWindow: 0,
 
   setInputValue: (v: string) => set({ inputValue: v }),
 
@@ -236,7 +243,12 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
     // 按钮写的是「发送」，就真的发送。
     // 原实现只把文本塞回输入框，用户点「发送」却什么都没发出去。
     if (bridgeSend) {
-      get().sendMessage(bridgeSend, undefined, text)
+      // 后端 session 同步回退：保留被编辑消息之前的完整用户轮次。
+      // 只截前端不截后端时，全量发送上下文会把"已删除"的消息再发给模型。
+      const keepTurns = tab.messages.slice(0, msgIdx).filter((m) => m.role === 'user').length
+      const wrapped = (t: string, images?: string[], files?: string[], tid?: string) =>
+        bridgeSend(t, images, files, tid, keepTurns)
+      get().sendMessage(wrapped, undefined, text)
     }
   },
 
@@ -257,6 +269,10 @@ export const createUISlice: StateCreator<ChatStore, [], [], UISlice> = (set, get
 
   // === 流式状态 ===
   setTurnStart: (timestamp) => set({ turnStartAt: timestamp }),
+  setContextUsage: (promptTokens, contextWindow) => set((s) => ({
+    lastPromptTokens: promptTokens > 0 ? promptTokens : s.lastPromptTokens,
+    contextWindow: contextWindow && contextWindow > 0 ? contextWindow : s.contextWindow,
+  })),
   addTurnTokens: (tokens) => set((s) => ({
     turnTokens: s.turnTokens + tokens,
     sessionTokens: s.sessionTokens + tokens,

@@ -21,6 +21,7 @@ import { useComposerResize, composerMaxHeight } from './composer/useComposerResi
 import { useInputHistory } from './composer/useInputHistory'
 import { useAttachments, shouldFoldPaste, fileToBase64 } from './composer/useAttachments'
 import { StreamingStatusBar, fmtTokens } from './composer/StreamingStatusBar'
+import { ContextMeter } from './composer/ContextMeter'
 import { AttachmentArea } from './composer/AttachmentArea'
 
 // ── 常量 ──
@@ -355,6 +356,7 @@ export function InputBar() {
 
             {/* 右侧：连接状态 + 模型选择器 */}
             <div className="composer-status">
+              <ContextMeter />
               {sessionTokens > 0 && (
                 <span className="hidden sm:inline" style={{ fontVariantNumeric: 'tabular-nums' }}>
                   Σ {fmtTokens(sessionTokens)}

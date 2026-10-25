@@ -289,10 +289,19 @@ export function registerStoreMappings(bridgeInstance: Bridge): void {
         break;
 
       case MessageTypes.LlmUsage: {
-        const p = msg.payload as { tokens?: number; total_tokens?: number; data?: { total_tokens?: number } };
+        const p = msg.payload as {
+          tokens?: number;
+          total_tokens?: number;
+          data?: { total_tokens?: number; prompt_tokens?: number; context_window?: number };
+        };
         const tokens = p?.tokens ?? p?.total_tokens ?? p?.data?.total_tokens;
         if (tokens) {
           s.addTurnTokens(tokens);
+        }
+        // 真实 prompt tokens + 窗口大小 → context 占用条（include_usage 链路打通后才有值）
+        const promptTokens = p?.data?.prompt_tokens ?? 0;
+        if (promptTokens > 0) {
+          s.setContextUsage(promptTokens, p?.data?.context_window);
         }
         break;
       }

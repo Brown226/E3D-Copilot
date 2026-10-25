@@ -67,6 +67,9 @@ namespace E3DCopilot.Core
         private Dictionary<string, int> _repeatSuccessCounts;
         private const int RepeatSuccessBreakThreshold = 2;
 
+        // ── 最近一次请求的 context window（BuildRequest 更新，Usage 事件随行下发） ──
+        private int _lastContextWindow;
+
         // ── 证据账本（对齐 Reasonix evidence.Ledger） ──
         private readonly EvidenceLedger _evidence = new EvidenceLedger();
 
@@ -945,7 +948,8 @@ namespace E3DCopilot.Core
                                 {
                                     total_tokens = chunk.UsageData.TotalTokens,
                                     prompt_tokens = chunk.UsageData.PromptTokens,
-                                    completion_tokens = chunk.UsageData.CompletionTokens
+                                    completion_tokens = chunk.UsageData.CompletionTokens,
+                                    context_window = _lastContextWindow
                                 }
                             });
                             break;
@@ -1086,6 +1090,7 @@ namespace E3DCopilot.Core
             // 条数仅作极端兜底。预算取窗口 40%：位于压缩器 soft 阈值（50%）之下，
             // 保证单次请求不超长的同时把折叠决策留给 ContextCompactor（按真实 usage 触发）。
             int ctxWindow = providerConfig.ContextWindow > 0 ? providerConfig.ContextWindow : 32000;
+            _lastContextWindow = ctxWindow; // 供 Usage 事件随行下发（前端 context 占用条）
             int charBudget = (int)(ctxWindow * 0.4);
             var history = session.GetMessagesByBudget(charBudget);
 

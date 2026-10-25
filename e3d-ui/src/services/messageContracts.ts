@@ -109,6 +109,8 @@ export interface UserMessagePayload {
   images?: string[];
   files?: string[];
   tabId?: string;
+  /** 编辑重发：回退到保留的前 N 条用户轮次（后端 session 同步截断） */
+  rewindTurns?: number;
 }
 
 export interface ApprovalPayload {

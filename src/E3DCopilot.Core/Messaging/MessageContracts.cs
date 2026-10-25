@@ -119,8 +119,12 @@ namespace E3DCopilot.Core.Messaging
 
         [JsonProperty("tabId")]
         public string TabId { get; set; }
+
+        /// <summary>编辑重发：回退到保留的前 N 条用户轮次（null = 正常追加）</summary>
+        [JsonProperty("rewindTurns", NullValueHandling = NullValueHandling.Ignore)]
+        public int? RewindTurns { get; set; }
     }
-    
+
     /// <summary>
     /// 审批响应
     /// </summary>

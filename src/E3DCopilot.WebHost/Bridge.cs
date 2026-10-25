@@ -278,13 +278,20 @@ namespace E3DCopilot.WebHost
             string text = null;
             string tabId = null;
             string[] images = null;
-            
+            int? rewindTurns = null;
+
             if (payload.HasValue)
             {
                 if (payload.Value.TryGetProperty("text", out var textProp))
                     text = textProp.GetString();
                 if (payload.Value.TryGetProperty("tabId", out var tabIdProp))
                     tabId = tabIdProp.GetString();
+                if (payload.Value.TryGetProperty("rewindTurns", out var rewindProp)
+                    && rewindProp.ValueKind == JsonValueKind.Number)
+                {
+                    int r = rewindProp.GetInt32();
+                    if (r >= 0) rewindTurns = r;
+                }
                 if (payload.Value.TryGetProperty("images", out var imagesProp) && imagesProp.ValueKind == JsonValueKind.Array)
                 {
                     var imgList = new List<string>();
@@ -311,7 +318,7 @@ namespace E3DCopilot.WebHost
             {
                 try
                 {
-                    await _controller.SendAsync(text, images);
+                    await _controller.SendAsync(text, images, rewindTurns);
                 }
                 catch (Exception ex)
                 {

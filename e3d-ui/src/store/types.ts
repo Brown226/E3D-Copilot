@@ -120,6 +120,11 @@ export interface ChatStore {
   turnTokens: number;
   /** 会话累计 token 用量 */
   sessionTokens: number;
+  /** 最近一次 LLM 请求的真实 prompt tokens */
+  lastPromptTokens: number;
+  /** 当前模型上下文窗口（0 = 未知） */
+  contextWindow: number;
+  setContextUsage: (promptTokens: number, contextWindow?: number) => void;
 
   // === Tab 操作 ===
   createTab: (title?: string) => string;
@@ -180,7 +185,7 @@ export interface ChatStore {
   editUserMessage: (
     messageId: string,
     newText?: string,
-    bridgeSend?: (text: string, images?: string[], files?: string[], tabId?: string) => void
+    bridgeSend?: (text: string, images?: string[], files?: string[], tabId?: string, rewindTurns?: number) => void
   ) => void;
   /** 回退到指定消息位置（从这继续 — 删除该消息之后的所有消息） */
   rollbackToMessage: (messageId: string) => void;

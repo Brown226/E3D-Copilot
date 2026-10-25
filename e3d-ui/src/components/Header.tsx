@@ -5,8 +5,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { Bot, Settings, Clock, Plus, Sun, Moon } from 'lucide-react'
+import { Bot, Settings, Clock, Plus, Sun, Moon, Download } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
+import { downloadConversationMarkdown } from '@/utils/exportMarkdown'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -63,6 +64,15 @@ export function Header() {
     useChatStore.getState().createTab()
   }
 
+  const handleExport = useCallback(() => {
+    const s = useChatStore.getState()
+    const tab = s.tabs.find((t) => t.id === s.activeTabId)
+    if (!tab || tab.messages.length === 0) return
+    const firstUser = tab.messages.find((m) => m.role === 'user')
+    const title = firstUser?.content?.slice(0, 40) || tab.title || '对话'
+    downloadConversationMarkdown(tab.messages, title)
+  }, [])
+
   return (
     <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 px-2.5 py-1.5 dark:bg-slate-900/80 dark:border-slate-700 shrink-0">
       <div className="flex items-center justify-between">
@@ -101,6 +111,14 @@ export function Header() {
                 {sessions.length > 99 ? '99+' : sessions.length}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={handleExport}
+            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+            title="导出对话为 Markdown"
+          >
+            <Download className="w-4 h-4" />
           </button>
 
           <button

@@ -2736,3 +2736,58 @@ body.composer-resizing * {
     gap: 4px;
   }
 }
+
+/* ════════════════════════════════════════════
+   ContextMeter — 上下文占用指示条（composer-status 内）
+   ════════════════════════════════════════════ */
+.ctx-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ctx-meter__label {
+  letter-spacing: 0.01em;
+}
+
+.ctx-meter__bar {
+  position: relative;
+  width: 52px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-soft, rgba(127, 127, 127, 0.25));
+  overflow: hidden;
+}
+
+.ctx-meter__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--fg-dim, #7dd3fc);
+  transition: width 0.4s ease;
+}
+
+.ctx-meter__pct {
+  min-width: 26px;
+  text-align: right;
+}
+
+.ctx-meter--warn .ctx-meter__fill {
+  background: #f59e0b;
+}
+
+.ctx-meter--warn .ctx-meter__pct {
+  color: #f59e0b;
+}
+
+.ctx-meter--danger .ctx-meter__fill {
+  background: var(--err, #ef4444);
+}
+
+.ctx-meter--danger .ctx-meter__pct {
+  color: var(--err, #ef4444);
+}

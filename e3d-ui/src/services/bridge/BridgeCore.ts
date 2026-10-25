@@ -144,8 +144,8 @@ export class Bridge {
   // 类型化便利方法
   // ============================================
 
-  sendUserMessage(text: string, images?: string[], files?: string[], tabId?: string): void {
-    this.send(MessageTypes.UserMessage, { text, images, files, tabId } as UserMessagePayload);
+  sendUserMessage(text: string, images?: string[], files?: string[], tabId?: string, rewindTurns?: number): void {
+    this.send(MessageTypes.UserMessage, { text, images, files, tabId, rewindTurns } as UserMessagePayload);
   }
 
   sendApproval(toolId: string, allow: boolean, session: boolean = false): void {

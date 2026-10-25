@@ -448,9 +448,13 @@ namespace E3DCopilot.Core
         /// Send user input → AgentLoop processing
         /// 使用 SemaphoreSlim 串行化，彻底消除旧 finally 与新请求的竞态
         /// </summary>
-        public async Task SendAsync(string input, string[] images = null)
+        public async Task SendAsync(string input, string[] images = null, int? rewindUserTurns = null)
         {
             if (string.IsNullOrWhiteSpace(input) && (images == null || images.Length == 0)) return;
+
+            // 编辑重发：先回退 session 到保留轮数，再以新内容发起（与前端 store 截断对齐）
+            if (rewindUserTurns.HasValue)
+                _session?.RewindToUserTurnCount(rewindUserTurns.Value);
 
             // 取消上一个任务（仅发 Cancel 信号，不阻塞）
             if (_isRunning)
